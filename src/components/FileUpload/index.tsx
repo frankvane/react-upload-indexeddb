@@ -43,6 +43,8 @@ const FileUpload = () => {
       refreshFiles,
       fileConcurrency,
       chunkConcurrency,
+      maxRetries: 3, // 默认重试次数
+      timeout: 30000, // 默认超时时间
     });
 
   const filePrepareWorkerUrl = new URL(
@@ -155,13 +157,19 @@ const FileUpload = () => {
           <span style={{ marginRight: 16 }}>
             等待: <Tag color="default">{batchInfo.queued}</Tag>
           </span>
-          <span>
+          <span style={{ marginRight: 16 }}>
             完成: <Tag color="success">{batchInfo.completed}</Tag>
           </span>
           {batchInfo.failed > 0 && (
-            <span>
+            <span style={{ marginRight: 16 }}>
               失败:
               <Tag color="error">{batchInfo.failed}</Tag>
+            </span>
+          )}
+          {batchInfo.retried > 0 && (
+            <span style={{ marginRight: 16 }}>
+              重试:
+              <Tag color="warning">{batchInfo.retried}</Tag>
             </span>
           )}
           {isUploading && (

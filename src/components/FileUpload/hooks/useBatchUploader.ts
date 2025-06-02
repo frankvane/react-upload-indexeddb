@@ -11,6 +11,8 @@ interface UseBatchUploaderOptions {
   refreshFiles?: () => void;
   fileConcurrency?: number; // 并发上传文件数
   chunkConcurrency?: number; // 并发上传分片数
+  maxRetries?: number; // 最大重试次数
+  timeout?: number; // 请求超时时间（毫秒）
 }
 
 interface BatchInfo {
@@ -20,6 +22,7 @@ interface BatchInfo {
   active: number;
   completed: number;
   failed: number;
+  retried: number; // 重试次数统计
 }
 
 export function useBatchUploader(options?: UseBatchUploaderOptions) {
@@ -27,6 +30,7 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
   const [isUploading, setIsUploading] = useState(false);
   const queueRef = useRef<PQueue | null>(null);
   const cancelTokenRef = useRef<AbortController | null>(null);
+  const retriedCountRef = useRef<number>(0); // 记录重试次数
 
   // 初始化队列或当并发数变更时更新队列配置
   useEffect(() => {
@@ -104,6 +108,8 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
             networkParams: {
               chunkConcurrency:
                 options?.chunkConcurrency || options?.fileConcurrency || 2,
+              maxRetries: options?.maxRetries || 3,
+              timeout: options?.timeout || 30000,
             },
           });
 
@@ -115,6 +121,45 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
                   [file.id]: e.data.progress,
                 }));
               }
+            } else if (e.data.type === "error") {
+              // 处理错误情况
+              console.error(`文件上传错误: ${file.fileName}`, e.data.message);
+
+              // 更新文件状态为错误
+              await localforage.setItem(file.id, {
+                ...file,
+                status: UploadStatus.ERROR,
+                errorMessage: e.data.message,
+                failedChunks: e.data.failedChunks || [],
+              });
+
+              if (options?.refreshFiles) {
+                options.refreshFiles();
+              }
+
+              worker.terminate();
+              resolve(false); // 上传失败但不中断整体队列
+            } else if (e.data.type === "uploadResult") {
+              // 更新全局失败统计
+              if (e.data.failed > 0) {
+                setBatchInfo((prev) => {
+                  if (!prev) return null;
+                  return {
+                    ...prev,
+                    failed: prev.failed + 1,
+                  };
+                });
+              }
+            } else if (e.data.type === "retry") {
+              // 更新重试统计
+              retriedCountRef.current += 1;
+              setBatchInfo((prev) => {
+                if (!prev) return null;
+                return {
+                  ...prev,
+                  retried: retriedCountRef.current,
+                };
+              });
             } else if (e.data.type === "done") {
               if (options?.setProgressMap) {
                 options.setProgressMap((prev) => ({ ...prev, [file.id]: 100 }));
@@ -139,8 +184,22 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
             }
           };
 
-          worker.onerror = (error) => {
+          worker.onerror = async (error) => {
             console.error("Worker error:", error);
+
+            // 更新文件状态为错误
+            await localforage.setItem(file.id, {
+              ...file,
+              status: UploadStatus.ERROR,
+              errorMessage:
+                error instanceof Error ? error.message : String(error),
+            });
+
+            if (options?.refreshFiles) {
+              options.refreshFiles();
+            }
+
+            worker.terminate();
             reject(error);
           };
         });
@@ -186,9 +245,7 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
   const uploadAll = useCallback(async () => {
     if (isUploading) return;
     setIsUploading(true);
-
-    // 每次上传前重置批处理信息，确保不累积历史记录
-    setBatchInfo(null);
+    retriedCountRef.current = 0; // 重置重试计数
 
     try {
       // 创建新的中止控制器
@@ -223,7 +280,7 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
         return;
       }
 
-      // 初始化批处理信息 - 仅包含当前批次的信息
+      // 初始化批处理信息 - 包含当前批次的信息
       setBatchInfo({
         current: 0,
         total: uploadableFiles.length,
@@ -231,6 +288,7 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
         active: 0,
         completed: 0,
         failed: 0,
+        retried: 0,
       });
 
       // 监听队列事件以更新状态
@@ -301,7 +359,13 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
       setIsUploading(false);
       cancelTokenRef.current = null;
     }
-  }, [isUploading, uploadFile, options?.refreshFiles, checkQueueComplete]);
+  }, [
+    isUploading,
+    uploadFile,
+    options?.refreshFiles,
+    checkQueueComplete,
+    resetState,
+  ]);
 
   // 清除批次信息
   const clearBatchInfo = useCallback(() => {
