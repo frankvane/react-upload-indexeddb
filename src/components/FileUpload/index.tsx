@@ -1,11 +1,12 @@
 import "antd/dist/reset.css";
 
 import { AlignItem, UploadFile, UploadStatus, statusMap } from "./types/upload";
-import { Button, Modal, Progress, Table, Tag } from "antd";
+import { Button, Modal, Table, Tag, Tooltip } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 
 import { ByteConvert } from "./utils";
 import NetworkStatusBadge from "./components/NetworkStatusBadge";
+import PercentDisplay from "./components/PercentDisplay";
 import localforage from "localforage";
 import { useBatchUploader } from "./hooks/useBatchUploader";
 import { useIndexedDBFiles } from "./hooks/useIndexedDBFiles";
@@ -21,21 +22,6 @@ const FileUpload = () => {
   const [loading, setLoading] = useState(false);
   const [cost, setCost] = useState<number | null>(null);
   const [progressMap, setProgressMap] = useState<Record<string, number>>({});
-  const { files: allFiles, refresh: refreshFiles } = useIndexedDBFiles();
-  const { uploadAll, batchInfo } = useBatchUploader({
-    setProgressMap,
-    refreshFiles,
-  });
-
-  // 使用网络类型钩子获取动态参数
-  const { networkType, fileConcurrency, chunkConcurrency, chunkSize } =
-    useNetworkType();
-
-  const filePrepareWorkerUrl = new URL(
-    "./worker/filePrepareWorker.ts",
-    import.meta.url
-  ).href;
-
   const [processProgress, setProcessProgress] = useState<{
     processed: number;
     total: number;
@@ -43,6 +29,24 @@ const FileUpload = () => {
     failed: number;
     oversized: number;
   } | null>(null);
+
+  const { files: allFiles, refresh: refreshFiles } = useIndexedDBFiles();
+
+  // 使用网络类型钩子获取动态参数
+  const { networkType, fileConcurrency, chunkConcurrency, chunkSize } =
+    useNetworkType();
+
+  // 将 fileConcurrency 传递给 useBatchUploader
+  const { uploadAll, batchInfo, isUploading, cancelUpload } = useBatchUploader({
+    setProgressMap,
+    refreshFiles,
+    fileConcurrency,
+  });
+
+  const filePrepareWorkerUrl = new URL(
+    "./worker/filePrepareWorker.ts",
+    import.meta.url
+  ).href;
 
   useEffect(() => {
     refreshFiles();
@@ -142,6 +146,45 @@ const FileUpload = () => {
     });
   };
 
+  // 渲染批量上传进度信息
+  const renderBatchInfo = () => {
+    if (!batchInfo) return null;
+
+    return (
+      <div style={{ marginBottom: 16, color: "#722ED1" }}>
+        <div style={{ marginBottom: 4 }}>
+          批量上传进度：{batchInfo.current}/{batchInfo.total}
+          {batchInfo.failed > 0 && (
+            <span style={{ color: "#f5222d", marginLeft: 8 }}>
+              失败: {batchInfo.failed}
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: "12px", color: "#666" }}>
+          <span style={{ marginRight: 16 }}>
+            活跃: <Tag color="processing">{batchInfo.active}</Tag>
+          </span>
+          <span style={{ marginRight: 16 }}>
+            等待: <Tag color="default">{batchInfo.queued}</Tag>
+          </span>
+          <span>
+            完成: <Tag color="success">{batchInfo.completed}</Tag>
+          </span>
+          {isUploading && (
+            <Button
+              size="small"
+              danger
+              style={{ marginLeft: 16 }}
+              onClick={cancelUpload}
+            >
+              取消上传
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // Table columns 配置
   const columns = [
     { title: "文件名", dataIndex: "fileName", key: "fileName" },
@@ -175,9 +218,32 @@ const FileUpload = () => {
       title: "进度",
       dataIndex: "progress",
       key: "progress",
-      render: (progress: number) => (
-        <Progress percent={progress} size="small" />
-      ),
+      render: (_: unknown, record: UploadFile) => {
+        if (
+          record.status === UploadStatus.DONE ||
+          record.status === UploadStatus.INSTANT
+        ) {
+          return <PercentDisplay percent={100} status="success" />;
+        }
+        if (
+          record.status === UploadStatus.ERROR ||
+          record.status === UploadStatus.MERGE_ERROR
+        ) {
+          return <PercentDisplay percent={record.progress} status="error" />;
+        }
+        if (record.status === UploadStatus.CALCULATING) {
+          return (
+            <Tooltip title={`MD5计算进度: ${record.progress}%`}>
+              <PercentDisplay percent={record.progress} status="active" />
+            </Tooltip>
+          );
+        }
+        if (record.status === UploadStatus.UPLOADING) {
+          return <PercentDisplay percent={record.progress} status="active" />;
+        }
+        // 其他状态
+        return <PercentDisplay percent={record.progress} status="normal" />;
+      },
       align: "center" as AlignItem,
       width: "15%",
     },
@@ -234,7 +300,7 @@ const FileUpload = () => {
         <Button
           type="primary"
           onClick={uploadAll}
-          disabled={allFiles.length === 0}
+          disabled={allFiles.length === 0 || isUploading}
         >
           上传文件
         </Button>
@@ -243,7 +309,7 @@ const FileUpload = () => {
           type="primary"
           danger
           onClick={handleClearList}
-          disabled={allFiles.length === 0}
+          disabled={allFiles.length === 0 || isUploading}
         >
           清除列表
         </Button>
@@ -293,11 +359,7 @@ const FileUpload = () => {
         )}
       </div>
 
-      {batchInfo && (
-        <div style={{ marginBottom: 16, color: "#722ED1" }}>
-          批量上传进度：{batchInfo.current}/{batchInfo.total}
-        </div>
-      )}
+      {renderBatchInfo()}
 
       {allFiles.length > 0 && (
         <Table
@@ -305,12 +367,12 @@ const FileUpload = () => {
           dataSource={allFiles.map((f) => ({
             ...f,
             key: f.id,
-            progress: progressMap[f.id] ?? 0,
+            progress: progressMap[f.id] ?? f.progress ?? 0,
           }))}
           pagination={false}
           bordered
           style={{ marginTop: 16 }}
-          loading={loading}
+          loading={loading || isUploading}
         />
       )}
     </div>

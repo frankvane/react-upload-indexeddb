@@ -1,0 +1,22 @@
+{
+    "sourceFile": "src/components/FileUpload/components/PercentDisplay.tsx",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1748901627683,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748901639190,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,9 +1,21 @@\n import { Progress } from \"antd\";\r\n import React from \"react\";\r\n \r\n+// Ant Design Progress 组件支持的状态类型\r\n+type AntProgressStatus = \"success\" | \"exception\" | \"normal\" | \"active\";\r\n+\r\n+// 我们自定义的状态类型\r\n export type PercentDisplayStatus = \"normal\" | \"success\" | \"error\" | \"active\";\r\n \r\n+// 状态类型映射\r\n+const statusMap: Record<PercentDisplayStatus, AntProgressStatus | undefined> = {\r\n+  normal: \"normal\",\r\n+  success: \"success\",\r\n+  error: \"exception\",\r\n+  active: \"active\",\r\n+};\r\n+\r\n interface PercentDisplayProps {\r\n   percent: number;\r\n   status?: PercentDisplayStatus;\r\n   showInfo?: boolean;\r\n@@ -20,13 +32,16 @@\n }) => {\r\n   // 确保百分比在0-100范围内\r\n   const safePercent = Math.min(100, Math.max(0, percent || 0));\r\n \r\n+  // 将我们的状态类型映射到 Ant Design 的状态类型\r\n+  const antStatus = statusMap[status];\r\n+\r\n   return (\r\n     <div style={{ width: width || \"100%\" }}>\r\n       <Progress\r\n         percent={safePercent}\r\n-        status={status === \"normal\" ? undefined : status}\r\n+        status={antStatus}\r\n         showInfo={showInfo}\r\n         size={size}\r\n       />\r\n     </div>\r\n"
+                }
+            ],
+            "date": 1748901627683,
+            "name": "Commit-0",
+            "content": "import { Progress } from 'antd';\r\nimport React from 'react';\r\n\r\nexport type PercentDisplayStatus = 'normal' | 'success' | 'error' | 'active';\r\n\r\ninterface PercentDisplayProps {\r\n  percent: number;\r\n  status?: PercentDisplayStatus;\r\n  showInfo?: boolean;\r\n  size?: 'default' | 'small';\r\n  width?: number | string;\r\n}\r\n\r\nconst PercentDisplay: React.FC<PercentDisplayProps> = ({\r\n  percent,\r\n  status = 'normal',\r\n  showInfo = true,\r\n  size = 'small',\r\n  width,\r\n}) => {\r\n  // 确保百分比在0-100范围内\r\n  const safePercent = Math.min(100, Math.max(0, percent || 0));\r\n\r\n  return (\r\n    <div style={{ width: width || '100%' }}>\r\n      <Progress\r\n        percent={safePercent}\r\n        status={status === 'normal' ? undefined : status}\r\n        showInfo={showInfo}\r\n        size={size}\r\n      />\r\n    </div>\r\n  );\r\n};\r\n\r\nexport default PercentDisplay;\r\n"
+        }
+    ]
+}
