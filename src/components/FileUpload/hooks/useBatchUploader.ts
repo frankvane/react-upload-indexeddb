@@ -12,16 +12,17 @@ interface UseBatchUploaderOptions {
   fileConcurrency?: number; // 并发上传文件数
 }
 
-export function useBatchUploader(options?: UseBatchUploaderOptions) {
-  const [batchInfo, setBatchInfo] = useState<{
-    current: number;
-    total: number;
-    queued: number;
-    active: number;
-    completed: number;
-    failed: number;
-  } | null>(null);
+interface BatchInfo {
+  current: number;
+  total: number;
+  queued: number;
+  active: number;
+  completed: number;
+  failed: number;
+}
 
+export function useBatchUploader(options?: UseBatchUploaderOptions) {
+  const [batchInfo, setBatchInfo] = useState<BatchInfo | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const queueRef = useRef<PQueue | null>(null);
   const cancelTokenRef = useRef<AbortController | null>(null);
@@ -44,20 +45,34 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
     };
   }, [options?.fileConcurrency]);
 
-  // 取消所有上传任务
+  // 重置所有状态
+  const resetState = useCallback(() => {
+    setIsUploading(false);
+    setBatchInfo(null);
+    if (cancelTokenRef.current) {
+      cancelTokenRef.current = null;
+    }
+
+    // 如果队列存在，清除所有事件监听器
+    if (queueRef.current) {
+      queueRef.current.removeAllListeners();
+    }
+  }, []);
+
+  // 取消上传并重置状态
   const cancelUpload = useCallback(() => {
     if (queueRef.current) {
       queueRef.current.clear();
       queueRef.current.pause();
+      queueRef.current.removeAllListeners();
     }
 
     if (cancelTokenRef.current) {
       cancelTokenRef.current.abort();
     }
 
-    setIsUploading(false);
-    setBatchInfo(null);
-  }, []);
+    resetState();
+  }, [resetState]);
 
   // 上传单个文件的任务
   const uploadFile = useCallback(
@@ -140,10 +155,31 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
     [options]
   );
 
+  // 检查队列是否完成
+  const checkQueueComplete = useCallback(() => {
+    if (
+      queueRef.current &&
+      queueRef.current.size === 0 &&
+      queueRef.current.pending === 0
+    ) {
+      // 如果队列为空且没有待处理任务，则重置状态
+      setTimeout(() => {
+        // 不再自动重置 batchInfo，让用户可以看到完成状态
+        setIsUploading(false);
+        cancelTokenRef.current = null;
+      }, 1500); // 延迟重置，让用户看到完成状态
+      return true;
+    }
+    return false;
+  }, []);
+
   // 批量上传所有文件
   const uploadAll = useCallback(async () => {
     if (isUploading) return;
     setIsUploading(true);
+
+    // 每次上传前重置批处理信息，确保不累积历史记录
+    setBatchInfo(null);
 
     try {
       // 创建新的中止控制器
@@ -152,6 +188,8 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
       // 确保队列已清空并重新启动
       if (queueRef.current) {
         queueRef.current.clear();
+        // 移除所有之前的事件监听器，防止重复计数
+        queueRef.current.removeAllListeners();
         queueRef.current.start();
       }
 
@@ -172,11 +210,11 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
       }
 
       if (uploadableFiles.length === 0) {
-        setIsUploading(false);
+        resetState();
         return;
       }
 
-      // 初始化批处理信息
+      // 初始化批处理信息 - 仅包含当前批次的信息
       setBatchInfo({
         current: 0,
         total: uploadableFiles.length,
@@ -200,27 +238,33 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
       });
 
       queueRef.current?.on("completed", () => {
-        setBatchInfo((prev) =>
-          prev
-            ? {
-                ...prev,
-                completed: prev.completed + 1,
-                current: prev.current + 1,
-              }
-            : null
-        );
+        setBatchInfo((prev) => {
+          if (!prev) return null;
+          const newInfo = {
+            ...prev,
+            completed: prev.completed + 1,
+            current: prev.current + 1,
+          };
+          return newInfo;
+        });
+
+        // 检查队列是否已完成
+        checkQueueComplete();
       });
 
       queueRef.current?.on("error", () => {
-        setBatchInfo((prev) =>
-          prev
-            ? {
-                ...prev,
-                failed: prev.failed + 1,
-                current: prev.current + 1,
-              }
-            : null
-        );
+        setBatchInfo((prev) => {
+          if (!prev) return null;
+          const newInfo = {
+            ...prev,
+            failed: prev.failed + 1,
+            current: prev.current + 1,
+          };
+          return newInfo;
+        });
+
+        // 检查队列是否已完成
+        checkQueueComplete();
       });
 
       // 将所有上传任务添加到队列
@@ -231,23 +275,35 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
       // 等待所有任务完成
       await Promise.all(uploadPromises);
 
-      // 清理并重置状态
-      if (options?.refreshFiles) {
-        options.refreshFiles();
+      // 检查队列是否已完成（以防万一事件没有触发）
+      if (!checkQueueComplete()) {
+        // 仅将上传状态设置为完成，保留批次信息以便用户查看
+        setIsUploading(false);
+
+        // 清理资源
+        if (options?.refreshFiles) {
+          options.refreshFiles();
+        }
+        cancelTokenRef.current = null;
       }
     } catch (error) {
       console.error("批量上传文件失败:", error);
-    } finally {
+      // 错误情况下仍然保留批次信息，只重置上传状态
       setIsUploading(false);
-      setBatchInfo(null);
       cancelTokenRef.current = null;
     }
-  }, [isUploading, uploadFile, options?.refreshFiles]);
+  }, [isUploading, uploadFile, options?.refreshFiles, checkQueueComplete]);
+
+  // 清除批次信息
+  const clearBatchInfo = useCallback(() => {
+    setBatchInfo(null);
+  }, []);
 
   return {
     uploadAll,
     batchInfo,
     isUploading,
     cancelUpload,
+    clearBatchInfo,
   };
 }

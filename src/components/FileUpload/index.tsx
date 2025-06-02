@@ -1,7 +1,7 @@
 import "antd/dist/reset.css";
 
 import { AlignItem, UploadFile, UploadStatus, statusMap } from "./types/upload";
-import { Button, Modal, Table, Tag, Tooltip } from "antd";
+import { Button, Table, Tag, Tooltip } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 
 import { ByteConvert } from "./utils";
@@ -37,11 +37,12 @@ const FileUpload = () => {
     useNetworkType();
 
   // 将 fileConcurrency 传递给 useBatchUploader
-  const { uploadAll, batchInfo, isUploading, cancelUpload } = useBatchUploader({
-    setProgressMap,
-    refreshFiles,
-    fileConcurrency,
-  });
+  const { uploadAll, batchInfo, isUploading, cancelUpload, clearBatchInfo } =
+    useBatchUploader({
+      setProgressMap,
+      refreshFiles,
+      fileConcurrency,
+    });
 
   const filePrepareWorkerUrl = new URL(
     "./worker/filePrepareWorker.ts",
@@ -122,28 +123,19 @@ const FileUpload = () => {
   };
 
   const handleClearList = async () => {
-    Modal.confirm({
-      title: "确认清空",
-      content: "确定要清空所有文件列表吗？此操作无法撤销。",
-      okText: "确定",
-      okType: "danger",
-      cancelText: "取消",
-      async onOk() {
-        setLoading(true);
-        try {
-          // 清空IndexedDB存储
-          await localforage.clear();
-          // 刷新文件列表
-          await refreshFiles();
-          // 重置进度映射
-          setProgressMap({});
-        } catch (error) {
-          console.error("清空文件列表失败:", error);
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
+    setLoading(true);
+    try {
+      // 清空IndexedDB存储
+      await localforage.clear();
+      // 刷新文件列表
+      await refreshFiles();
+      // 重置进度映射
+      setProgressMap({});
+    } catch (error) {
+      console.error("清空文件列表失败:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 渲染批量上传进度信息
@@ -154,11 +146,6 @@ const FileUpload = () => {
       <div style={{ marginBottom: 16, color: "#722ED1" }}>
         <div style={{ marginBottom: 4 }}>
           批量上传进度：{batchInfo.current}/{batchInfo.total}
-          {batchInfo.failed > 0 && (
-            <span style={{ color: "#f5222d", marginLeft: 8 }}>
-              失败: {batchInfo.failed}
-            </span>
-          )}
         </div>
         <div style={{ fontSize: "12px", color: "#666" }}>
           <span style={{ marginRight: 16 }}>
@@ -170,6 +157,12 @@ const FileUpload = () => {
           <span>
             完成: <Tag color="success">{batchInfo.completed}</Tag>
           </span>
+          {batchInfo.failed > 0 && (
+            <span>
+              失败:
+              <Tag color="error">{batchInfo.failed}</Tag>
+            </span>
+          )}
           {isUploading && (
             <Button
               size="small"
@@ -178,6 +171,15 @@ const FileUpload = () => {
               onClick={cancelUpload}
             >
               取消上传
+            </Button>
+          )}
+          {!isUploading && batchInfo.current === batchInfo.total && (
+            <Button
+              size="small"
+              style={{ marginLeft: 16 }}
+              onClick={clearBatchInfo}
+            >
+              清除记录
             </Button>
           )}
         </div>
@@ -372,7 +374,6 @@ const FileUpload = () => {
           pagination={false}
           bordered
           style={{ marginTop: 16 }}
-          loading={loading || isUploading}
         />
       )}
     </div>
