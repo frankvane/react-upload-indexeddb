@@ -42,6 +42,7 @@ const FileUpload = () => {
       setProgressMap,
       refreshFiles,
       fileConcurrency,
+      chunkConcurrency,
     });
 
   const filePrepareWorkerUrl = new URL(

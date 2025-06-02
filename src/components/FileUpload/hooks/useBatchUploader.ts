@@ -10,6 +10,7 @@ interface UseBatchUploaderOptions {
   setProgressMap?: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   refreshFiles?: () => void;
   fileConcurrency?: number; // 并发上传文件数
+  chunkConcurrency?: number; // 并发上传分片数
 }
 
 interface BatchInfo {
@@ -96,7 +97,15 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
 
         return await new Promise<boolean>((resolve, reject) => {
           const worker = new Worker(workerUrl);
-          worker.postMessage({ fileInfo: file, fileBuffer: file.buffer });
+          worker.postMessage({
+            fileInfo: file,
+            fileBuffer: file.buffer,
+            // 传递网络参数到 worker
+            networkParams: {
+              chunkConcurrency:
+                options?.chunkConcurrency || options?.fileConcurrency || 2,
+            },
+          });
 
           worker.onmessage = async (e) => {
             if (e.data.type === "progress") {
