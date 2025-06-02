@@ -1,0 +1,18 @@
+{
+    "sourceFile": "src/components/FileUpload/FileSelector.tsx",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1748872029946,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1748872029946,
+            "name": "Commit-0",
+            "content": "import React, { useRef } from \"react\";\r\n\r\ninterface FileSelectorProps {\r\n  onFilesSelected: (files: FileList) => void;\r\n}\r\n\r\nconst FileSelector: React.FC<FileSelectorProps> = ({ onFilesSelected }) => {\r\n  const inputRef = useRef<HTMLInputElement>(null);\r\n\r\n  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {\r\n    if (e.target.files && e.target.files.length > 0) {\r\n      onFilesSelected(e.target.files);\r\n    }\r\n  };\r\n\r\n  return <input type=\"file\" ref={inputRef} onChange={handleChange} multiple />;\r\n};\r\n\r\nexport default FileSelector;\r\n"
+        }
+    ]
+}

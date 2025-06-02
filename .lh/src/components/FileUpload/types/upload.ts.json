@@ -1,0 +1,26 @@
+{
+    "sourceFile": "src/components/FileUpload/types/upload.ts",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 2,
+            "patches": [
+                {
+                    "date": 1748873100070,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748874028764,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -41,8 +41,10 @@\n }\r\n \r\n export interface FileSelectorProps {\r\n   onFilesSelected: (files: FileList) => void;\r\n+  totalFilesCount?: number; // 总文件数\r\n+  completedFilesCount?: number; // 已处理文件数\r\n }\r\n \r\n export interface FileProgress {\r\n   uid: string;\r\n"
+                },
+                {
+                    "date": 1748875890800,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -39,10 +39,8 @@\n   order: number; // 上传顺序\r\n   buffer?: ArrayBuffer; // 文件二进制内容\r\n }\r\n \r\n-\r\n-\r\n export interface ProcessingStats {\r\n   total: number;\r\n   processed: number;\r\n   success: number;\r\n"
+                }
+            ],
+            "date": 1748873100070,
+            "name": "Commit-0",
+            "content": "export enum UploadStatus {\r\n  // 上传已排队\r\n  QUEUED = \"queued\",\r\n  // 上传已排队等待上传\r\n  QUEUED_FOR_UPLOAD = \"queued-for-upload\",\r\n  // 正在计算\r\n  CALCULATING = \"calculating\",\r\n  // 正在准备上传\r\n  PREPARING_UPLOAD = \"preparing-upload\",\r\n  // 正在上传\r\n  UPLOADING = \"uploading\",\r\n  // 已暂停\r\n  PAUSED = \"paused\",\r\n  // 已完成\r\n  DONE = \"done\",\r\n  // 即时上传\r\n  INSTANT = \"instant\",\r\n  // 错误\r\n  ERROR = \"error\",\r\n  // 合并错误\r\n  MERGE_ERROR = \"merge-error\",\r\n}\r\n\r\nexport interface UploadFile {\r\n  id: string; // 唯一ID\r\n  fileName: string; // 文件名\r\n  fileSize: number; // 文件大小\r\n  fileType: string; // 文件类型\r\n  lastModified: number; // 最后修改时间\r\n  status: UploadStatus; // 上传状态\r\n  progress: number; // 上传进度 (0-100)\r\n  hash?: string; // 文件哈希值\r\n  chunkSize?: number; // 分片大小\r\n  chunkCount?: number; // 分片总数\r\n  uploadedChunks?: number; // 已上传分片数\r\n  pausedChunks?: number[]; // 暂停时已上传的分片索引\r\n  errorMessage?: string; // 错误信息\r\n  createdAt: number; // 创建时间戳\r\n  order: number; // 上传顺序\r\n  buffer?: ArrayBuffer; // 文件二进制内容\r\n}\r\n\r\n\r\n\r\nexport interface FileSelectorProps {\r\n  onFilesSelected: (files: FileList) => void;\r\n}\r\n\r\nexport interface FileProgress {\r\n  uid: string;\r\n  name: string;\r\n  size: number;\r\n  status: string;\r\n  percent: number;\r\n  hash?: string;\r\n  message?: string;\r\n}\r\n\r\nexport const statusMap: Record<string, { text: string; color: string }> = {\r\n  calculating: { text: \"计算中\", color: \"processing\" },\r\n  hashing: { text: \"Hash计算\", color: \"processing\" },\r\n  done: { text: \"已完成\", color: \"green\" },\r\n  error: { text: \"错误\", color: \"red\" },\r\n};"
+        }
+    ]
+}

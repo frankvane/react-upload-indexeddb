@@ -1,0 +1,18 @@
+{
+    "sourceFile": "src/hooks/useIndexedDBFiles.ts",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1748870506726,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1748870506726,
+            "name": "Commit-0",
+            "content": "import { useCallback, useState } from \"react\";\r\n\r\nimport { UploadFile } from \"../types/upload\";\r\nimport localforage from \"localforage\";\r\n\r\nexport function useIndexedDBFiles() {\r\n  const [files, setFiles] = useState<UploadFile[]>([]);\r\n\r\n  const refresh = useCallback(async () => {\r\n    const result: UploadFile[] = [];\r\n    await localforage.iterate<UploadFile, void>((value) => {\r\n      if (value) result.push(value);\r\n    });\r\n    setFiles(result);\r\n  }, []);\r\n\r\n  return { files, refresh };\r\n}\r\n"
+        }
+    ]
+}

@@ -1,0 +1,22 @@
+{
+    "sourceFile": "src/components/FileUpload/components/FileTable.tsx",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1748872198460,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748872209923,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,8 +1,8 @@\n import { Progress, Table, Tag } from \"antd\";\r\n \r\n import React from \"react\";\r\n-import { UploadFile } from \"../../../types/upload\";\r\n+import { UploadFile } from \"../types/upload\";\r\n \r\n const statusMap: Record<string, { text: string; color: string }> = {\r\n   queued: { text: \"排队中\", color: \"default\" },\r\n   \"queued-for-upload\": { text: \"等待上传\", color: \"default\" },\r\n"
+                }
+            ],
+            "date": 1748872198460,
+            "name": "Commit-0",
+            "content": "import { Progress, Table, Tag } from \"antd\";\r\n\r\nimport React from \"react\";\r\nimport { UploadFile } from \"../../../types/upload\";\r\n\r\nconst statusMap: Record<string, { text: string; color: string }> = {\r\n  queued: { text: \"排队中\", color: \"default\" },\r\n  \"queued-for-upload\": { text: \"等待上传\", color: \"default\" },\r\n  calculating: { text: \"计算中\", color: \"processing\" },\r\n  \"preparing-upload\": { text: \"准备上传\", color: \"processing\" },\r\n  uploading: { text: \"上传中\", color: \"blue\" },\r\n  paused: { text: \"已暂停\", color: \"orange\" },\r\n  done: { text: \"已完成\", color: \"green\" },\r\n  instant: { text: \"秒传\", color: \"cyan\" },\r\n  error: { text: \"错误\", color: \"red\" },\r\n  \"merge-error\": { text: \"合并错误\", color: \"red\" },\r\n};\r\n\r\ninterface FileTableProps {\r\n  files: UploadFile[];\r\n  progressMap: Record<string, number>;\r\n  batchInfo?: { current: number; total: number } | null;\r\n}\r\n\r\nconst columns = [\r\n  { title: \"文件名\", dataIndex: \"fileName\", key: \"fileName\" },\r\n  {\r\n    title: \"大小\",\r\n    dataIndex: \"fileSize\",\r\n    key: \"fileSize\",\r\n    render: (size: number) => `${size} 字节`,\r\n  },\r\n  { title: \"分片数\", dataIndex: \"chunkCount\", key: \"chunkCount\" },\r\n  {\r\n    title: \"状态\",\r\n    dataIndex: \"status\",\r\n    key: \"status\",\r\n    render: (status: string) => {\r\n      const s = statusMap[status] || { text: status, color: \"default\" };\r\n      return <Tag color={s.color}>{s.text}</Tag>;\r\n    },\r\n  },\r\n  {\r\n    title: \"进度\",\r\n    dataIndex: \"progress\",\r\n    key: \"progress\",\r\n    render: (progress: number) => <Progress percent={progress} size=\"small\" />,\r\n  },\r\n];\r\n\r\nconst FileTable: React.FC<FileTableProps> = ({\r\n  files,\r\n  progressMap,\r\n  batchInfo,\r\n}) => {\r\n  return (\r\n    <div style={{ marginTop: 8 }}>\r\n      <Table\r\n        columns={columns}\r\n        dataSource={files.map((f) => ({\r\n          ...f,\r\n          key: f.id,\r\n          progress: progressMap[f.id] ?? 0,\r\n        }))}\r\n        pagination={false}\r\n        bordered\r\n      />\r\n      {batchInfo && (\r\n        <div style={{ marginTop: 8, color: \"purple\" }}>\r\n          批量上传进度：{batchInfo.current}/{batchInfo.total}\r\n        </div>\r\n      )}\r\n    </div>\r\n  );\r\n};\r\n\r\nexport default FileTable;\r\n"
+        }
+    ]
+}
