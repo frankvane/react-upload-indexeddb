@@ -2,7 +2,7 @@ import FileUpload from "./components/FileUpload";
 
 const App = () => {
   return (
-    <div>
+    <div style={{ padding: 16 }}>
       <FileUpload />
     </div>
   );

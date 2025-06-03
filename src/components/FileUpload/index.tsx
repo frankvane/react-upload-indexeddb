@@ -1,5 +1,3 @@
-import "antd/dist/reset.css";
-
 import { AlignItem, UploadFile, UploadStatus, statusMap } from "./types/upload";
 import { Button, Switch, Table, Tag, Tooltip, message } from "antd";
 import React, { useEffect, useRef, useState } from "react";
@@ -145,6 +143,11 @@ const FileUpload = () => {
           setCost(null);
           setProcessProgress(null);
         }, 3000);
+
+        // 自动执行上传全部文件操作
+        if (uploadFiles.length > 0 && !isNetworkOffline) {
+          uploadAll();
+        }
       }
     };
   };
@@ -255,7 +258,6 @@ const FileUpload = () => {
           file.status === UploadStatus.INSTANT
       );
       if (completedFiles.length === 0) {
-        messageApi.info("没有已上传完成的文件需要清除");
         return;
       }
 
@@ -279,8 +281,9 @@ const FileUpload = () => {
   useEffect(() => {
     if (!batchInfo) return;
     if (batchInfo.current === batchInfo.total) {
-      const timer = setTimeout(() => {
-        handleClearUploadedFiles();
+      const timer = setTimeout(async () => {
+        await handleClearUploadedFiles();
+        await clearBatchInfo();
       }, 3000);
 
       return () => {
@@ -295,9 +298,6 @@ const FileUpload = () => {
 
     return (
       <div style={{ marginBottom: 16, color: "#722ED1" }}>
-        <div style={{ marginBottom: 4 }}>
-          批量上传进度：{batchInfo.current}/{batchInfo.total}
-        </div>
         <div style={{ fontSize: "12px", color: "#666" }}>
           <span style={{ marginRight: 16 }}>
             活跃: <Tag color="processing">{batchInfo.active}</Tag>
@@ -320,6 +320,9 @@ const FileUpload = () => {
               <Tag color="warning">{batchInfo.retried}</Tag>
             </span>
           )}
+          <span style={{ marginRight: 16 }}>
+            批量上传进度：{batchInfo.current}/{batchInfo.total}
+          </span>
           {isUploading && (
             <Button
               size="small"
@@ -370,7 +373,7 @@ const FileUpload = () => {
       title: "分片数",
       dataIndex: "chunkCount",
       key: "chunkCount",
-      align: "right" as AlignItem,
+      align: "center" as AlignItem,
       width: "10%",
     },
     {
@@ -571,7 +574,6 @@ const FileUpload = () => {
         // 如果正在上传，则取消上传
         if (isUploading) {
           cancelUpload();
-          messageApi.warning("由于网络断开，上传已取消");
         }
       }
 
@@ -700,6 +702,7 @@ const FileUpload = () => {
               color: "#1890ff",
               display: "flex",
               alignItems: "center",
+              fontSize: "12px",
             }}
           >
             <span style={{ marginRight: 8 }}>
@@ -724,7 +727,7 @@ const FileUpload = () => {
         )}
 
         {!loading && cost !== null && (
-          <span style={{ color: "green", marginLeft: 8 }}>
+          <span style={{ color: "green", marginLeft: 8, fontSize: "12px" }}>
             操作耗时：{cost} ms
           </span>
         )}
