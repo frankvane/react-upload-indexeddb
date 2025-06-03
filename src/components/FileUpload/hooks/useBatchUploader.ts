@@ -450,6 +450,180 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
     setBatchInfo(null);
   }, []);
 
+  // 批量重试所有失败的文件
+  const retryAllFailedFiles = useCallback(async () => {
+    if (isUploading) {
+      console.warn("当前有上传任务正在进行，请等待完成后再重试");
+      return {
+        success: false,
+        message: "当前有上传任务正在进行，请等待完成后再重试",
+        retriedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+      };
+    }
+
+    try {
+      // 获取所有文件
+      const keys = await localforage.keys();
+      const failedFiles: UploadFile[] = [];
+
+      // 查找所有处于错误状态的文件
+      for (const key of keys) {
+        const file = await localforage.getItem<UploadFile>(key);
+        if (file && file.status === UploadStatus.ERROR) {
+          failedFiles.push(file);
+        }
+      }
+
+      if (failedFiles.length === 0) {
+        return {
+          success: true,
+          message: "没有需要重试的文件",
+          retriedCount: 0,
+          successCount: 0,
+          failedCount: 0,
+        };
+      }
+
+      // 设置上传状态为进行中
+      setIsUploading(true);
+      retriedCountRef.current = 0; // 重置重试计数器
+
+      // 初始化批处理信息
+      setBatchInfo({
+        current: 0,
+        total: failedFiles.length,
+        queued: failedFiles.length,
+        active: 0,
+        completed: 0,
+        failed: 0,
+        retried: 0,
+      });
+
+      let successCount = 0;
+      let failedCount = 0;
+
+      // 逐个重试文件
+      for (let i = 0; i < failedFiles.length; i++) {
+        const file = failedFiles[i];
+
+        try {
+          // 更新批次信息
+          setBatchInfo((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              current: i,
+              active: 1,
+              queued: failedFiles.length - i - 1,
+            };
+          });
+
+          // 调用单文件重试上传方法
+          const result = await retryUploadFile(file);
+
+          if (result.success) {
+            successCount++;
+            // 更新批次信息
+            setBatchInfo((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                completed: prev.completed + 1,
+              };
+            });
+          } else {
+            failedCount++;
+            // 更新批次信息
+            setBatchInfo((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                failed: prev.failed + 1,
+              };
+            });
+          }
+        } catch (error) {
+          // 单个文件出错不应该中断整个流程，记录失败并继续
+          console.error(`文件 ${file.fileName} 重试出错:`, error);
+          failedCount++;
+
+          // 更新批次信息
+          setBatchInfo((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              failed: prev.failed + 1,
+            };
+          });
+
+          // 确保文件状态更新为错误
+          await localforage.setItem(file.id, {
+            ...file,
+            status: UploadStatus.ERROR,
+            errorMessage:
+              error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      // 完成所有重试任务后
+      setIsUploading(false);
+
+      // 更新批次信息
+      setBatchInfo((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          current: failedFiles.length,
+          active: 0,
+          queued: 0,
+          retried: retriedCountRef.current, // 从计数器获取实际的重试次数
+        };
+      });
+
+      if (options?.refreshFiles) {
+        options.refreshFiles();
+      }
+
+      return {
+        success: successCount > 0,
+        message: `重试完成：${successCount}个成功，${failedCount}个失败`,
+        retriedCount: failedFiles.length,
+        successCount,
+        failedCount,
+      };
+    } catch (error) {
+      console.error("批量重试失败:", error);
+      setIsUploading(false);
+
+      // 更新批次信息，显示错误状态
+      setBatchInfo((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          active: 0,
+          failed: prev?.total || 0,
+        };
+      });
+
+      if (options?.refreshFiles) {
+        options.refreshFiles();
+      }
+
+      return {
+        success: false,
+        message: `批量重试出错: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        retriedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+      };
+    }
+  }, [isUploading, retryUploadFile, options?.refreshFiles]);
+
   return {
     uploadAll,
     batchInfo,
@@ -457,5 +631,6 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
     cancelUpload,
     clearBatchInfo,
     retryUploadFile,
+    retryAllFailedFiles,
   };
 }

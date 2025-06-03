@@ -33,6 +33,7 @@ const FileUpload = () => {
     {}
   );
   const [messageApi, contextHolder] = message.useMessage();
+  const [isRetryingAll, setIsRetryingAll] = useState(false);
 
   const { files: allFiles, refresh: refreshFiles } = useIndexedDBFiles();
 
@@ -48,6 +49,7 @@ const FileUpload = () => {
     cancelUpload,
     clearBatchInfo,
     retryUploadFile,
+    retryAllFailedFiles,
   } = useBatchUploader({
     setProgressMap,
     refreshFiles,
@@ -176,6 +178,45 @@ const FileUpload = () => {
       console.error("清空文件列表失败:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 计算错误文件数量
+  const errorFilesCount = allFiles.filter(
+    (file) => file.status === UploadStatus.ERROR
+  ).length;
+
+  // 按钮标题
+  const retryButtonTitle =
+    errorFilesCount > 0 ? `批量重试 (${errorFilesCount})` : "批量重试";
+
+  // 批量重试所有失败的文件
+  const handleRetryAllUpload = async () => {
+    if (errorFilesCount === 0) {
+      messageApi.info("没有需要重试的文件");
+      return;
+    }
+
+    try {
+      setIsRetryingAll(true);
+      const result = await retryAllFailedFiles();
+
+      if (result.retriedCount === 0) {
+        messageApi.info(result.message);
+      } else if (result.success) {
+        messageApi.success(result.message);
+      } else {
+        messageApi.error(result.message);
+      }
+    } catch (error) {
+      console.error("批量重试失败:", error);
+      messageApi.error(
+        `批量重试出错: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    } finally {
+      setIsRetryingAll(false);
     }
   };
 
@@ -335,6 +376,11 @@ const FileUpload = () => {
     },
   ];
 
+  // 查找是否有错误状态的文件
+  const hasErrorFiles = allFiles.some(
+    (file) => file.status === UploadStatus.ERROR
+  );
+
   return (
     <div>
       {contextHolder}
@@ -359,7 +405,7 @@ const FileUpload = () => {
         <Button
           type="primary"
           onClick={uploadAll}
-          disabled={allFiles.length === 0 || isUploading}
+          disabled={allFiles.length === 0 || isUploading || isRetryingAll}
         >
           上传文件
         </Button>
@@ -368,10 +414,27 @@ const FileUpload = () => {
           type="primary"
           danger
           onClick={handleClearList}
-          disabled={allFiles.length === 0 || isUploading}
+          disabled={allFiles.length === 0 || isUploading || isRetryingAll}
         >
           清除列表
         </Button>
+
+        <Tooltip
+          title={
+            errorFilesCount > 0
+              ? `重试 ${errorFilesCount} 个失败文件`
+              : "没有需要重试的文件"
+          }
+        >
+          <Button
+            type="primary"
+            onClick={handleRetryAllUpload}
+            disabled={!hasErrorFiles || isUploading || isRetryingAll}
+            loading={isRetryingAll}
+          >
+            {isRetryingAll ? "重试中..." : retryButtonTitle}
+          </Button>
+        </Tooltip>
 
         <NetworkStatusBadge
           networkType={networkType}
