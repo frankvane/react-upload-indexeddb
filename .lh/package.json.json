@@ -3,11 +3,15 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 0,
+            "activePatchIndex": 1,
             "patches": [
                 {
                     "date": 1748909939489,
                     "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748935176675,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -3,11 +3,10 @@\n   \"private\": true,\n   \"version\": \"0.0.0\",\n   \"type\": \"module\",\n   \"scripts\": {\n-    \"prepare-worker\": \"node scripts/prepare-worker-deps.js\",\n-    \"dev\": \"npm run prepare-worker && vite\",\n-    \"build\": \"npm run prepare-worker && tsc -b && vite build\",\n+    \"dev\": \"vite\",\n+    \"build\": \"tsc -b && vite build\",\n     \"lint\": \"eslint .\",\n     \"preview\": \"vite preview\"\n   },\n   \"dependencies\": {\n"
                 }
             ],
             "date": 1748909939489,

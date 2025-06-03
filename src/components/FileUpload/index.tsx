@@ -2,7 +2,7 @@ import "antd/dist/reset.css";
 
 import { AlignItem, UploadFile, UploadStatus, statusMap } from "./types/upload";
 import { Button, Switch, Table, Tag, Tooltip, message } from "antd";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { ByteConvert } from "./utils";
 import NetworkStatusBadge from "./components/NetworkStatusBadge";
@@ -245,6 +245,49 @@ const FileUpload = () => {
       setIsRetryingAll(false);
     }
   };
+
+  const handleClearUploadedFiles = async () => {
+    try {
+      // 获取所有已上传完成的文件
+      const completedFiles = allFiles.filter(
+        (file) =>
+          file.status === UploadStatus.DONE ||
+          file.status === UploadStatus.INSTANT
+      );
+      if (completedFiles.length === 0) {
+        messageApi.info("没有已上传完成的文件需要清除");
+        return;
+      }
+
+      // 删除已上传完成的文件
+      for (const file of completedFiles) {
+        await localforage.removeItem(file.id);
+      }
+      await refreshFiles();
+      // 显示成功消息
+      messageApi.success(`已清除 ${completedFiles.length} 个已上传完成的文件`);
+    } catch (error) {
+      console.error("清除已上传文件失败:", error);
+      messageApi.error(
+        `清除已上传文件失败: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (!batchInfo) return;
+    if (batchInfo.current === batchInfo.total) {
+      const timer = setTimeout(() => {
+        handleClearUploadedFiles();
+      }, 3000);
+
+      return () => {
+        clearTimeout(timer);
+      };
+    }
+  }, [allFiles]);
 
   // 渲染批量上传进度信息
   const renderBatchInfo = () => {
