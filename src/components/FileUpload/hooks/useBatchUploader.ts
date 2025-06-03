@@ -13,6 +13,7 @@ interface UseBatchUploaderOptions {
   chunkConcurrency?: number; // 并发上传分片数
   maxRetries?: number; // 最大重试次数
   timeout?: number; // 请求超时时间（毫秒）
+  retryInterval?: number; // 重试间隔时间（毫秒）
 }
 
 interface BatchInfo {
@@ -110,6 +111,7 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
                 options?.chunkConcurrency || options?.fileConcurrency || 2,
               maxRetries: options?.maxRetries || 3,
               timeout: options?.timeout || 30000,
+              retryInterval: options?.retryInterval || 1000,
             },
           });
 
@@ -139,17 +141,6 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
 
               worker.terminate();
               resolve(false); // 上传失败但不中断整体队列
-            } else if (e.data.type === "uploadResult") {
-              // 更新全局失败统计
-              if (e.data.failed > 0) {
-                setBatchInfo((prev) => {
-                  if (!prev) return null;
-                  return {
-                    ...prev,
-                    failed: prev.failed + 1,
-                  };
-                });
-              }
             } else if (e.data.type === "retry") {
               // 更新重试统计
               retriedCountRef.current += 1;

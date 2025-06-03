@@ -1,0 +1,22 @@
+{
+    "sourceFile": "scripts/prepare-worker-deps.js",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1748909922424,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748909971641,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,7 +1,12 @@\n-const fs = require(\"fs\");\r\n-const path = require(\"path\");\r\n+import { fileURLToPath } from \"url\";\r\n+import fs from \"fs\";\r\n+import path from \"path\";\r\n \r\n+// ESM 中获取 __dirname 的替代方案\r\n+const __filename = fileURLToPath(import.meta.url);\r\n+const __dirname = path.dirname(__filename);\r\n+\r\n // 确保目标目录存在\r\n const publicDir = path.resolve(__dirname, \"../public/libs\");\r\n if (!fs.existsSync(publicDir)) {\r\n   fs.mkdirSync(publicDir, { recursive: true });\r\n"
+                }
+            ],
+            "date": 1748909922424,
+            "name": "Commit-0",
+            "content": "const fs = require(\"fs\");\r\nconst path = require(\"path\");\r\n\r\n// 确保目标目录存在\r\nconst publicDir = path.resolve(__dirname, \"../public/libs\");\r\nif (!fs.existsSync(publicDir)) {\r\n  fs.mkdirSync(publicDir, { recursive: true });\r\n}\r\n\r\n// 复制 async.js\r\nconst asyncSrc = path.resolve(\r\n  __dirname,\r\n  \"../node_modules/async/dist/async.min.js\"\r\n);\r\nconst asyncDest = path.resolve(publicDir, \"async.min.js\");\r\n\r\n// 复制 spark-md5.js\r\nconst sparkMd5Src = path.resolve(\r\n  __dirname,\r\n  \"../node_modules/spark-md5/spark-md5.min.js\"\r\n);\r\nconst sparkMd5Dest = path.resolve(publicDir, \"spark-md5.min.js\");\r\n\r\n// 执行复制\r\ntry {\r\n  if (fs.existsSync(asyncSrc)) {\r\n    fs.copyFileSync(asyncSrc, asyncDest);\r\n    console.log(\"async.min.js 已成功复制到 public/libs 目录\");\r\n  } else {\r\n    console.error(\"找不到 async.min.js，请确保已安装依赖\");\r\n  }\r\n\r\n  // 检查 spark-md5 是否需要安装\r\n  if (!fs.existsSync(sparkMd5Src)) {\r\n    console.warn(\"找不到 spark-md5，需要安装此依赖\");\r\n    console.warn(\"请运行: npm install spark-md5 --save\");\r\n  } else {\r\n    fs.copyFileSync(sparkMd5Src, sparkMd5Dest);\r\n    console.log(\"spark-md5.min.js 已成功复制到 public/libs 目录\");\r\n  }\r\n} catch (error) {\r\n  console.error(\"复制依赖文件时发生错误:\", error);\r\n  process.exit(1);\r\n}\r\n"
+        }
+    ]
+}

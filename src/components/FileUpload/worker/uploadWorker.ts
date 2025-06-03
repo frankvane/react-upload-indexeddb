@@ -1,60 +1,269 @@
-// @ts-expect-error: self 类型
+// 声明 Web Worker 环境的 importScripts 函数
+declare function importScripts(...urls: string[]): void;
+
+// 引入必要的库
 importScripts("https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js");
+importScripts("https://cdn.jsdelivr.net/npm/async@3.2.6/dist/async.min.js");
 
 declare const SparkMD5: {
   ArrayBuffer: { hash(buf: ArrayBuffer): string };
 };
 
-// 带重试功能的请求
+// async.js 类型声明
+type AsyncCallback<T> = (err: Error | null, result?: T) => void;
+
+declare const async: {
+  retry: <T>(
+    opts: {
+      times: number;
+      interval: number | ((retryCount: number) => number);
+      errorFilter?: (err: Error) => boolean;
+    },
+    task: (callback: AsyncCallback<T>) => void,
+    callback: AsyncCallback<T>
+  ) => void;
+  retryable: <T>(
+    opts: {
+      times: number;
+      interval: number | ((retryCount: number) => number);
+      errorFilter?: (err: Error) => boolean;
+    },
+    task: (callback: AsyncCallback<T>, ...args: unknown[]) => void
+  ) => (...args: unknown[]) => void;
+};
+
+// 使用 async.js 进行带重试的请求
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  maxRetries: number = 3,
-  timeout: number = 30000
+  {
+    maxRetries = 3,
+    timeout = 30000,
+    retryInterval = 1000,
+  }: {
+    maxRetries?: number;
+    timeout?: number;
+    retryInterval?: number;
+  } = {}
 ): Promise<Response> {
-  let lastError: Error | null = null;
+  return new Promise<Response>((resolve, reject) => {
+    // 创建一个带重试功能的任务
+    async.retry<Response>(
+      {
+        times: maxRetries,
+        interval: function (retryCount: number) {
+          // 线性增长重试间隔
+          return retryInterval * retryCount;
+        },
+        errorFilter: function (err: Error) {
+          // 只有网络错误、超时和5xx服务器错误才会重试
+          const isNetworkError =
+            err.name === "TypeError" || err.message.includes("network");
+          const isTimeoutError =
+            err.name === "AbortError" || err.message.includes("timeout");
+          const isServerError =
+            err.message.includes("500") || err.message.includes("server");
+          const shouldRetry = isNetworkError || isTimeoutError || isServerError;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      // 创建 AbortController 用于超时控制
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+          // 发送重试消息到主线程
+          if (shouldRetry) {
+            self.postMessage({
+              type: "retry",
+              error: err.message,
+              attemptNumber: 0, // 由于 async.js 的类型限制，这里无法获取当前重试次数
+              retriesLeft: maxRetries,
+            });
+          }
 
-      const fetchOptions = {
-        ...options,
-        signal: controller.signal,
-      };
+          return shouldRetry;
+        },
+      },
+      // 需要执行的任务
+      function (callback: AsyncCallback<Response>) {
+        // 创建 AbortController 用于超时控制
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      const response = await fetch(url, fetchOptions);
-      clearTimeout(timeoutId);
+        const fetchOptions = {
+          ...options,
+          signal: controller.signal,
+        };
 
-      if (!response.ok) {
-        throw new Error(`HTTP 错误 ${response.status}: ${response.statusText}`);
+        fetch(url, fetchOptions)
+          .then((response) => {
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+              const error = new Error(
+                `HTTP 错误 ${response.status}: ${response.statusText}`
+              );
+              callback(error);
+            } else {
+              callback(null, response);
+            }
+          })
+          .catch((error) => {
+            clearTimeout(timeoutId);
+            callback(error instanceof Error ? error : new Error(String(error)));
+          });
+      },
+      // 完成回调函数
+      function (err: Error | null, result?: Response) {
+        if (err) {
+          reject(err);
+        } else if (result) {
+          resolve(result);
+        } else {
+          reject(new Error("未知错误"));
+        }
       }
+    );
+  });
+}
 
-      return response;
-    } catch (err) {
-      const error = err as Error;
-      lastError = error;
+self.onmessage = async (e: MessageEvent) => {
+  const { fileInfo, fileBuffer, networkParams } = e.data;
+  const chunkSize = fileInfo.chunkSize || 1024 * 1024;
+  const chunkCount = Math.ceil(fileBuffer.byteLength / chunkSize);
 
-      // 记录重试信息
-      console.warn(`请求失败 (${attempt + 1}/${maxRetries})`, url, error);
+  // 使用网络参数中的分片并发数和重试参数
+  const chunkConcurrency = networkParams?.chunkConcurrency || 2;
+  const retryOptions = {
+    maxRetries: networkParams?.maxRetries || 3,
+    timeout: networkParams?.timeout || 30000,
+    retryInterval: networkParams?.retryInterval || 1000,
+  };
 
-      // 如果是超时或网络错误，等待后重试
-      if (error.name === "AbortError" || error.name === "TypeError") {
-        // 指数退避策略：等待时间随着重试次数增加
-        const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000);
-        await new Promise((resolve) => setTimeout(resolve, waitTime));
-      } else {
-        // 对于其他类型的错误，直接抛出不重试
-        throw error;
-      }
-    }
+  const chunk_md5s: string[] = [];
+  // 1. 计算所有分片的md5
+  for (let i = 0; i < chunkCount; i++) {
+    const start = i * chunkSize;
+    const end = Math.min(fileBuffer.byteLength, start + chunkSize);
+    const chunk = fileBuffer.slice(start, end);
+    const chunkMd5 = SparkMD5.ArrayBuffer.hash(chunk);
+    chunk_md5s.push(chunkMd5);
   }
 
-  // 如果所有重试都失败，抛出最后一个错误
-  throw lastError || new Error("所有重试都失败");
-}
+  // 2. 秒传确认
+  try {
+    const instantRes = await fetchWithRetry(
+      "http://localhost:3000/api/file/instant",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_id: fileInfo.hash,
+          md5: fileInfo.hash,
+          name: fileInfo.fileName,
+          size: fileInfo.fileSize,
+          total: chunkCount,
+          chunk_md5s,
+        }),
+      },
+      retryOptions
+    );
+
+    const instantData = await instantRes.json();
+    if (instantData.data?.uploaded) {
+      self.postMessage({ type: "done", skipped: true });
+      return;
+    }
+
+    const needUploadChunks: number[] = [];
+    for (let i = 0; i < chunkCount; i++) {
+      const exist = instantData.data?.chunkCheckResult?.find(
+        (c: { index: number; exist: boolean }) => c.index === i
+      )?.exist;
+      if (!exist) needUploadChunks.push(i);
+    }
+
+    // 记录已完成的分片数量，用于计算进度
+    const completedChunks = chunkCount - needUploadChunks.length;
+    let totalUploadedChunks = completedChunks;
+    const failedChunks: number[] = [];
+
+    // 3. 分片上传 - 使用并发控制
+    const uploadTasks = needUploadChunks.map((i) => {
+      return async () => {
+        const start = i * chunkSize;
+        const end = Math.min(fileBuffer.byteLength, start + chunkSize);
+        const chunk = fileBuffer.slice(start, end);
+        const chunkMd5 = chunk_md5s[i];
+
+        const formData = new FormData();
+        formData.append("file_id", fileInfo.hash);
+        formData.append("index", i.toString());
+        formData.append("chunk", new Blob([chunk]));
+        formData.append("total", chunkCount.toString());
+        formData.append("chunk_md5", chunkMd5);
+
+        try {
+          await fetchWithRetry(
+            "http://localhost:3000/api/file/upload",
+            {
+              method: "POST",
+              body: formData,
+            },
+            retryOptions
+          );
+
+          // 更新进度
+          totalUploadedChunks++;
+          const progress = Math.round((totalUploadedChunks / chunkCount) * 100);
+
+          self.postMessage({
+            type: "progress",
+            progress: progress,
+            chunkIndex: i,
+          });
+        } catch (error) {
+          // 记录失败的分片
+          failedChunks.push(i);
+          console.error(`分片 ${i} 上传失败:`, error);
+          throw error;
+        }
+      };
+    });
+
+    // 使用并发控制函数执行上传任务
+    await runWithConcurrency(uploadTasks, chunkConcurrency);
+
+    // 如果有失败的分片，报告错误
+    if (failedChunks.length > 0) {
+      self.postMessage({
+        type: "error",
+        message: `有 ${failedChunks.length} 个分片上传失败，请重试上传`,
+        failedChunks: failedChunks,
+      });
+      return;
+    }
+
+    // 4. 合并
+    await fetchWithRetry(
+      "http://localhost:3000/api/file/merge",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_id: fileInfo.hash,
+          md5: fileInfo.hash,
+          name: fileInfo.fileName,
+          size: fileInfo.fileSize,
+          total: chunkCount,
+        }),
+      },
+      retryOptions
+    );
+
+    self.postMessage({ type: "done" });
+  } catch (error) {
+    // 上传过程中出现致命错误
+    self.postMessage({
+      type: "error",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
 
 // 简单的并发控制函数
 async function runWithConcurrency(
@@ -104,150 +313,3 @@ async function runWithConcurrency(
     startNext();
   });
 }
-
-self.onmessage = async (e) => {
-  const { fileInfo, fileBuffer, networkParams } = e.data;
-  const chunkSize = fileInfo.chunkSize || 1024 * 1024;
-  const chunkCount = Math.ceil(fileBuffer.byteLength / chunkSize);
-
-  // 使用网络参数中的分片并发数，如果没有则默认为2
-  const chunkConcurrency = networkParams?.chunkConcurrency || 2;
-
-  // 最大重试次数和超时时间
-  const maxRetries = networkParams?.maxRetries || 3;
-  const timeout = networkParams?.timeout || 30000;
-
-  const chunk_md5s: string[] = [];
-  // 1. 计算所有分片的md5
-  for (let i = 0; i < chunkCount; i++) {
-    const start = i * chunkSize;
-    const end = Math.min(fileBuffer.byteLength, start + chunkSize);
-    const chunk = fileBuffer.slice(start, end);
-    const chunkMd5 = SparkMD5.ArrayBuffer.hash(chunk);
-    chunk_md5s.push(chunkMd5);
-  }
-
-  // 2. 秒传确认
-  try {
-    const instantRes = await fetchWithRetry(
-      "http://localhost:3000/api/file/instant",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          file_id: fileInfo.hash,
-          md5: fileInfo.hash,
-          name: fileInfo.fileName,
-          size: fileInfo.fileSize,
-          total: chunkCount,
-          chunk_md5s,
-        }),
-      },
-      maxRetries,
-      timeout
-    );
-
-    const instantData = await instantRes.json();
-    if (instantData.data?.uploaded) {
-      self.postMessage({ type: "done", skipped: true });
-      return;
-    }
-
-    const needUploadChunks: number[] = [];
-    for (let i = 0; i < chunkCount; i++) {
-      const exist = instantData.data?.chunkCheckResult?.find(
-        (c: { index: number; exist: boolean }) => c.index === i
-      )?.exist;
-      if (!exist) needUploadChunks.push(i);
-    }
-
-    // 记录已完成的分片数量，用于计算进度
-    const completedChunks = chunkCount - needUploadChunks.length;
-    let totalUploadedChunks = completedChunks;
-
-    // 3. 分片上传 - 使用并发控制
-    const uploadTasks = needUploadChunks.map((i) => {
-      return async () => {
-        const start = i * chunkSize;
-        const end = Math.min(fileBuffer.byteLength, start + chunkSize);
-        const chunk = fileBuffer.slice(start, end);
-        const chunkMd5 = chunk_md5s[i];
-
-        const formData = new FormData();
-        formData.append("file_id", fileInfo.hash);
-        formData.append("index", i.toString());
-        formData.append("chunk", new Blob([chunk]));
-        formData.append("total", chunkCount.toString());
-        formData.append("chunk_md5", chunkMd5);
-
-        await fetchWithRetry(
-          "http://localhost:3000/api/file/upload",
-          {
-            method: "POST",
-            body: formData,
-          },
-          maxRetries,
-          timeout
-        );
-
-        // 更新进度
-        totalUploadedChunks++;
-        const progress = Math.round((totalUploadedChunks / chunkCount) * 100);
-
-        self.postMessage({
-          type: "progress",
-          progress: progress,
-          chunkIndex: i,
-        });
-      };
-    });
-
-    // 使用并发控制函数执行上传任务
-    const result = await runWithConcurrency(uploadTasks, chunkConcurrency);
-
-    // 报告上传结果
-    self.postMessage({
-      type: "uploadResult",
-      completed: result.completed,
-      failed: result.failed,
-      failedIndices: result.failedIndices,
-      totalChunks: needUploadChunks.length,
-    });
-
-    // 如果有失败的分片，则不进行合并
-    if (result.failed > 0) {
-      self.postMessage({
-        type: "error",
-        message: `有 ${result.failed} 个分片上传失败，请重试上传`,
-        failedChunks: result.failedIndices,
-      });
-      return;
-    }
-
-    // 4. 合并
-    await fetchWithRetry(
-      "http://localhost:3000/api/file/merge",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          file_id: fileInfo.hash,
-          md5: fileInfo.hash,
-          name: fileInfo.fileName,
-          size: fileInfo.fileSize,
-          total: chunkCount,
-        }),
-      },
-      maxRetries,
-      timeout
-    );
-
-    self.postMessage({ type: "done" });
-  } catch (error) {
-    // 上传过程中出现致命错误
-    self.postMessage({
-      type: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
-};

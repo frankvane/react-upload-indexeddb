@@ -44,7 +44,8 @@ const FileUpload = () => {
       fileConcurrency,
       chunkConcurrency,
       maxRetries: 3, // 默认重试次数
-      timeout: 30000, // 默认超时时间
+      timeout: 30000, // 默认超时时间（毫秒）
+      retryInterval: 1000, // 重试间隔时间（毫秒）
     });
 
   const filePrepareWorkerUrl = new URL(
