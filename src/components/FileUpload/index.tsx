@@ -1,13 +1,12 @@
 import "antd/dist/reset.css";
 
 import { AlignItem, UploadFile, UploadStatus, statusMap } from "./types/upload";
-import { Button, Table, Tag, Tooltip, message } from "antd";
+import { Button, Switch, Table, Tag, Tooltip, message } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 
 import { ByteConvert } from "./utils";
 import NetworkStatusBadge from "./components/NetworkStatusBadge";
 import PercentDisplay from "./components/PercentDisplay";
-import { ReloadOutlined } from "@ant-design/icons";
 import localforage from "localforage";
 import { useBatchUploader } from "./hooks/useBatchUploader";
 import { useIndexedDBFiles } from "./hooks/useIndexedDBFiles";
@@ -38,6 +37,9 @@ const FileUpload = () => {
   const [previousNetworkState, setPreviousNetworkState] = useState<
     string | null
   >(null);
+  const [networkDisplayMode, setNetworkDisplayMode] = useState<
+    "tooltip" | "direct"
+  >("direct");
 
   const { files: allFiles, refresh: refreshFiles } = useIndexedDBFiles();
 
@@ -66,51 +68,6 @@ const FileUpload = () => {
     timeout: 30000, // 默认超时时间（毫秒）
     retryInterval: 1000, // 重试间隔时间（毫秒）
   });
-
-  // 在网络状态变化时显示提示和处理
-  useEffect(() => {
-    // 保存之前的网络状态
-    if (previousNetworkState !== networkType) {
-      // 网络从离线到在线
-      if (previousNetworkState === "offline" && networkType !== "offline") {
-        messageApi.success(`网络已恢复 (${networkType})，可以继续上传文件`);
-
-        // 检查是否有错误文件需要自动重试
-        const errorFiles = allFiles.filter(
-          (file) => file.status === UploadStatus.ERROR
-        );
-        if (errorFiles.length > 0) {
-          messageApi.info(
-            `检测到 ${errorFiles.length} 个失败文件，是否要自动重试？`,
-            6
-          );
-        }
-      }
-      // 网络从在线到离线
-      else if (
-        previousNetworkState !== "offline" &&
-        networkType === "offline"
-      ) {
-        messageApi.error("网络已断开，上传操作已暂停");
-
-        // 如果正在上传，则取消上传
-        if (isUploading) {
-          cancelUpload();
-          messageApi.warning("由于网络断开，上传已取消");
-        }
-      }
-
-      // 更新之前的网络状态
-      setPreviousNetworkState(networkType);
-    }
-  }, [
-    networkType,
-    previousNetworkState,
-    messageApi,
-    allFiles,
-    isUploading,
-    cancelUpload,
-  ]);
 
   const filePrepareWorkerUrl = new URL(
     "./worker/filePrepareWorker.ts",
@@ -242,6 +199,11 @@ const FileUpload = () => {
   const retryButtonTitle =
     errorFilesCount > 0 ? `批量重试 (${errorFilesCount})` : "批量重试";
 
+  // 查找是否有错误状态的文件
+  const hasErrorFiles = allFiles.some(
+    (file) => file.status === UploadStatus.ERROR
+  );
+
   // 批量重试所有失败的文件
   const handleRetryAllUpload = async () => {
     if (errorFilesCount === 0) {
@@ -269,19 +231,6 @@ const FileUpload = () => {
       );
     } finally {
       setIsRetryingAll(false);
-    }
-  };
-
-  // 添加自动重试功能
-  const handleAutoRetry = () => {
-    if (
-      !isNetworkOffline &&
-      errorFilesCount > 0 &&
-      !isUploading &&
-      !isRetryingAll
-    ) {
-      messageApi.info(`正在重试 ${errorFilesCount} 个失败文件...`);
-      handleRetryAllUpload();
     }
   };
 
@@ -445,10 +394,135 @@ const FileUpload = () => {
     },
   ];
 
-  // 查找是否有错误状态的文件
-  const hasErrorFiles = allFiles.some(
-    (file) => file.status === UploadStatus.ERROR
-  );
+  // 在网络状态变化时显示提示和处理
+  useEffect(() => {
+    // 保存之前的网络状态
+    if (previousNetworkState !== networkType) {
+      // 网络从离线到在线
+      if (previousNetworkState === "offline" && networkType !== "offline") {
+        messageApi.success(`网络已恢复 (${networkType})，正在自动恢复上传任务`);
+
+        // 将处理逻辑延迟一秒，确保UI更新和用户能看到提示
+        setTimeout(() => {
+          // 对所有文件按状态分类
+          const errorFiles = allFiles.filter(
+            (file) =>
+              file.status === UploadStatus.ERROR ||
+              file.status === UploadStatus.MERGE_ERROR
+          );
+          const pendingFiles = allFiles.filter(
+            (file) =>
+              file.status === UploadStatus.CALCULATING ||
+              file.status === UploadStatus.UPLOADING ||
+              file.status === UploadStatus.QUEUED ||
+              file.status === UploadStatus.QUEUED_FOR_UPLOAD ||
+              file.status === UploadStatus.PREPARING_UPLOAD
+          );
+          const waitingFiles = allFiles.filter(
+            (file) => file.status === UploadStatus.PAUSED
+          );
+          const completedFiles = allFiles.filter(
+            (file) =>
+              file.status === UploadStatus.DONE ||
+              file.status === UploadStatus.INSTANT
+          );
+
+          // 统计各类文件数量
+          const totalErrors = errorFiles.length;
+          const totalPending = pendingFiles.length;
+          const totalWaiting = waitingFiles.length;
+          const totalToProcess = totalErrors + totalPending + totalWaiting;
+
+          console.log("网络恢复后文件状态:", {
+            errorFiles: totalErrors,
+            pendingFiles: totalPending,
+            waitingFiles: totalWaiting,
+            completedFiles: completedFiles.length,
+            totalToProcess,
+          });
+
+          // 如果没有需要处理的文件，直接退出
+          if (totalToProcess === 0) {
+            messageApi.info("没有需要上传的文件");
+            return;
+          }
+
+          // 处理策略：先重试错误文件，然后继续上传所有其他文件
+
+          // 如果有错误文件，先重试
+          if (totalErrors > 0) {
+            messageApi.info(`正在重试 ${totalErrors} 个失败文件...`);
+
+            // 直接调用 retryAllFailedFiles 而不是通过 handleRetryAllUpload
+            setIsRetryingAll(true);
+            retryAllFailedFiles()
+              .then((result) => {
+                if (result.success) {
+                  messageApi.success(result.message);
+                } else {
+                  messageApi.error(result.message);
+                }
+              })
+              .catch((error) => {
+                console.error("自动重试失败:", error);
+                messageApi.error(
+                  `自动重试出错: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`
+                );
+              })
+              .finally(() => {
+                setIsRetryingAll(false);
+
+                // 重试完成后，如果还有待上传的文件，继续上传所有文件
+                if (totalPending + totalWaiting > 0) {
+                  messageApi.info(
+                    `继续上传 ${totalPending + totalWaiting} 个排队中的文件...`
+                  );
+                  // 等待一小段时间再上传，避免UI更新冲突
+                  setTimeout(() => {
+                    uploadAll();
+                  }, 500);
+                }
+              });
+          }
+          // 如果没有错误文件但有其他待处理文件，直接继续上传
+          else if (totalPending + totalWaiting > 0) {
+            messageApi.info(
+              `继续上传 ${totalPending + totalWaiting} 个文件...`
+            );
+            uploadAll();
+          }
+        }, 1000);
+      }
+      // 网络从在线到离线
+      else if (
+        previousNetworkState !== "offline" &&
+        networkType === "offline"
+      ) {
+        messageApi.error("网络已断开，上传操作已暂停");
+
+        // 如果正在上传，则取消上传
+        if (isUploading) {
+          cancelUpload();
+          messageApi.warning("由于网络断开，上传已取消");
+        }
+      }
+
+      // 更新之前的网络状态
+      setPreviousNetworkState(networkType);
+    }
+  }, [
+    networkType,
+    previousNetworkState,
+    messageApi,
+    allFiles,
+    isUploading,
+    cancelUpload,
+    uploadAll,
+    retryAllFailedFiles,
+    setIsRetryingAll,
+  ]);
 
   return (
     <div>
@@ -521,31 +595,33 @@ const FileUpload = () => {
           </Button>
         </Tooltip>
 
-        {networkType !== "offline" &&
-          previousNetworkState === "offline" &&
-          errorFilesCount > 0 && (
-            <Tooltip
-              title={`网络已恢复，自动重试 ${errorFilesCount} 个失败文件`}
-            >
-              <Button
-                type="primary"
-                onClick={handleAutoRetry}
-                disabled={isUploading || isRetryingAll}
-                icon={<ReloadOutlined />}
-                style={{ background: "#52c41a", borderColor: "#52c41a" }}
-              >
-                网络已恢复，自动重试
-              </Button>
-            </Tooltip>
-          )}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <NetworkStatusBadge
+            networkType={networkType}
+            chunkSize={chunkSize}
+            fileConcurrency={fileConcurrency}
+            chunkConcurrency={chunkConcurrency}
+            isOffline={isNetworkOffline}
+            displayMode={networkDisplayMode}
+          />
 
-        <NetworkStatusBadge
-          networkType={networkType}
-          chunkSize={chunkSize}
-          fileConcurrency={fileConcurrency}
-          chunkConcurrency={chunkConcurrency}
-          isOffline={isNetworkOffline}
-        />
+          <Tooltip
+            title={`切换为${
+              networkDisplayMode === "direct" ? "悬停提示" : "直接显示"
+            }模式`}
+          >
+            <Switch
+              checkedChildren="详细"
+              unCheckedChildren="简洁"
+              checked={networkDisplayMode === "direct"}
+              onChange={(checked) =>
+                setNetworkDisplayMode(checked ? "direct" : "tooltip")
+              }
+              size="small"
+              style={{ marginLeft: 8 }}
+            />
+          </Tooltip>
+        </div>
 
         {loading && processProgress && (
           <div
