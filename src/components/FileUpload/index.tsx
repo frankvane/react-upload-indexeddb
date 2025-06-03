@@ -1,6 +1,6 @@
 import { AlignItem, UploadFile, UploadStatus, statusMap } from "./types/upload";
 import { Button, Switch, Table, Tag, Tooltip, message } from "antd";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { BarChartOutlined } from "@ant-design/icons";
 import { ByteConvert } from "./utils";
@@ -84,9 +84,141 @@ const FileUpload = () => {
     import.meta.url
   ).href;
 
+  // 使用useRef存储函数引用，避免循环依赖
+  const clearUploadedFilesRef = useRef<() => Promise<void>>(async () => {});
+  const uploadAllRef = useRef<() => Promise<boolean>>(async () => false);
+
+  // 定义清理函数
+  const handleClearUploadedFiles = useCallback(async () => {
+    try {
+      // 获取所有已上传完成的文件和错误文件
+      const filesToClear = allFiles.filter(
+        (file) =>
+          file.status === UploadStatus.DONE ||
+          file.status === UploadStatus.INSTANT ||
+          file.status === UploadStatus.ERROR ||
+          file.status === UploadStatus.MERGE_ERROR
+      );
+
+      if (filesToClear.length === 0) {
+        return;
+      }
+
+      // 删除已上传完成和错误的文件
+      for (const file of filesToClear) {
+        await localforage.removeItem(file.id);
+      }
+
+      // 刷新文件列表
+      await refreshFiles();
+
+      // 重置批次信息
+      await clearBatchInfo();
+
+      // 重置进度映射
+      setProgressMap({});
+
+      // 显示成功消息
+      messageApi.success(`已清除 ${filesToClear.length} 个文件`);
+    } catch (error) {
+      console.error("清除文件失败:", error);
+      messageApi.error(
+        `清除文件失败: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }, [allFiles, refreshFiles, clearBatchInfo, setProgressMap, messageApi]);
+
+  // 更新ref
+  useEffect(() => {
+    clearUploadedFilesRef.current = handleClearUploadedFiles;
+  }, [handleClearUploadedFiles]);
+
+  // 封装上传函数，添加完成后的处理逻辑
+  const handleUploadAll = useCallback(async () => {
+    try {
+      // 调用原始的uploadAll函数
+      await uploadAll();
+
+      // 在短暂延迟后清理已上传文件和批次信息
+      setTimeout(async () => {
+        await clearUploadedFilesRef.current();
+      }, 3000);
+
+      return true;
+    } catch (error) {
+      console.error("上传失败:", error);
+      messageApi.error(
+        `上传失败: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return false;
+    }
+  }, [uploadAll, messageApi]);
+
+  // 更新ref
+  useEffect(() => {
+    uploadAllRef.current = handleUploadAll;
+  }, [handleUploadAll]);
+
   useEffect(() => {
     refreshFiles();
   }, [refreshFiles]);
+
+  // 处理页面刷新后的自动上传
+  useEffect(() => {
+    // 确保文件列表已加载且不是首次渲染
+    if (
+      allFiles.length > 0 &&
+      autoUpload &&
+      !isUploading &&
+      !isNetworkOffline
+    ) {
+      // 检查是否有需要上传的文件
+      const pendingFiles = allFiles.filter(
+        (file) =>
+          file.status === UploadStatus.CALCULATING ||
+          file.status === UploadStatus.QUEUED ||
+          file.status === UploadStatus.QUEUED_FOR_UPLOAD ||
+          file.status === UploadStatus.PREPARING_UPLOAD ||
+          file.status === UploadStatus.UPLOADING ||
+          file.status === UploadStatus.PAUSED
+      );
+
+      if (pendingFiles.length > 0) {
+        console.log(`页面刷新后自动上传 ${pendingFiles.length} 个待处理文件`);
+        // 添加短暂延迟确保组件完全加载
+        const timer = setTimeout(() => {
+          uploadAllRef.current();
+        }, 1000);
+
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [allFiles, autoUpload, isUploading, isNetworkOffline]);
+
+  useEffect(() => {
+    if (!batchInfo) return;
+    if (batchInfo.current === batchInfo.total) {
+      const timer = setTimeout(async () => {
+        await clearUploadedFilesRef.current();
+      }, 3000);
+
+      return () => {
+        clearTimeout(timer);
+      };
+    }
+  }, [allFiles]);
+
+  // 当autoUpload状态变化时，保存到localStorage
+  useEffect(() => {
+    localStorage.setItem("autoUpload", String(autoUpload));
+  }, [autoUpload]);
+
+  // 当networkDisplayMode状态变化时，保存到localStorage
+  useEffect(() => {
+    localStorage.setItem("networkDisplayMode", networkDisplayMode);
+  }, [networkDisplayMode]);
 
   // 打开存储统计抽屉
   const showStorageStats = () => {
@@ -156,7 +288,7 @@ const FileUpload = () => {
 
         // 根据autoUpload设置决定是否自动上传
         if (autoUpload && uploadFiles.length > 0 && !isNetworkOffline) {
-          handleUploadAll();
+          uploadAllRef.current();
         }
       }
     };
@@ -258,123 +390,6 @@ const FileUpload = () => {
       setIsRetryingAll(false);
     }
   };
-
-  const handleClearUploadedFiles = async () => {
-    try {
-      // 获取所有已上传完成的文件和错误文件
-      const filesToClear = allFiles.filter(
-        (file) =>
-          file.status === UploadStatus.DONE ||
-          file.status === UploadStatus.INSTANT ||
-          file.status === UploadStatus.ERROR ||
-          file.status === UploadStatus.MERGE_ERROR
-      );
-
-      if (filesToClear.length === 0) {
-        return;
-      }
-
-      // 删除已上传完成和错误的文件
-      for (const file of filesToClear) {
-        await localforage.removeItem(file.id);
-      }
-
-      // 刷新文件列表
-      await refreshFiles();
-
-      // 重置批次信息
-      await clearBatchInfo();
-
-      // 重置进度映射
-      setProgressMap({});
-
-      // 显示成功消息
-      messageApi.success(`已清除 ${filesToClear.length} 个文件`);
-    } catch (error) {
-      console.error("清除文件失败:", error);
-      messageApi.error(
-        `清除文件失败: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
-  };
-
-  // 封装上传函数，添加完成后的处理逻辑
-  const handleUploadAll = async () => {
-    try {
-      // 调用原始的uploadAll函数
-      await uploadAll();
-
-      // 在短暂延迟后清理已上传文件和批次信息
-      setTimeout(async () => {
-        await handleClearUploadedFiles();
-      }, 3000);
-
-      return true;
-    } catch (error) {
-      console.error("上传失败:", error);
-      messageApi.error(
-        `上传失败: ${error instanceof Error ? error.message : String(error)}`
-      );
-      return false;
-    }
-  };
-
-  useEffect(() => {
-    if (!batchInfo) return;
-    if (batchInfo.current === batchInfo.total) {
-      const timer = setTimeout(async () => {
-        await handleClearUploadedFiles();
-      }, 3000);
-
-      return () => {
-        clearTimeout(timer);
-      };
-    }
-  }, [allFiles]);
-
-  // 当autoUpload状态变化时，保存到localStorage
-  useEffect(() => {
-    localStorage.setItem("autoUpload", String(autoUpload));
-  }, [autoUpload]);
-
-  // 当networkDisplayMode状态变化时，保存到localStorage
-  useEffect(() => {
-    localStorage.setItem("networkDisplayMode", networkDisplayMode);
-  }, [networkDisplayMode]);
-
-  // 处理页面刷新后的自动上传
-  useEffect(() => {
-    // 确保文件列表已加载且不是首次渲染
-    if (
-      allFiles.length > 0 &&
-      autoUpload &&
-      !isUploading &&
-      !isNetworkOffline
-    ) {
-      // 检查是否有需要上传的文件
-      const pendingFiles = allFiles.filter(
-        (file) =>
-          file.status === UploadStatus.CALCULATING ||
-          file.status === UploadStatus.QUEUED ||
-          file.status === UploadStatus.QUEUED_FOR_UPLOAD ||
-          file.status === UploadStatus.PREPARING_UPLOAD ||
-          file.status === UploadStatus.UPLOADING ||
-          file.status === UploadStatus.PAUSED
-      );
-
-      if (pendingFiles.length > 0) {
-        console.log(`页面刷新后自动上传 ${pendingFiles.length} 个待处理文件`);
-        // 添加短暂延迟确保组件完全加载
-        const timer = setTimeout(() => {
-          handleUploadAll();
-        }, 1000);
-
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [allFiles, autoUpload, isUploading, isNetworkOffline]);
 
   // 渲染批量上传进度信息
   const renderBatchInfo = () => {
@@ -634,7 +649,7 @@ const FileUpload = () => {
                   );
                   // 等待一小段时间再上传，避免UI更新冲突
                   setTimeout(() => {
-                    handleUploadAll();
+                    uploadAllRef.current();
                   }, 500);
                 }
               });
@@ -644,7 +659,7 @@ const FileUpload = () => {
             messageApi.info(
               `继续上传 ${totalPending + totalWaiting} 个文件...`
             );
-            handleUploadAll();
+            uploadAllRef.current();
           }
         }, 1000);
       }
@@ -674,7 +689,7 @@ const FileUpload = () => {
     uploadAll,
     retryAllFailedFiles,
     setIsRetryingAll,
-    handleUploadAll,
+    uploadAllRef,
   ]);
 
   return (
@@ -708,7 +723,7 @@ const FileUpload = () => {
           />
           <Button
             type="primary"
-            onClick={handleUploadAll}
+            onClick={() => uploadAllRef.current()}
             disabled={
               allFiles.length === 0 ||
               isUploading ||
@@ -752,6 +767,43 @@ const FileUpload = () => {
               {isRetryingAll ? "重试中..." : retryButtonTitle}
             </Button>
           </Tooltip>
+
+          {loading && processProgress && (
+            <div
+              style={{
+                marginLeft: 8,
+                color: "#1890ff",
+                display: "flex",
+                alignItems: "center",
+                fontSize: "12px",
+              }}
+            >
+              <span style={{ marginRight: 8 }}>
+                处理中: {processProgress.processed}/{processProgress.total}
+              </span>
+              {processProgress.success > 0 && (
+                <span style={{ color: "#52c41a", marginRight: 8 }}>
+                  成功: {processProgress.success}
+                </span>
+              )}
+              {processProgress.failed > 0 && (
+                <span style={{ color: "#f5222d", marginRight: 8 }}>
+                  失败: {processProgress.failed}
+                </span>
+              )}
+              {processProgress.oversized > 0 && (
+                <span style={{ color: "#fa8c16" }}>
+                  超大: {processProgress.oversized}
+                </span>
+              )}
+            </div>
+          )}
+
+          {!loading && cost !== null && (
+            <span style={{ color: "green", marginLeft: 8, fontSize: "12px" }}>
+              操作耗时：{cost} ms
+            </span>
+          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -807,43 +859,6 @@ const FileUpload = () => {
             />
           </Tooltip>
         </div>
-
-        {loading && processProgress && (
-          <div
-            style={{
-              marginLeft: 8,
-              color: "#1890ff",
-              display: "flex",
-              alignItems: "center",
-              fontSize: "12px",
-            }}
-          >
-            <span style={{ marginRight: 8 }}>
-              处理中: {processProgress.processed}/{processProgress.total}
-            </span>
-            {processProgress.success > 0 && (
-              <span style={{ color: "#52c41a", marginRight: 8 }}>
-                成功: {processProgress.success}
-              </span>
-            )}
-            {processProgress.failed > 0 && (
-              <span style={{ color: "#f5222d", marginRight: 8 }}>
-                失败: {processProgress.failed}
-              </span>
-            )}
-            {processProgress.oversized > 0 && (
-              <span style={{ color: "#fa8c16" }}>
-                超大: {processProgress.oversized}
-              </span>
-            )}
-          </div>
-        )}
-
-        {!loading && cost !== null && (
-          <span style={{ color: "green", marginLeft: 8, fontSize: "12px" }}>
-            操作耗时：{cost} ms
-          </span>
-        )}
       </div>
 
       {renderBatchInfo()}
