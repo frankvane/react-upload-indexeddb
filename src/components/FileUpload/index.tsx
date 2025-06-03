@@ -1,24 +1,13 @@
 import "antd/dist/reset.css";
 
 import { AlignItem, UploadFile, UploadStatus, statusMap } from "./types/upload";
-import {
-  Button,
-  Card,
-  Col,
-  Drawer,
-  Row,
-  Statistic,
-  Switch,
-  Table,
-  Tag,
-  Tooltip,
-  message,
-} from "antd";
-import { ByteConvert, getStorageStats } from "./utils";
+import { Button, Switch, Table, Tag, Tooltip, message } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 
+import { ByteConvert } from "./utils";
 import NetworkStatusBadge from "./components/NetworkStatusBadge";
 import PercentDisplay from "./components/PercentDisplay";
+import StorageStatsDrawer from "./components/StorageStatsDrawer";
 import localforage from "localforage";
 import { useBatchUploader } from "./hooks/useBatchUploader";
 import { useIndexedDBFiles } from "./hooks/useIndexedDBFiles";
@@ -53,16 +42,6 @@ const FileUpload = () => {
     "tooltip" | "direct"
   >("direct");
   const [storageStatsVisible, setStorageStatsVisible] = useState(false);
-  const [storageStats, setStorageStats] = useState<{
-    totalFiles: number;
-    totalSize: number;
-    formattedSize: string;
-    filesWithBuffer: number;
-    filesWithoutBuffer: number;
-    averageFileSize: number;
-    formattedAvgSize: string;
-  } | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
 
   const { files: allFiles, refresh: refreshFiles } = useIndexedDBFiles();
 
@@ -101,24 +80,9 @@ const FileUpload = () => {
     refreshFiles();
   }, [refreshFiles]);
 
-  // 加载存储统计数据
-  const loadStorageStats = async () => {
-    setStatsLoading(true);
-    try {
-      const stats = await getStorageStats();
-      setStorageStats(stats);
-    } catch (error) {
-      console.error("获取存储统计信息失败:", error);
-      messageApi.error("获取存储统计信息失败");
-    } finally {
-      setStatsLoading(false);
-    }
-  };
-
   // 打开存储统计抽屉
   const showStorageStats = () => {
     setStorageStatsVisible(true);
-    loadStorageStats();
   };
 
   // 关闭存储统计抽屉
@@ -670,12 +634,7 @@ const FileUpload = () => {
             />
           </Tooltip>
 
-          <Button
-            type="dashed"
-            size="small"
-            onClick={showStorageStats}
-            loading={statsLoading}
-          >
+          <Button type="dashed" size="small" onClick={showStorageStats}>
             存储统计
           </Button>
         </div>
@@ -734,73 +693,10 @@ const FileUpload = () => {
       )}
 
       {/* 存储统计抽屉 */}
-      <Drawer
-        title="IndexedDB 存储统计"
-        placement="right"
+      <StorageStatsDrawer
+        visible={storageStatsVisible}
         onClose={closeStorageStats}
-        open={storageStatsVisible}
-        width={400}
-      >
-        {statsLoading ? (
-          <div style={{ textAlign: "center", padding: "20px" }}>
-            加载存储统计信息...
-          </div>
-        ) : storageStats ? (
-          <div>
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Card>
-                  <Statistic
-                    title="总存储量"
-                    value={storageStats.formattedSize}
-                    valueStyle={{ color: "#3f8600" }}
-                  />
-                </Card>
-              </Col>
-              <Col span={12}>
-                <Card>
-                  <Statistic title="文件总数" value={storageStats.totalFiles} />
-                </Card>
-              </Col>
-              <Col span={12}>
-                <Card>
-                  <Statistic
-                    title="平均文件大小"
-                    value={storageStats.formattedAvgSize}
-                  />
-                </Card>
-              </Col>
-              <Col span={12}>
-                <Card>
-                  <Statistic
-                    title="含缓存数据文件"
-                    value={storageStats.filesWithBuffer}
-                    valueStyle={{ color: "#1890ff" }}
-                  />
-                </Card>
-              </Col>
-              <Col span={12}>
-                <Card>
-                  <Statistic
-                    title="无缓存数据文件"
-                    value={storageStats.filesWithoutBuffer}
-                    valueStyle={{ color: "#faad14" }}
-                  />
-                </Card>
-              </Col>
-            </Row>
-            <div style={{ marginTop: 16, textAlign: "center" }}>
-              <Button onClick={loadStorageStats} loading={statsLoading}>
-                刷新统计
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ textAlign: "center", padding: "20px" }}>
-            无法获取存储统计信息
-          </div>
-        )}
-      </Drawer>
+      />
     </div>
   );
 };
