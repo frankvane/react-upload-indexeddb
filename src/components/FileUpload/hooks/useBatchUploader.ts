@@ -155,29 +155,21 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
               if (options?.setProgressMap) {
                 options.setProgressMap((prev) => ({ ...prev, [file.id]: 100 }));
               }
-
-              // 上传完成或秒传，状态设为 DONE 或 INSTANT
+              // 明确区分INSTANT和DONE
               const newStatus = e.data.skipped
                 ? UploadStatus.INSTANT
                 : UploadStatus.DONE;
-
               await localforage.setItem(file.id, {
                 ...file,
                 status: newStatus,
+                progress: 100,
               });
 
               if (options?.refreshFiles) {
                 options.refreshFiles();
               }
-
               worker.terminate();
               resolve(true);
-            } else if (e.data.type === "uploaded" && e.data.fileId) {
-              // 文件上传成功后，清理IndexedDB缓存
-              await localforage.removeItem(e.data.fileId);
-              if (options?.refreshFiles) {
-                options.refreshFiles();
-              }
             }
           };
 

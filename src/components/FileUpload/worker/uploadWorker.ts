@@ -166,8 +166,6 @@ self.onmessage = async (e: MessageEvent) => {
     const instantData = await instantRes.json();
     if (instantData.data?.uploaded) {
       self.postMessage({ type: "done", skipped: true });
-      // 通知主线程清理缓存
-      self.postMessage({ type: "uploaded", fileId: fileInfo.hash });
       return;
     }
 
@@ -257,9 +255,7 @@ self.onmessage = async (e: MessageEvent) => {
       retryOptions
     );
 
-    self.postMessage({ type: "done" });
-    // 通知主线程清理缓存
-    self.postMessage({ type: "uploaded", fileId: fileInfo.hash });
+    self.postMessage({ type: "done", skipped: false });
   } catch (error) {
     // 上传过程中出现致命错误
     self.postMessage({

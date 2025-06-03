@@ -52,29 +52,6 @@ const FileUpload = () => {
   // 检查网络是否断开
   const isNetworkOffline = networkType === "offline";
 
-  const refreshTimer = useRef<number | null>(null);
-
-  const delayedRefreshFiles = useCallback(
-    (delay = 5000) => {
-      if (refreshTimer.current) {
-        clearTimeout(refreshTimer.current);
-      }
-      refreshTimer.current = setTimeout(() => {
-        refreshFiles();
-        refreshTimer.current = null;
-      }, delay);
-    },
-    [refreshFiles]
-  );
-
-  // 记得在组件卸载时清理定时器
-  useEffect(() => {
-    return () => {
-      if (refreshTimer.current) {
-        clearTimeout(refreshTimer.current);
-      }
-    };
-  }, []);
   // 将 fileConcurrency 传递给 useBatchUploader
   const {
     uploadAll,
@@ -91,7 +68,7 @@ const FileUpload = () => {
     maxRetries: 3, // 默认重试次数
     timeout: 30000, // 默认超时时间（毫秒）
     retryInterval: 1000, // 重试间隔时间（毫秒）
-    refreshFiles: delayedRefreshFiles,
+    refreshFiles,
   });
 
   const filePrepareWorkerUrl = new URL(
