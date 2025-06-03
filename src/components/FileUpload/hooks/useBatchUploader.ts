@@ -318,8 +318,8 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
   }, []);
 
   // 批量上传所有文件
-  const uploadAll = useCallback(async () => {
-    if (isUploading) return;
+  const uploadAll = useCallback(async (): Promise<boolean> => {
+    if (isUploading) return false;
     setIsUploading(true);
     retriedCountRef.current = 0; // 重置重试计数
 
@@ -353,7 +353,7 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
 
       if (uploadableFiles.length === 0) {
         resetState();
-        return;
+        return true;
       }
 
       // 初始化批处理信息 - 包含当前批次的信息
@@ -429,11 +429,14 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
         }
         cancelTokenRef.current = null;
       }
+
+      return true;
     } catch (error) {
       console.error("批量上传文件失败:", error);
       // 错误情况下仍然保留批次信息，只重置上传状态
       setIsUploading(false);
       cancelTokenRef.current = null;
+      return false;
     }
   }, [
     isUploading,
@@ -444,8 +447,9 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
   ]);
 
   // 清除批次信息
-  const clearBatchInfo = useCallback(() => {
+  const clearBatchInfo = useCallback(async (): Promise<boolean> => {
     setBatchInfo(null);
+    return true;
   }, []);
 
   // 批量重试所有失败的文件
