@@ -261,27 +261,39 @@ const FileUpload = () => {
 
   const handleClearUploadedFiles = async () => {
     try {
-      // 获取所有已上传完成的文件
-      const completedFiles = allFiles.filter(
+      // 获取所有已上传完成的文件和错误文件
+      const filesToClear = allFiles.filter(
         (file) =>
           file.status === UploadStatus.DONE ||
-          file.status === UploadStatus.INSTANT
+          file.status === UploadStatus.INSTANT ||
+          file.status === UploadStatus.ERROR ||
+          file.status === UploadStatus.MERGE_ERROR
       );
-      if (completedFiles.length === 0) {
+
+      if (filesToClear.length === 0) {
         return;
       }
 
-      // 删除已上传完成的文件
-      for (const file of completedFiles) {
+      // 删除已上传完成和错误的文件
+      for (const file of filesToClear) {
         await localforage.removeItem(file.id);
       }
+
+      // 刷新文件列表
       await refreshFiles();
+
+      // 重置批次信息
+      await clearBatchInfo();
+
+      // 重置进度映射
+      setProgressMap({});
+
       // 显示成功消息
-      messageApi.success(`已清除 ${completedFiles.length} 个已上传完成的文件`);
+      messageApi.success(`已清除 ${filesToClear.length} 个文件`);
     } catch (error) {
-      console.error("清除已上传文件失败:", error);
+      console.error("清除文件失败:", error);
       messageApi.error(
-        `清除已上传文件失败: ${
+        `清除文件失败: ${
           error instanceof Error ? error.message : String(error)
         }`
       );
@@ -297,7 +309,6 @@ const FileUpload = () => {
       // 在短暂延迟后清理已上传文件和批次信息
       setTimeout(async () => {
         await handleClearUploadedFiles();
-        await clearBatchInfo();
       }, 3000);
 
       return true;
@@ -315,7 +326,6 @@ const FileUpload = () => {
     if (batchInfo.current === batchInfo.total) {
       const timer = setTimeout(async () => {
         await handleClearUploadedFiles();
-        await clearBatchInfo();
       }, 3000);
 
       return () => {
