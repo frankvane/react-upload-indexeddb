@@ -214,6 +214,93 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
     [options]
   );
 
+  // 单个文件重试上传
+  const retryUploadFile = useCallback(
+    async (file: UploadFile) => {
+      if (isUploading) {
+        console.warn("当前有批量上传任务正在进行，请等待完成后再重试");
+        return {
+          success: false,
+          message: "当前有批量上传任务正在进行，请等待完成后再重试",
+        };
+      }
+
+      // 从IndexedDB中获取最新的文件数据
+      try {
+        const latestFile = await localforage.getItem<UploadFile>(file.id);
+        if (!latestFile || !latestFile.buffer) {
+          const errorMessage = "找不到文件或文件数据已丢失";
+          console.error(errorMessage, file.fileName);
+
+          // 更新文件状态为错误
+          await localforage.setItem(file.id, {
+            ...file,
+            status: UploadStatus.ERROR,
+            errorMessage,
+          });
+
+          if (options?.refreshFiles) {
+            options.refreshFiles();
+          }
+
+          return { success: false, message: errorMessage };
+        }
+
+        // 更新状态为上传中
+        await localforage.setItem(file.id, {
+          ...latestFile,
+          status: UploadStatus.UPLOADING,
+          errorMessage: undefined, // 清除错误信息
+          failedChunks: [], // 清除失败分片记录
+          progress: 0, // 重置进度
+        });
+
+        if (options?.refreshFiles) {
+          options.refreshFiles();
+        }
+
+        // 重置进度
+        if (options?.setProgressMap) {
+          options.setProgressMap((prev) => ({ ...prev, [file.id]: 0 }));
+        }
+
+        // 直接调用上传方法
+        const uploadResult = await uploadFile(latestFile);
+
+        // 检查最终状态
+        const updatedFile = await localforage.getItem<UploadFile>(file.id);
+
+        if (uploadResult && updatedFile?.status === UploadStatus.DONE) {
+          return { success: true, message: "文件重试上传成功" };
+        } else if (updatedFile?.status === UploadStatus.INSTANT) {
+          return { success: true, message: "文件秒传成功" };
+        } else {
+          const errorMessage =
+            updatedFile?.errorMessage || "重试上传失败，原因未知";
+          return { success: false, message: errorMessage };
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        console.error(`重试上传文件失败: ${file.fileName}`, error);
+
+        // 确保文件状态更新为错误
+        await localforage.setItem(file.id, {
+          ...file,
+          status: UploadStatus.ERROR,
+          errorMessage,
+        });
+
+        if (options?.refreshFiles) {
+          options.refreshFiles();
+        }
+
+        return { success: false, message: errorMessage };
+      }
+    },
+    [isUploading, options, uploadFile]
+  );
+
   // 检查队列是否完成
   const checkQueueComplete = useCallback(() => {
     if (
@@ -369,5 +456,6 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
     isUploading,
     cancelUpload,
     clearBatchInfo,
+    retryUploadFile,
   };
 }

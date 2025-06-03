@@ -1,7 +1,7 @@
 import "antd/dist/reset.css";
 
 import { AlignItem, UploadFile, UploadStatus, statusMap } from "./types/upload";
-import { Button, Table, Tag, Tooltip } from "antd";
+import { Button, Table, Tag, Tooltip, message } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 
 import { ByteConvert } from "./utils";
@@ -29,6 +29,10 @@ const FileUpload = () => {
     failed: number;
     oversized: number;
   } | null>(null);
+  const [retryingFiles, setRetryingFiles] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [messageApi, contextHolder] = message.useMessage();
 
   const { files: allFiles, refresh: refreshFiles } = useIndexedDBFiles();
 
@@ -37,16 +41,22 @@ const FileUpload = () => {
     useNetworkType();
 
   // 将 fileConcurrency 传递给 useBatchUploader
-  const { uploadAll, batchInfo, isUploading, cancelUpload, clearBatchInfo } =
-    useBatchUploader({
-      setProgressMap,
-      refreshFiles,
-      fileConcurrency,
-      chunkConcurrency,
-      maxRetries: 3, // 默认重试次数
-      timeout: 30000, // 默认超时时间（毫秒）
-      retryInterval: 1000, // 重试间隔时间（毫秒）
-    });
+  const {
+    uploadAll,
+    batchInfo,
+    isUploading,
+    cancelUpload,
+    clearBatchInfo,
+    retryUploadFile,
+  } = useBatchUploader({
+    setProgressMap,
+    refreshFiles,
+    fileConcurrency,
+    chunkConcurrency,
+    maxRetries: 3, // 默认重试次数
+    timeout: 30000, // 默认超时时间（毫秒）
+    retryInterval: 1000, // 重试间隔时间（毫秒）
+  });
 
   const filePrepareWorkerUrl = new URL(
     "./worker/filePrepareWorker.ts",
@@ -122,8 +132,35 @@ const FileUpload = () => {
   };
 
   const handleRetryUpload = async (file: UploadFile) => {
-    // Implement retry logic here
-    console.log("Retrying upload for", file.fileName);
+    try {
+      // 设置该文件为重试中状态
+      setRetryingFiles((prev) => ({ ...prev, [file.id]: true }));
+
+      const result = await retryUploadFile(file);
+
+      if (result.success) {
+        // 重试成功，显示提示消息
+        messageApi.success(
+          result.message || `文件 ${file.fileName} 重试上传成功`
+        );
+      } else {
+        messageApi.error(
+          result.message || `文件 ${file.fileName} 重试上传失败`
+        );
+      }
+    } catch (error) {
+      console.error("重试上传失败:", error);
+      messageApi.error(
+        `上传出错: ${error instanceof Error ? error.message : String(error)}`
+      );
+    } finally {
+      // 清除重试状态
+      setRetryingFiles((prev) => {
+        const updated = { ...prev };
+        delete updated[file.id];
+        return updated;
+      });
+    }
   };
 
   const handleClearList = async () => {
@@ -265,6 +302,7 @@ const FileUpload = () => {
       key: "action",
       render: (_: unknown, record: UploadFile) => {
         const { status, id } = record;
+        const isRetrying = retryingFiles[id] || false;
 
         return (
           <div
@@ -275,11 +313,18 @@ const FileUpload = () => {
                 size="small"
                 type="primary"
                 onClick={() => handleRetryUpload(record)}
+                loading={isRetrying}
+                disabled={isUploading || isRetrying}
               >
-                重试
+                {isRetrying ? "重试中" : "重试"}
               </Button>
             )}
-            <Button size="small" danger onClick={() => handleDeleteFile(id)}>
+            <Button
+              size="small"
+              danger
+              onClick={() => handleDeleteFile(id)}
+              disabled={isRetrying || isUploading}
+            >
               删除
             </Button>
           </div>
@@ -292,6 +337,8 @@ const FileUpload = () => {
 
   return (
     <div>
+      {contextHolder}
+
       <div
         style={{
           marginTop: 16,
