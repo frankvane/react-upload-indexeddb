@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ByteConvert } from "./utils";
 import NetworkStatusBadge from "./components/NetworkStatusBadge";
 import PercentDisplay from "./components/PercentDisplay";
+import { ReloadOutlined } from "@ant-design/icons";
 import localforage from "localforage";
 import { useBatchUploader } from "./hooks/useBatchUploader";
 import { useIndexedDBFiles } from "./hooks/useIndexedDBFiles";
@@ -32,14 +33,20 @@ const FileUpload = () => {
   const [retryingFiles, setRetryingFiles] = useState<Record<string, boolean>>(
     {}
   );
-  const [messageApi, contextHolder] = message.useMessage();
   const [isRetryingAll, setIsRetryingAll] = useState(false);
+  const [messageApi, contextHolder] = message.useMessage();
+  const [previousNetworkState, setPreviousNetworkState] = useState<
+    string | null
+  >(null);
 
   const { files: allFiles, refresh: refreshFiles } = useIndexedDBFiles();
 
   // 使用网络类型钩子获取动态参数
   const { networkType, fileConcurrency, chunkConcurrency, chunkSize } =
     useNetworkType();
+
+  // 检查网络是否断开
+  const isNetworkOffline = networkType === "offline";
 
   // 将 fileConcurrency 传递给 useBatchUploader
   const {
@@ -59,6 +66,51 @@ const FileUpload = () => {
     timeout: 30000, // 默认超时时间（毫秒）
     retryInterval: 1000, // 重试间隔时间（毫秒）
   });
+
+  // 在网络状态变化时显示提示和处理
+  useEffect(() => {
+    // 保存之前的网络状态
+    if (previousNetworkState !== networkType) {
+      // 网络从离线到在线
+      if (previousNetworkState === "offline" && networkType !== "offline") {
+        messageApi.success(`网络已恢复 (${networkType})，可以继续上传文件`);
+
+        // 检查是否有错误文件需要自动重试
+        const errorFiles = allFiles.filter(
+          (file) => file.status === UploadStatus.ERROR
+        );
+        if (errorFiles.length > 0) {
+          messageApi.info(
+            `检测到 ${errorFiles.length} 个失败文件，是否要自动重试？`,
+            6
+          );
+        }
+      }
+      // 网络从在线到离线
+      else if (
+        previousNetworkState !== "offline" &&
+        networkType === "offline"
+      ) {
+        messageApi.error("网络已断开，上传操作已暂停");
+
+        // 如果正在上传，则取消上传
+        if (isUploading) {
+          cancelUpload();
+          messageApi.warning("由于网络断开，上传已取消");
+        }
+      }
+
+      // 更新之前的网络状态
+      setPreviousNetworkState(networkType);
+    }
+  }, [
+    networkType,
+    previousNetworkState,
+    messageApi,
+    allFiles,
+    isUploading,
+    cancelUpload,
+  ]);
 
   const filePrepareWorkerUrl = new URL(
     "./worker/filePrepareWorker.ts",
@@ -220,6 +272,19 @@ const FileUpload = () => {
     }
   };
 
+  // 添加自动重试功能
+  const handleAutoRetry = () => {
+    if (
+      !isNetworkOffline &&
+      errorFilesCount > 0 &&
+      !isUploading &&
+      !isRetryingAll
+    ) {
+      messageApi.info(`正在重试 ${errorFilesCount} 个失败文件...`);
+      handleRetryAllUpload();
+    }
+  };
+
   // 渲染批量上传进度信息
   const renderBatchInfo = () => {
     if (!batchInfo) return null;
@@ -345,6 +410,9 @@ const FileUpload = () => {
         const { status, id } = record;
         const isRetrying = retryingFiles[id] || false;
 
+        // 文件是否可以进行操作（网络断开时禁用操作）
+        const isActionDisabled = isUploading || isRetrying || isNetworkOffline;
+
         return (
           <div
             style={{ display: "flex", gap: "8px", justifyContent: "center" }}
@@ -355,7 +423,8 @@ const FileUpload = () => {
                 type="primary"
                 onClick={() => handleRetryUpload(record)}
                 loading={isRetrying}
-                disabled={isUploading || isRetrying}
+                disabled={isActionDisabled}
+                title={isNetworkOffline ? "网络已断开，无法重试" : ""}
               >
                 {isRetrying ? "重试中" : "重试"}
               </Button>
@@ -394,7 +463,13 @@ const FileUpload = () => {
           gap: 8,
         }}
       >
-        <Button onClick={() => inputRef.current?.click()}>选择文件</Button>
+        <Button
+          onClick={() => inputRef.current?.click()}
+          disabled={isNetworkOffline}
+          title={isNetworkOffline ? "网络已断开，无法选择文件" : ""}
+        >
+          选择文件
+        </Button>
         <input
           type="file"
           ref={inputRef}
@@ -405,7 +480,13 @@ const FileUpload = () => {
         <Button
           type="primary"
           onClick={uploadAll}
-          disabled={allFiles.length === 0 || isUploading || isRetryingAll}
+          disabled={
+            allFiles.length === 0 ||
+            isUploading ||
+            isRetryingAll ||
+            isNetworkOffline
+          }
+          title={isNetworkOffline ? "网络已断开，无法上传" : ""}
         >
           上传文件
         </Button>
@@ -421,7 +502,9 @@ const FileUpload = () => {
 
         <Tooltip
           title={
-            errorFilesCount > 0
+            isNetworkOffline
+              ? "网络已断开，无法重试"
+              : errorFilesCount > 0
               ? `重试 ${errorFilesCount} 个失败文件`
               : "没有需要重试的文件"
           }
@@ -429,19 +512,39 @@ const FileUpload = () => {
           <Button
             type="primary"
             onClick={handleRetryAllUpload}
-            disabled={!hasErrorFiles || isUploading || isRetryingAll}
+            disabled={
+              !hasErrorFiles || isUploading || isRetryingAll || isNetworkOffline
+            }
             loading={isRetryingAll}
           >
             {isRetryingAll ? "重试中..." : retryButtonTitle}
           </Button>
         </Tooltip>
 
+        {networkType !== "offline" &&
+          previousNetworkState === "offline" &&
+          errorFilesCount > 0 && (
+            <Tooltip
+              title={`网络已恢复，自动重试 ${errorFilesCount} 个失败文件`}
+            >
+              <Button
+                type="primary"
+                onClick={handleAutoRetry}
+                disabled={isUploading || isRetryingAll}
+                icon={<ReloadOutlined />}
+                style={{ background: "#52c41a", borderColor: "#52c41a" }}
+              >
+                网络已恢复，自动重试
+              </Button>
+            </Tooltip>
+          )}
+
         <NetworkStatusBadge
           networkType={networkType}
           chunkSize={chunkSize}
           fileConcurrency={fileConcurrency}
           chunkConcurrency={chunkConcurrency}
-          isOffline={networkType === "offline"}
+          isOffline={isNetworkOffline}
         />
 
         {loading && processProgress && (
