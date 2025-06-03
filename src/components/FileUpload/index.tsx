@@ -303,6 +303,17 @@ const FileUpload = () => {
 
   // Table columns 配置
   const columns = [
+    {
+      title: "编号",
+      dataIndex: "ID",
+      key: "index",
+      render: (_: unknown, record: UploadFile) => {
+        const index = allFiles.findIndex((f) => f.id === record.id);
+        return index + 1;
+      },
+      align: "center" as AlignItem,
+      width: "5%",
+    },
     { title: "文件名", dataIndex: "fileName", key: "fileName" },
     {
       title: "大小",
@@ -310,7 +321,7 @@ const FileUpload = () => {
       key: "fileSize",
       render: (size: number) => `${ByteConvert(size)}`,
       align: "right" as AlignItem,
-      width: "15%",
+      width: "10%",
     },
     {
       title: "分片数",
