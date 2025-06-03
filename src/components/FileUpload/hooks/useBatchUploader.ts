@@ -172,6 +172,12 @@ export function useBatchUploader(options?: UseBatchUploaderOptions) {
 
               worker.terminate();
               resolve(true);
+            } else if (e.data.type === "uploaded" && e.data.fileId) {
+              // 文件上传成功后，清理IndexedDB缓存
+              await localforage.removeItem(e.data.fileId);
+              if (options?.refreshFiles) {
+                options.refreshFiles();
+              }
             }
           };
 

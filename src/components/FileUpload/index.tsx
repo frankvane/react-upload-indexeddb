@@ -2,7 +2,7 @@ import "antd/dist/reset.css";
 
 import { AlignItem, UploadFile, UploadStatus, statusMap } from "./types/upload";
 import { Button, Switch, Table, Tag, Tooltip, message } from "antd";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { ByteConvert } from "./utils";
 import NetworkStatusBadge from "./components/NetworkStatusBadge";
@@ -52,6 +52,29 @@ const FileUpload = () => {
   // 检查网络是否断开
   const isNetworkOffline = networkType === "offline";
 
+  const refreshTimer = useRef<number | null>(null);
+
+  const delayedRefreshFiles = useCallback(
+    (delay = 5000) => {
+      if (refreshTimer.current) {
+        clearTimeout(refreshTimer.current);
+      }
+      refreshTimer.current = setTimeout(() => {
+        refreshFiles();
+        refreshTimer.current = null;
+      }, delay);
+    },
+    [refreshFiles]
+  );
+
+  // 记得在组件卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (refreshTimer.current) {
+        clearTimeout(refreshTimer.current);
+      }
+    };
+  }, []);
   // 将 fileConcurrency 传递给 useBatchUploader
   const {
     uploadAll,
@@ -63,12 +86,12 @@ const FileUpload = () => {
     retryAllFailedFiles,
   } = useBatchUploader({
     setProgressMap,
-    refreshFiles,
     fileConcurrency,
     chunkConcurrency,
     maxRetries: 3, // 默认重试次数
     timeout: 30000, // 默认超时时间（毫秒）
     retryInterval: 1000, // 重试间隔时间（毫秒）
+    refreshFiles: delayedRefreshFiles,
   });
 
   const filePrepareWorkerUrl = new URL(
