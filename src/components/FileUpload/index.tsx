@@ -2,6 +2,7 @@ import { AlignItem, UploadFile, UploadStatus, statusMap } from "./types/upload";
 import { Button, Switch, Table, Tag, Tooltip, message } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 
+import { BarChartOutlined } from "@ant-design/icons";
 import { ByteConvert } from "./utils";
 import NetworkStatusBadge from "./components/NetworkStatusBadge";
 import PercentDisplay from "./components/PercentDisplay";
@@ -38,8 +39,17 @@ const FileUpload = () => {
   >(null);
   const [networkDisplayMode, setNetworkDisplayMode] = useState<
     "tooltip" | "direct"
-  >("direct");
+  >(() => {
+    // 从localStorage读取显示模式设置，默认为简洁模式（tooltip）
+    const savedMode = localStorage.getItem("networkDisplayMode");
+    return savedMode === "direct" ? "direct" : "tooltip";
+  });
   const [storageStatsVisible, setStorageStatsVisible] = useState(false);
+  const [autoUpload, setAutoUpload] = useState(() => {
+    // 从localStorage读取自动上传设置，默认为true
+    const savedValue = localStorage.getItem("autoUpload");
+    return savedValue !== null ? savedValue === "true" : true;
+  });
 
   const { files: allFiles, refresh: refreshFiles } = useIndexedDBFiles();
 
@@ -144,9 +154,9 @@ const FileUpload = () => {
           setProcessProgress(null);
         }, 3000);
 
-        // 自动执行上传全部文件操作
-        if (uploadFiles.length > 0 && !isNetworkOffline) {
-          uploadAll();
+        // 根据autoUpload设置决定是否自动上传
+        if (autoUpload && uploadFiles.length > 0 && !isNetworkOffline) {
+          handleUploadAll();
         }
       }
     };
@@ -278,6 +288,28 @@ const FileUpload = () => {
     }
   };
 
+  // 封装上传函数，添加完成后的处理逻辑
+  const handleUploadAll = async () => {
+    try {
+      // 调用原始的uploadAll函数
+      await uploadAll();
+
+      // 在短暂延迟后清理已上传文件和批次信息
+      setTimeout(async () => {
+        await handleClearUploadedFiles();
+        await clearBatchInfo();
+      }, 3000);
+
+      return true;
+    } catch (error) {
+      console.error("上传失败:", error);
+      messageApi.error(
+        `上传失败: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return false;
+    }
+  };
+
   useEffect(() => {
     if (!batchInfo) return;
     if (batchInfo.current === batchInfo.total) {
@@ -291,6 +323,48 @@ const FileUpload = () => {
       };
     }
   }, [allFiles]);
+
+  // 当autoUpload状态变化时，保存到localStorage
+  useEffect(() => {
+    localStorage.setItem("autoUpload", String(autoUpload));
+  }, [autoUpload]);
+
+  // 当networkDisplayMode状态变化时，保存到localStorage
+  useEffect(() => {
+    localStorage.setItem("networkDisplayMode", networkDisplayMode);
+  }, [networkDisplayMode]);
+
+  // 处理页面刷新后的自动上传
+  useEffect(() => {
+    // 确保文件列表已加载且不是首次渲染
+    if (
+      allFiles.length > 0 &&
+      autoUpload &&
+      !isUploading &&
+      !isNetworkOffline
+    ) {
+      // 检查是否有需要上传的文件
+      const pendingFiles = allFiles.filter(
+        (file) =>
+          file.status === UploadStatus.CALCULATING ||
+          file.status === UploadStatus.QUEUED ||
+          file.status === UploadStatus.QUEUED_FOR_UPLOAD ||
+          file.status === UploadStatus.PREPARING_UPLOAD ||
+          file.status === UploadStatus.UPLOADING ||
+          file.status === UploadStatus.PAUSED
+      );
+
+      if (pendingFiles.length > 0) {
+        console.log(`页面刷新后自动上传 ${pendingFiles.length} 个待处理文件`);
+        // 添加短暂延迟确保组件完全加载
+        const timer = setTimeout(() => {
+          handleUploadAll();
+        }, 1000);
+
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [allFiles, autoUpload, isUploading, isNetworkOffline]);
 
   // 渲染批量上传进度信息
   const renderBatchInfo = () => {
@@ -550,7 +624,7 @@ const FileUpload = () => {
                   );
                   // 等待一小段时间再上传，避免UI更新冲突
                   setTimeout(() => {
-                    uploadAll();
+                    handleUploadAll();
                   }, 500);
                 }
               });
@@ -560,7 +634,7 @@ const FileUpload = () => {
             messageApi.info(
               `继续上传 ${totalPending + totalWaiting} 个文件...`
             );
-            uploadAll();
+            handleUploadAll();
           }
         }, 1000);
       }
@@ -590,6 +664,7 @@ const FileUpload = () => {
     uploadAll,
     retryAllFailedFiles,
     setIsRetryingAll,
+    handleUploadAll,
   ]);
 
   return (
@@ -603,65 +678,71 @@ const FileUpload = () => {
           display: "flex",
           alignItems: "center",
           gap: 8,
+          justifyContent: "space-between",
         }}
       >
-        <Button
-          onClick={() => inputRef.current?.click()}
-          disabled={isNetworkOffline}
-          title={isNetworkOffline ? "网络已断开，无法选择文件" : ""}
-        >
-          选择文件
-        </Button>
-        <input
-          type="file"
-          ref={inputRef}
-          onChange={handleFileChange}
-          multiple
-          style={{ display: "none" }}
-        />
-        <Button
-          type="primary"
-          onClick={uploadAll}
-          disabled={
-            allFiles.length === 0 ||
-            isUploading ||
-            isRetryingAll ||
-            isNetworkOffline
-          }
-          title={isNetworkOffline ? "网络已断开，无法上传" : ""}
-        >
-          上传文件
-        </Button>
-
-        <Button
-          type="primary"
-          danger
-          onClick={handleClearList}
-          disabled={allFiles.length === 0 || isUploading || isRetryingAll}
-        >
-          清除列表
-        </Button>
-
-        <Tooltip
-          title={
-            isNetworkOffline
-              ? "网络已断开，无法重试"
-              : errorFilesCount > 0
-              ? `重试 ${errorFilesCount} 个失败文件`
-              : "没有需要重试的文件"
-          }
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Button
+            onClick={() => inputRef.current?.click()}
+            disabled={isNetworkOffline}
+            title={isNetworkOffline ? "网络已断开，无法选择文件" : ""}
+          >
+            选择文件
+          </Button>
+          <input
+            type="file"
+            ref={inputRef}
+            onChange={handleFileChange}
+            multiple
+            style={{ display: "none" }}
+          />
           <Button
             type="primary"
-            onClick={handleRetryAllUpload}
+            onClick={handleUploadAll}
             disabled={
-              !hasErrorFiles || isUploading || isRetryingAll || isNetworkOffline
+              allFiles.length === 0 ||
+              isUploading ||
+              isRetryingAll ||
+              isNetworkOffline
             }
-            loading={isRetryingAll}
+            title={isNetworkOffline ? "网络已断开，无法上传" : ""}
           >
-            {isRetryingAll ? "重试中..." : retryButtonTitle}
+            上传文件
           </Button>
-        </Tooltip>
+
+          <Button
+            type="primary"
+            danger
+            onClick={handleClearList}
+            disabled={allFiles.length === 0 || isUploading || isRetryingAll}
+          >
+            清除列表
+          </Button>
+
+          <Tooltip
+            title={
+              isNetworkOffline
+                ? "网络已断开，无法重试"
+                : errorFilesCount > 0
+                ? `重试 ${errorFilesCount} 个失败文件`
+                : "没有需要重试的文件"
+            }
+          >
+            <Button
+              type="primary"
+              onClick={handleRetryAllUpload}
+              disabled={
+                !hasErrorFiles ||
+                isUploading ||
+                isRetryingAll ||
+                isNetworkOffline
+              }
+              loading={isRetryingAll}
+            >
+              {isRetryingAll ? "重试中..." : retryButtonTitle}
+            </Button>
+          </Tooltip>
+        </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <NetworkStatusBadge
@@ -690,9 +771,31 @@ const FileUpload = () => {
             />
           </Tooltip>
 
-          <Button type="dashed" size="small" onClick={showStorageStats}>
-            存储统计
-          </Button>
+          <Tooltip title={`${autoUpload ? "开启" : "关闭"}自动上传`}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                fontSize: "12px",
+              }}
+            >
+              <span style={{ marginRight: 4 }}>自动上传:</span>
+              <Switch
+                checked={autoUpload}
+                onChange={(checked) => setAutoUpload(checked)}
+                size="small"
+              />
+            </div>
+          </Tooltip>
+
+          <Tooltip title="存储统计">
+            <Button
+              type="text"
+              icon={<BarChartOutlined />}
+              onClick={showStorageStats}
+              size="small"
+            />
+          </Tooltip>
         </div>
 
         {loading && processProgress && (
