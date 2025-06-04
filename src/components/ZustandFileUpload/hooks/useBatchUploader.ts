@@ -163,9 +163,10 @@ export function useBatchUploader() {
         // 更新文件状态为上传中
         file.status = UploadStatus.UPLOADING;
         localforage.setItem(file.id, file);
-
+        console.log("启动Worker处理上传", file);
         // 启动Worker处理上传
         UploadWorker.postMessage({
+          type: "upload",
           fileInfo: file,
           fileBuffer: fileWithBuffer.buffer,
           networkParams: {
@@ -178,7 +179,13 @@ export function useBatchUploader() {
 
         // 监听Worker消息
         const handleWorkerMessage = async (event: MessageEvent) => {
-          const { type, progress, skipped, message } = event.data;
+          const { type, progress, skipped, message, data } = event.data;
+
+          // 处理 Worker 调试消息
+          if (type === "debug") {
+            console.log(`[Worker Debug][${file.fileName}] ${message}`, data);
+            return;
+          }
 
           if (type === "progress") {
             // 更新上传进度
@@ -212,6 +219,9 @@ export function useBatchUploader() {
             // 移除事件监听器
             UploadWorker.removeEventListener("message", handleWorkerMessage);
             resolve(false);
+          } else if (type === "retry") {
+            // 重试上传
+            console.log(`[Worker Retry][${file.fileName}] ${message}`);
           }
         };
 

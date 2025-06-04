@@ -1,3 +1,5 @@
+import SparkMD5 from "spark-md5";
+
 /**
  * @enum {string}
  */
@@ -42,17 +44,11 @@ const UploadStatus = {
  * @property {ArrayBuffer=} buffer
  */
 
-// 实现一个简单的 MD5 哈希函数
+// 使用 spark-md5 计算文件哈希
 function calculateMD5(buffer: ArrayBuffer): string {
-  // 这里简化实现，实际项目中应该使用完整的 MD5 算法
-  // 或者考虑使用 Web Crypto API
-  const array = new Uint8Array(buffer);
-  let hash = 0;
-  for (let i = 0; i < array.length; i++) {
-    hash = (hash << 5) - hash + array[i];
-    hash |= 0; // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(16);
+  const spark = new SparkMD5.ArrayBuffer();
+  spark.append(buffer);
+  return spark.end();
 }
 
 self.onmessage = async (e) => {
