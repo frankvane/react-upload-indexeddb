@@ -1,9 +1,9 @@
-import FileUpload from "./components/FileUpload";
+import ZustandFileUpload from "./components/ZustandFileUpload";
 
 const App = () => {
   return (
     <div style={{ padding: 16 }}>
-      <FileUpload />
+      <ZustandFileUpload />
     </div>
   );
 };
