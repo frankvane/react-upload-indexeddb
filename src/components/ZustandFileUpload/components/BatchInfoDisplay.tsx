@@ -23,8 +23,17 @@ const BatchInfoDisplay: React.FC = () => {
     active,
     countdown,
   } = batchInfo;
-  const percent = total > 0 ? Math.floor((current / total) * 100) : 0;
-  const isCompleted = current === total;
+
+  // 验证批次信息的一致性
+  const validatedCurrent = Math.min(current, total);
+  const validatedTotal = Math.max(total, completed + failed);
+
+  // 计算进度百分比
+  const percent =
+    validatedTotal > 0
+      ? Math.floor((validatedCurrent / validatedTotal) * 100)
+      : 0;
+  const isCompleted = validatedCurrent === validatedTotal;
 
   // 获取待清理的文件数量
   const pendingCount = pendingCleanupCount();
@@ -65,7 +74,7 @@ const BatchInfoDisplay: React.FC = () => {
                     </span>
                   )}
                   <span style={{ marginRight: 16 }}>
-                    批量上传进度: {current}/{total}
+                    批量上传进度: {validatedCurrent}/{validatedTotal}
                   </span>
                   {countdown !== undefined && countdown > 0 && (
                     <span style={{ marginRight: 16 }}>

@@ -179,7 +179,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   },
   setCleanupDelay: (delay) => {
     localStorage.setItem("cleanupDelay", JSON.stringify(delay));
-    set({ cleanupDelay });
+    set({ cleanupDelay: delay });
   },
   setNetworkDisplayMode: (networkDisplayMode) => {
     localStorage.setItem("networkDisplayMode", networkDisplayMode);
@@ -220,7 +220,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   clearBatchInfo: () => {
     set({ batchInfo: null });
   },
-  retryUploadFile: async (_file) => {
+  retryUploadFile: async () => {
     // 实际逻辑将由useBatchUploader钩子提供
     return { success: false, message: "" };
   },
@@ -230,7 +230,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   },
 
   // 文件处理相关方法
-  handleFileChange: async (_e) => {
+  handleFileChange: async () => {
     // 实际逻辑将由useFileProcessor钩子提供
   },
 
@@ -244,7 +244,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
       message.error("删除文件失败");
     }
   },
-  handleRetryUpload: async (_file) => {
+  handleRetryUpload: async () => {
     // 实际逻辑将由useFileOperations钩子提供
   },
   handleClearList: async () => {

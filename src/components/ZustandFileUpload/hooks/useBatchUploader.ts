@@ -99,6 +99,7 @@ export function useBatchUploader() {
 
         // 创建一个简单的批次信息，显示已标记的文件数量
         if (markedCount > 0) {
+          // 重置批次信息，确保统计准确
           setBatchInfo({
             current: markedCount,
             total: markedCount,
@@ -107,6 +108,7 @@ export function useBatchUploader() {
             completed: markedCount,
             failed: 0,
             retried: 0,
+            countdown: cleanupDelay,
           });
         }
 
@@ -287,7 +289,7 @@ export function useBatchUploader() {
           // 即使没有需要清理的文件，也保留batchInfo至少10秒，让用户可以看到完成状态
           console.log(`设置${cleanupDelay}秒后清理的定时器`);
 
-          // 创建一个简单的批次信息，显示已标记的文件数量
+          // 确保批次信息的总数和当前数一致
           setBatchInfo((prev) => {
             if (!prev) {
               return {
@@ -300,7 +302,14 @@ export function useBatchUploader() {
                 retried: 0,
               };
             }
-            return prev;
+            // 修复批次信息，确保current不超过total，且total反映实际处理的文件数
+            const actualTotal = prev.completed + prev.failed;
+            return {
+              ...prev,
+              current: actualTotal,
+              total: actualTotal,
+              countdown: cleanupDelay,
+            };
           });
 
           // 开始倒计时
@@ -483,7 +492,7 @@ export function useBatchUploader() {
                       retried: 0,
                     };
                   }
-                  // 更新现有批次信息
+                  // 更新现有批次信息，但不再增加total，只增加current和completed
                   return {
                     ...prev,
                     current: prev.current + 1,
@@ -874,6 +883,7 @@ export function useBatchUploader() {
 
         // 创建一个简单的批次信息，显示已标记的文件数量
         if (markedCount > 0) {
+          // 重置批次信息，确保统计准确
           setBatchInfo({
             current: markedCount,
             total: markedCount,
@@ -882,6 +892,7 @@ export function useBatchUploader() {
             completed: markedCount,
             failed: 0,
             retried: 0,
+            countdown: cleanupDelay,
           });
         }
 
