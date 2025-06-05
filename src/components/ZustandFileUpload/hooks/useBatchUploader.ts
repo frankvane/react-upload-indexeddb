@@ -1,4 +1,5 @@
 import { UploadFile, UploadStatus } from "../types/upload";
+import { useEffect, useRef } from "react";
 
 import localforage from "localforage";
 import { useUploadStore } from "../store/upload";
@@ -21,9 +22,117 @@ export function useBatchUploader() {
     setBatchInfo,
     setIsUploading,
     getMessageApi,
+    autoCleanup = true, // 默认开启自动清理
+    files,
+    setFiles,
   } = useUploadStore();
 
   const messageApi = getMessageApi();
+
+  // 使用ref来存储已完成上传但尚未从UI中删除的文件ID
+  const completedFilesRef = useRef<string[]>([]);
+  // 使用ref存储清理定时器
+  const cleanupTimerRef = useRef<number | null>(null);
+
+  // 组件初始化时检查并清理已上传的文件
+  useEffect(() => {
+    if (autoCleanup) {
+      // 延迟执行，避免影响应用启动性能
+      const timer = setTimeout(() => {
+        cleanupUploadedFiles();
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [autoCleanup]);
+
+  // 组件卸载时清除定时器
+  useEffect(() => {
+    return () => {
+      if (cleanupTimerRef.current !== null) {
+        clearTimeout(cleanupTimerRef.current);
+      }
+    };
+  }, []);
+
+  // 清理已上传文件的函数
+  const cleanupUploadedFiles = async () => {
+    try {
+      console.log("开始检查并清理已上传的文件...");
+      const keys = await localforage.keys();
+      let cleanedCount = 0;
+
+      for (const key of keys) {
+        const file = await localforage.getItem<UploadFile>(key);
+        if (file) {
+          // 删除已完成上传的文件记录
+          if (
+            file.status === UploadStatus.DONE ||
+            file.status === UploadStatus.INSTANT
+          ) {
+            await localforage.removeItem(key);
+            cleanedCount++;
+            console.log(`已从IndexedDB删除已上传文件: ${file.fileName}`);
+          }
+        }
+      }
+
+      if (cleanedCount > 0) {
+        console.log(
+          `自动清理完成，已从IndexedDB删除 ${cleanedCount} 个已上传的文件记录`
+        );
+      } else {
+        console.log("没有需要从IndexedDB清理的文件");
+      }
+    } catch (error) {
+      console.error("自动清理文件时出错:", error);
+    }
+  };
+
+  // 从UI中清理已完成的文件
+  const cleanupCompletedFilesFromUI = () => {
+    if (completedFilesRef.current.length === 0) return;
+
+    console.log(
+      `开始从UI中清理 ${completedFilesRef.current.length} 个已完成的文件...`
+    );
+
+    // 过滤掉已完成的文件
+    const newFiles = files.filter(
+      (file) => !completedFilesRef.current.includes(file.id)
+    );
+    setFiles(newFiles);
+
+    // 清空已完成文件列表
+    completedFilesRef.current = [];
+    console.log("UI中的已完成文件已清理完毕");
+
+    // 清空定时器引用
+    cleanupTimerRef.current = null;
+  };
+
+  // 添加文件到已完成列表，并在合适的时候触发UI清理
+  const addCompletedFile = (fileId: string) => {
+    // 添加到已完成文件列表
+    if (!completedFilesRef.current.includes(fileId)) {
+      completedFilesRef.current.push(fileId);
+      console.log(
+        `文件 ${fileId} 已添加到待清理列表，当前列表长度: ${completedFilesRef.current.length}`
+      );
+    }
+
+    // 如果已经有定时器在运行，不需要再设置新的定时器
+    if (cleanupTimerRef.current !== null) {
+      return;
+    }
+
+    // 设置5秒后清理UI的定时器
+    cleanupTimerRef.current = window.setTimeout(() => {
+      cleanupCompletedFilesFromUI();
+    }, 5000);
+
+    console.log("已设置5秒后清理UI的定时器");
+  };
 
   // 上传所有文件
   const uploadAll = async (): Promise<boolean> => {
@@ -197,11 +306,20 @@ export function useBatchUploader() {
             // 上传完成
             const updatedFile = await localforage.getItem<UploadFile>(file.id);
             if (updatedFile) {
+              // 文件上传完成，从IndexedDB中完全删除该文件记录
+              await localforage.removeItem(file.id);
+              console.log(
+                `文件 ${file.fileName} 上传完成，已从IndexedDB中删除`
+              );
+
+              // 更新文件状态（仅在内存中，不再存储到IndexedDB）
               updatedFile.status = skipped
                 ? UploadStatus.INSTANT
                 : UploadStatus.DONE;
               updatedFile.progress = 100;
-              await localforage.setItem(file.id, updatedFile);
+
+              // 将文件添加到已完成列表，稍后统一从UI中清理
+              addCompletedFile(file.id);
             }
 
             // 移除事件监听器
@@ -401,11 +519,109 @@ export function useBatchUploader() {
     });
   };
 
+  // 添加删除文件函数
+  async function deleteUploadedFile(fileId: string): Promise<boolean> {
+    try {
+      // 检查文件是否存在
+      const file = await localforage.getItem<UploadFile>(fileId);
+      if (!file) {
+        console.log(`文件 ${fileId} 不存在，无需删除`);
+        return false;
+      }
+
+      // 从IndexedDB中删除文件记录
+      await localforage.removeItem(fileId);
+      console.log(`文件 ${file.fileName} (${fileId}) 已从IndexedDB中删除`);
+
+      // 将文件添加到已完成列表，稍后统一从UI中清理
+      addCompletedFile(fileId);
+
+      return true;
+    } catch (error) {
+      console.error(`删除文件 ${fileId} 时出错:`, error);
+      return false;
+    }
+  }
+
+  // 批量删除所有已上传的文件
+  const deleteAllUploadedFiles = async (): Promise<{
+    success: boolean;
+    deletedCount: number;
+    message: string;
+  }> => {
+    try {
+      // 从IndexedDB获取所有文件
+      const keys = await localforage.keys();
+      let deletedCount = 0;
+
+      for (const key of keys) {
+        const file = await localforage.getItem<UploadFile>(key);
+        if (
+          file &&
+          (file.status === UploadStatus.DONE ||
+            file.status === UploadStatus.INSTANT)
+        ) {
+          // 从IndexedDB中删除
+          await localforage.removeItem(key);
+          deletedCount++;
+          console.log(`已从IndexedDB删除文件: ${file.fileName}`);
+
+          // 将文件ID添加到待清理列表
+          addCompletedFile(file.id);
+        }
+      }
+
+      if (deletedCount > 0) {
+        messageApi.success(`已删除 ${deletedCount} 个已上传的文件`);
+        return {
+          success: true,
+          deletedCount,
+          message: `已删除 ${deletedCount} 个已上传的文件`,
+        };
+      } else {
+        messageApi.info("没有找到已上传的文件");
+        return {
+          success: true,
+          deletedCount: 0,
+          message: "没有找到已上传的文件",
+        };
+      }
+    } catch (error) {
+      const errorMsg = `删除文件时出错: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      console.error("批量删除文件时出错:", error);
+      messageApi.error(errorMsg);
+      return {
+        success: false,
+        deletedCount: 0,
+        message: errorMsg,
+      };
+    }
+  };
+
+  // 立即清理UI中的已完成文件（供外部调用）
+  const forceCleanupUI = () => {
+    // 如果有定时器正在运行，先清除它
+    if (cleanupTimerRef.current !== null) {
+      clearTimeout(cleanupTimerRef.current);
+      cleanupTimerRef.current = null;
+    }
+
+    // 立即执行清理
+    cleanupCompletedFilesFromUI();
+  };
+
   return {
     uploadAll,
     cancelUpload,
     clearBatchInfo,
     retryUploadFile,
     retryAllFailedFiles,
+    deleteUploadedFile,
+    deleteAllUploadedFiles,
+    cleanupUploadedFiles,
+    forceCleanupUI,
+    pendingCleanupCount: () => completedFilesRef.current.length, // 返回待清理文件数量
   };
 }
