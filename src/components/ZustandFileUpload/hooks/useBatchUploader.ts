@@ -156,17 +156,8 @@ export function useBatchUploader() {
       );
     }
 
-    // 如果已经有定时器在运行，不需要再设置新的定时器
-    if (cleanupTimerRef.current !== null) {
-      return;
-    }
-
-    // 设置10秒后清理UI的定时器
-    cleanupTimerRef.current = window.setTimeout(() => {
-      cleanupCompletedFilesFromUI();
-    }, 10000);
-
-    console.log("已设置10秒后清理UI的定时器");
+    // 注意：不在这里设置定时器，而是在所有上传任务完成后统一设置
+    // 这样可以确保只在批量上传全部完成后执行一次延迟清除
   };
 
   // 上传所有文件
