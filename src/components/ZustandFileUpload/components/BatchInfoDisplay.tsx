@@ -13,8 +13,16 @@ const BatchInfoDisplay: React.FC = () => {
 
   if (!batchInfo) return null;
 
-  const { current, total, completed, failed, retried, queued, active } =
-    batchInfo;
+  const {
+    current,
+    total,
+    completed,
+    failed,
+    retried,
+    queued,
+    active,
+    countdown,
+  } = batchInfo;
   const percent = total > 0 ? Math.floor((current / total) * 100) : 0;
   const isCompleted = current === total;
 
@@ -59,6 +67,11 @@ const BatchInfoDisplay: React.FC = () => {
                   <span style={{ marginRight: 16 }}>
                     批量上传进度: {current}/{total}
                   </span>
+                  {countdown !== undefined && countdown > 0 && (
+                    <span style={{ marginRight: 16 }}>
+                      清理倒计时: <Tag color="cyan">{countdown}秒</Tag>
+                    </span>
+                  )}
                 </span>
               </div>
               <div>

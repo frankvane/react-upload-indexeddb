@@ -90,6 +90,7 @@ export interface BatchInfo {
   completed: number; // 已完成数量
   failed: number; // 失败数量
   retried: number; // 重试次数统计
+  countdown?: number; // 倒计时秒数
 }
 
 export interface ProcessProgress {

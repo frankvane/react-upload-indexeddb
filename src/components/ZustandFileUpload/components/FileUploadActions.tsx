@@ -1,4 +1,4 @@
-import { Button, Switch, Tooltip } from "antd";
+import { Button, InputNumber, Switch, Tooltip } from "antd";
 import { NetworkStatusBadge, ProcessProgressDisplay } from "./";
 
 import { BarChartOutlined } from "@ant-design/icons";
@@ -19,6 +19,10 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
     isNetworkOffline,
     autoUpload,
     setAutoUpload,
+    autoCleanup,
+    setAutoCleanup,
+    cleanupDelay,
+    setCleanupDelay,
     networkDisplayMode,
     setNetworkDisplayMode,
     networkType,
@@ -46,6 +50,13 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
   // 打开存储统计抽屉
   const showStorageStats = () => {
     setStorageStatsVisible(true);
+  };
+
+  // 处理清理延迟时间变更
+  const handleCleanupDelayChange = (value: number | null) => {
+    if (value !== null && value >= 1) {
+      setCleanupDelay(value);
+    }
   };
 
   return (
@@ -164,6 +175,43 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
               checked={autoUpload}
               onChange={(checked) => setAutoUpload(checked)}
               size="small"
+            />
+          </div>
+        </Tooltip>
+
+        <Tooltip title={`${autoCleanup ? "开启" : "关闭"}自动清理`}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              fontSize: "12px",
+            }}
+          >
+            <span style={{ marginRight: 4 }}>自动清理:</span>
+            <Switch
+              checked={autoCleanup}
+              onChange={(checked) => setAutoCleanup(checked)}
+              size="small"
+            />
+          </div>
+        </Tooltip>
+
+        <Tooltip title="设置清理延迟时间（秒）">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              fontSize: "12px",
+            }}
+          >
+            <span style={{ marginRight: 4 }}>延迟(秒):</span>
+            <InputNumber
+              min={1}
+              max={60}
+              value={cleanupDelay}
+              onChange={handleCleanupDelayChange}
+              size="small"
+              style={{ width: 60 }}
             />
           </div>
         </Tooltip>

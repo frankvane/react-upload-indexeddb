@@ -38,6 +38,7 @@ interface UploadState {
   // 设置
   autoUpload: boolean;
   autoCleanup: boolean;
+  cleanupDelay: number; // 清理延迟时间（秒）
   networkDisplayMode: "tooltip" | "direct";
   storageStatsVisible: boolean;
 
@@ -64,6 +65,7 @@ interface UploadState {
   setCost: (cost: number | null) => void;
   setAutoUpload: (autoUpload: boolean) => void;
   setAutoCleanup: (autoCleanup: boolean) => void;
+  setCleanupDelay: (delay: number) => void;
   setNetworkDisplayMode: (mode: "tooltip" | "direct") => void;
   setStorageStatsVisible: (visible: boolean) => void;
   setRetryingFiles: (files: Record<string, boolean>) => void;
@@ -119,6 +121,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   isNetworkOffline: false,
   autoUpload: true,
   autoCleanup: true,
+  cleanupDelay: 10, // 清理延迟时间（秒）
   networkDisplayMode: "tooltip",
   storageStatsVisible: false,
 
@@ -174,6 +177,10 @@ export const useUploadStore = create<UploadState>((set, get) => ({
     localStorage.setItem("autoCleanup", JSON.stringify(autoCleanup));
     set({ autoCleanup });
   },
+  setCleanupDelay: (delay) => {
+    localStorage.setItem("cleanupDelay", JSON.stringify(delay));
+    set({ cleanupDelay });
+  },
   setNetworkDisplayMode: (networkDisplayMode) => {
     localStorage.setItem("networkDisplayMode", networkDisplayMode);
     set({ networkDisplayMode });
@@ -187,10 +194,13 @@ export const useUploadStore = create<UploadState>((set, get) => ({
     const autoCleanup = JSON.parse(
       localStorage.getItem("autoCleanup") || "true"
     );
+    const cleanupDelay = JSON.parse(
+      localStorage.getItem("cleanupDelay") || "10"
+    );
     const networkDisplayMode =
       (localStorage.getItem("networkDisplayMode") as "tooltip" | "direct") ||
       "tooltip";
-    set({ autoUpload, autoCleanup, networkDisplayMode });
+    set({ autoUpload, autoCleanup, cleanupDelay, networkDisplayMode });
   },
 
   // 获取message API
