@@ -66,7 +66,16 @@ const BatchInfoDisplay: React.FC = () => {
                   <Button
                     size="small"
                     style={{ marginRight: 8 }}
-                    onClick={forceCleanupUI}
+                    onClick={() => {
+                      // 使用异步方式调用forceCleanupUI
+                      forceCleanupUI()
+                        .then(() => {
+                          console.log("清除记录完成");
+                        })
+                        .catch((err) => {
+                          console.error("清除记录出错:", err);
+                        });
+                    }}
                   >
                     清除记录
                   </Button>

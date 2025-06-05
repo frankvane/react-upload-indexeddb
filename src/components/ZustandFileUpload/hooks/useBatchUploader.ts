@@ -17,6 +17,7 @@ export function useBatchUploader() {
     fileConcurrency,
     chunkConcurrency,
     chunkSize,
+    maxRetries,
     refreshFiles,
     setProgressMap,
     setBatchInfo,
@@ -94,10 +95,34 @@ export function useBatchUploader() {
         }
 
         cleanupTimerRef.current = window.setTimeout(async () => {
+          // 在清理前再次检查文件状态，确保不会清除错误文件
+          const fileIdsToRemove: string[] = [];
+
+          for (const fileId of [...completedFilesRef.current]) {
+            const file = await localforage.getItem<UploadFile>(fileId);
+            if (file && file.status === UploadStatus.ERROR) {
+              // 从待清理列表中移除错误文件
+              fileIdsToRemove.push(fileId);
+              console.log(`延时清理前移除错误文件: ${file.fileName}`);
+            }
+          }
+
+          // 从待清理列表中移除错误文件
+          if (fileIdsToRemove.length > 0) {
+            completedFilesRef.current = completedFilesRef.current.filter(
+              (id) => !fileIdsToRemove.includes(id)
+            );
+            console.log(
+              `已从待清理列表中移除 ${fileIdsToRemove.length} 个错误文件`
+            );
+          }
+
           // 先从IndexedDB中删除已完成的文件
           await cleanupCompletedFilesFromIndexedDB();
           // 然后清理UI
           cleanupCompletedFilesFromUI();
+          // 再次刷新文件列表，确保UI和数据库同步
+          await refreshFiles();
         }, 10000);
       } else {
         console.log("没有需要清理的文件");
@@ -117,16 +142,21 @@ export function useBatchUploader() {
 
     // 6. 过滤掉已完成的文件，但保留需要重试的文件
     const newFiles = files.filter((file) => {
-      // 如果文件在待清理列表中且不是错误状态，则移除
+      // 如果文件在待清理列表中，需要检查其状态
       if (completedFilesRef.current.includes(file.id)) {
-        // 检查文件是否为错误状态，只保留错误状态的文件
-        const keepFile = file.status === UploadStatus.ERROR;
-        if (!keepFile) {
-          console.log(`从UI中移除文件: ${file.fileName}, 状态: ${file.status}`);
-        } else {
+        // 错误状态的文件不应该在待清理列表中，但为了安全起见，我们再次检查
+        // 只有当文件不是错误状态时，才从UI中移除
+        if (file.status === UploadStatus.ERROR) {
           console.log(`保留错误文件: ${file.fileName}`);
+          // 从待清理列表中移除错误文件ID，确保它不会被后续操作删除
+          completedFilesRef.current = completedFilesRef.current.filter(
+            (id) => id !== file.id
+          );
+          return true; // 保留错误文件
+        } else {
+          console.log(`从UI中移除文件: ${file.fileName}, 状态: ${file.status}`);
+          return false; // 移除非错误状态的文件
         }
-        return keepFile;
       }
       return true; // 保留其他文件
     });
@@ -136,9 +166,10 @@ export function useBatchUploader() {
       `清理前文件数量: ${files.length}, 清理后文件数量: ${newFiles.length}`
     );
 
+    // 更新UI中的文件列表
     setFiles(newFiles);
 
-    // 清空已完成文件列表
+    // 清空已完成文件列表（错误文件已经在上面的过滤中被移除）
     completedFilesRef.current = [];
     console.log("UI中的已完成文件已清理完毕，错误文件已保留");
 
@@ -148,13 +179,44 @@ export function useBatchUploader() {
 
   // 添加文件到已完成列表，并在合适的时候触发UI清理
   const addCompletedFile = (fileId: string) => {
-    // 添加到已完成文件列表
-    if (!completedFilesRef.current.includes(fileId)) {
-      completedFilesRef.current.push(fileId);
-      console.log(
-        `文件 ${fileId} 已添加到待清理列表，当前列表长度: ${completedFilesRef.current.length}`
-      );
-    }
+    // 先检查文件状态，只有成功上传的文件才添加到待清理列表
+    localforage
+      .getItem<UploadFile>(fileId)
+      .then((file) => {
+        if (!file) return; // 文件不存在
+
+        // 错误状态的文件不添加到待清理列表
+        if (file.status === UploadStatus.ERROR) {
+          console.log(
+            `文件 ${fileId} (${file.fileName}) 处于错误状态，不添加到待清理列表`
+          );
+          // 如果错误文件已经在待清理列表中，将其移除
+          if (completedFilesRef.current.includes(fileId)) {
+            completedFilesRef.current = completedFilesRef.current.filter(
+              (id) => id !== fileId
+            );
+            console.log(`已从待清理列表中移除错误文件: ${file.fileName}`);
+          }
+          return;
+        }
+
+        // 只有DONE和INSTANT状态的文件才添加到待清理列表
+        if (
+          file.status === UploadStatus.DONE ||
+          file.status === UploadStatus.INSTANT
+        ) {
+          // 添加到已完成文件列表
+          if (!completedFilesRef.current.includes(fileId)) {
+            completedFilesRef.current.push(fileId);
+            console.log(
+              `文件 ${fileId} (${file.fileName}) 已添加到待清理列表，当前列表长度: ${completedFilesRef.current.length}`
+            );
+          }
+        }
+      })
+      .catch((err) => {
+        console.error(`检查文件状态出错:`, err);
+      });
 
     // 注意：不在这里设置定时器，而是在所有上传任务完成后统一设置
     // 这样可以确保只在批量上传全部完成后执行一次延迟清除
@@ -229,17 +291,59 @@ export function useBatchUploader() {
           console.log(
             "所有文件上传完成，10秒后将清除UI中已上传文件的状态和IndexedDB中的记录"
           );
-          if (completedFilesRef.current.length > 0) {
+
+          // 确保有已完成的文件需要清理
+          const completedFiles = completedFilesRef.current.length;
+          console.log(`当前有 ${completedFiles} 个文件待清理`);
+
+          if (completedFiles > 0) {
+            console.log("设置10秒后清理的定时器");
+
+            // 清除可能存在的旧定时器
             if (cleanupTimerRef.current !== null) {
               clearTimeout(cleanupTimerRef.current);
+              cleanupTimerRef.current = null;
             }
 
+            // 设置新的定时器
             cleanupTimerRef.current = window.setTimeout(async () => {
+              console.log("执行延时清理...");
+
+              // 在清理前再次检查文件状态，确保不会清除错误文件
+              const fileIdsToRemove: string[] = [];
+
+              for (const fileId of [...completedFilesRef.current]) {
+                const file = await localforage.getItem<UploadFile>(fileId);
+                if (file && file.status === UploadStatus.ERROR) {
+                  // 从待清理列表中移除错误文件
+                  fileIdsToRemove.push(fileId);
+                  console.log(`延时清理前移除错误文件: ${file.fileName}`);
+                }
+              }
+
+              // 从待清理列表中移除错误文件
+              if (fileIdsToRemove.length > 0) {
+                completedFilesRef.current = completedFilesRef.current.filter(
+                  (id) => !fileIdsToRemove.includes(id)
+                );
+                console.log(
+                  `已从待清理列表中移除 ${fileIdsToRemove.length} 个错误文件`
+                );
+              }
+
               // 先从IndexedDB中删除已完成的文件
               await cleanupCompletedFilesFromIndexedDB();
               // 然后清理UI
               cleanupCompletedFilesFromUI();
+              // 再次刷新文件列表，确保UI和数据库同步
+              await refreshFiles();
             }, 10000);
+
+            console.log(
+              `定时器已设置，将在10秒后清理 ${completedFiles} 个文件`
+            );
+          } else {
+            console.log("没有需要清理的文件");
           }
 
           resolve(true);
@@ -346,6 +450,7 @@ export function useBatchUploader() {
             fileConcurrency,
             chunkConcurrency,
             chunkSize,
+            maxRetries,
           },
         });
 
@@ -532,6 +637,59 @@ export function useBatchUploader() {
         if (currentIndex >= failedFiles.length && activeUploads === 0) {
           setIsUploading(false);
           await refreshFiles();
+
+          // 检查是否有已完成的文件需要清理
+          const completedFiles = completedFilesRef.current.length;
+          console.log(`重试完成，当前有 ${completedFiles} 个文件待清理`);
+
+          if (completedFiles > 0) {
+            console.log("设置10秒后清理的定时器");
+
+            // 清除可能存在的旧定时器
+            if (cleanupTimerRef.current !== null) {
+              clearTimeout(cleanupTimerRef.current);
+              cleanupTimerRef.current = null;
+            }
+
+            // 设置新的定时器
+            cleanupTimerRef.current = window.setTimeout(async () => {
+              console.log("执行延时清理...");
+
+              // 在清理前再次检查文件状态，确保不会清除错误文件
+              const fileIdsToRemove: string[] = [];
+
+              for (const fileId of [...completedFilesRef.current]) {
+                const file = await localforage.getItem<UploadFile>(fileId);
+                if (file && file.status === UploadStatus.ERROR) {
+                  // 从待清理列表中移除错误文件
+                  fileIdsToRemove.push(fileId);
+                  console.log(`延时清理前移除错误文件: ${file.fileName}`);
+                }
+              }
+
+              // 从待清理列表中移除错误文件
+              if (fileIdsToRemove.length > 0) {
+                completedFilesRef.current = completedFilesRef.current.filter(
+                  (id) => !fileIdsToRemove.includes(id)
+                );
+                console.log(
+                  `已从待清理列表中移除 ${fileIdsToRemove.length} 个错误文件`
+                );
+              }
+
+              // 先从IndexedDB中删除已完成的文件
+              await cleanupCompletedFilesFromIndexedDB();
+              // 然后清理UI
+              cleanupCompletedFilesFromUI();
+              // 再次刷新文件列表，确保UI和数据库同步
+              await refreshFiles();
+            }, 10000);
+
+            console.log(
+              `定时器已设置，将在10秒后清理 ${completedFiles} 个文件`
+            );
+          }
+
           resolve({
             success: failedCount === 0,
             message: `重试完成: ${successCount}个成功, ${failedCount}个失败`,
@@ -610,10 +768,16 @@ export function useBatchUploader() {
       let deletedCount = 0;
       let instantCount = 0;
       let doneCount = 0;
+      let skippedCount = 0;
+      let errorCount = 0;
+
+      // 存储需要从待清理列表中移除的错误文件ID
+      const errorFileIds: string[] = [];
 
       for (const fileId of completedFileIds) {
         const file = await localforage.getItem<UploadFile>(fileId);
         if (file) {
+          // 只删除成功上传的文件，保留错误状态的文件
           if (file.status === UploadStatus.DONE) {
             await localforage.removeItem(fileId);
             deletedCount++;
@@ -626,14 +790,31 @@ export function useBatchUploader() {
             console.log(
               `已从IndexedDB删除已上传文件(INSTANT): ${file.fileName}`
             );
+          } else if (file.status === UploadStatus.ERROR) {
+            // 错误状态的文件不删除，需要保留以便重试
+            skippedCount++;
+            errorCount++;
+            errorFileIds.push(fileId); // 记录错误文件ID，稍后从待清理列表中移除
+            console.log(`保留错误状态文件(ERROR): ${file.fileName}，以便重试`);
           }
         }
       }
 
-      if (deletedCount > 0) {
-        console.log(
-          `已从IndexedDB中删除 ${deletedCount} 个已上传的文件 (DONE: ${doneCount}, INSTANT: ${instantCount})`
+      // 从待清理列表中移除错误文件ID
+      if (errorFileIds.length > 0) {
+        completedFilesRef.current = completedFilesRef.current.filter(
+          (id) => !errorFileIds.includes(id)
         );
+        console.log(`已从待清理列表中移除 ${errorFileIds.length} 个错误文件ID`);
+      }
+
+      if (deletedCount > 0 || skippedCount > 0) {
+        console.log(
+          `已从IndexedDB中删除 ${deletedCount} 个已上传的文件 (DONE: ${doneCount}, INSTANT: ${instantCount}), 保留 ${errorCount} 个错误文件`
+        );
+
+        // 确保不会再次加载已删除的文件
+        await refreshFiles();
       }
     } catch (error) {
       console.error("从IndexedDB删除已完成文件时出错:", error);
@@ -659,6 +840,12 @@ export function useBatchUploader() {
         file.status = UploadStatus.ERROR;
         file.errorMessage = "用户手动取消";
         await localforage.setItem(fileId, file);
+
+        // 取消后的文件处于错误状态，不添加到待清理列表
+        console.log(
+          `文件 ${file.fileName} 已标记为错误状态，不添加到待清理列表`
+        );
+        return true;
       }
       // 如果文件已上传完成，将其添加到待清理列表
       else if (
@@ -667,10 +854,18 @@ export function useBatchUploader() {
       ) {
         // 不立即删除，只添加到待清理列表
         console.log(`文件 ${file.fileName} 已标记为待清理`);
-      }
 
-      // 将文件添加到待清理列表，稍后从UI中移除
-      addCompletedFile(fileId);
+        // 将文件添加到待清理列表，稍后从UI中移除
+        addCompletedFile(fileId);
+      }
+      // 如果是错误状态的文件，直接从UI中移除，但保留在IndexedDB中以便重试
+      else if (file.status === UploadStatus.ERROR) {
+        console.log(
+          `文件 ${file.fileName} 处于错误状态，从UI中移除但保留在数据库中以便重试`
+        );
+        // 不添加到待清理列表，而是直接从UI中移除
+        setFiles(files.filter((f) => f.id !== fileId));
+      }
 
       return true;
     } catch (error) {
@@ -689,25 +884,37 @@ export function useBatchUploader() {
       // 从IndexedDB获取所有文件
       const keys = await localforage.keys();
       let markedCount = 0;
+      let errorCount = 0;
 
       for (const key of keys) {
         const file = await localforage.getItem<UploadFile>(key);
-        if (
-          file &&
-          (file.status === UploadStatus.DONE ||
-            file.status === UploadStatus.INSTANT)
-        ) {
-          // 不立即从IndexedDB中删除，只添加到待清理列表
-          markedCount++;
-          console.log(`文件 ${file.fileName} 已标记为待清理`);
+        if (file) {
+          // 只处理成功上传的文件，跳过错误状态的文件
+          if (
+            file.status === UploadStatus.DONE ||
+            file.status === UploadStatus.INSTANT
+          ) {
+            // 不立即从IndexedDB中删除，只添加到待清理列表
+            markedCount++;
+            console.log(`文件 ${file.fileName} 已标记为待清理`);
 
-          // 将文件ID添加到待清理列表
-          addCompletedFile(file.id);
+            // 将文件ID添加到待清理列表
+            addCompletedFile(file.id);
+          } else if (file.status === UploadStatus.ERROR) {
+            // 记录错误文件数量，但不处理
+            errorCount++;
+            console.log(`文件 ${file.fileName} 处于错误状态，保留以便重试`);
+          }
         }
       }
 
+      let message = "";
       if (markedCount > 0) {
-        messageApi.success(`已标记 ${markedCount} 个已上传的文件待清理`);
+        message = `已标记 ${markedCount} 个已上传的文件待清理`;
+        if (errorCount > 0) {
+          message += `，保留 ${errorCount} 个错误文件以便重试`;
+        }
+        messageApi.success(message);
 
         // 设置10秒后清理的定时器
         if (cleanupTimerRef.current !== null) {
@@ -715,23 +922,52 @@ export function useBatchUploader() {
         }
 
         cleanupTimerRef.current = window.setTimeout(async () => {
+          // 在清理前再次检查文件状态，确保不会清除错误文件
+          const fileIdsToRemove: string[] = [];
+
+          for (const fileId of [...completedFilesRef.current]) {
+            const file = await localforage.getItem<UploadFile>(fileId);
+            if (file && file.status === UploadStatus.ERROR) {
+              // 从待清理列表中移除错误文件
+              fileIdsToRemove.push(fileId);
+              console.log(`延时清理前移除错误文件: ${file.fileName}`);
+            }
+          }
+
+          // 从待清理列表中移除错误文件
+          if (fileIdsToRemove.length > 0) {
+            completedFilesRef.current = completedFilesRef.current.filter(
+              (id) => !fileIdsToRemove.includes(id)
+            );
+            console.log(
+              `已从待清理列表中移除 ${fileIdsToRemove.length} 个错误文件`
+            );
+          }
+
           // 先从IndexedDB中删除已完成的文件
           await cleanupCompletedFilesFromIndexedDB();
           // 然后清理UI
           cleanupCompletedFilesFromUI();
+          // 再次刷新文件列表，确保UI和数据库同步
+          await refreshFiles();
         }, 10000);
 
         return {
           success: true,
           deletedCount: markedCount,
-          message: `已标记 ${markedCount} 个已上传的文件待清理`,
+          message: message,
         };
       } else {
-        messageApi.info("没有找到已上传的文件");
+        if (errorCount > 0) {
+          message = `没有找到已上传的文件，保留 ${errorCount} 个错误文件以便重试`;
+        } else {
+          message = "没有找到已上传的文件";
+        }
+        messageApi.info(message);
         return {
           success: true,
           deletedCount: 0,
-          message: "没有找到已上传的文件",
+          message: message,
         };
       }
     } catch (error) {
@@ -749,15 +985,25 @@ export function useBatchUploader() {
   };
 
   // 立即清理UI中的已完成文件（供外部调用）
-  const forceCleanupUI = () => {
+  const forceCleanupUI = async () => {
     // 如果有定时器正在运行，先清除它
     if (cleanupTimerRef.current !== null) {
       clearTimeout(cleanupTimerRef.current);
       cleanupTimerRef.current = null;
     }
 
-    // 立即执行清理
+    console.log("执行强制清理...");
+
+    // 先从IndexedDB中删除已完成的文件
+    await cleanupCompletedFilesFromIndexedDB();
+
+    // 然后清理UI
     cleanupCompletedFilesFromUI();
+
+    // 再次刷新文件列表，确保UI和数据库同步
+    await refreshFiles();
+
+    console.log("强制清理完成");
   };
 
   return {

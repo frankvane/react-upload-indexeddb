@@ -32,6 +32,7 @@ interface UploadState {
   fileConcurrency: number;
   chunkConcurrency: number;
   chunkSize: number;
+  maxRetries: number; // 最大重试次数
   isNetworkOffline: boolean;
 
   // 设置
@@ -114,6 +115,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   fileConcurrency: 2,
   chunkConcurrency: 2,
   chunkSize: 1024 * 1024,
+  maxRetries: 3, // 默认最大重试3次
   isNetworkOffline: false,
   autoUpload: true,
   autoCleanup: true,

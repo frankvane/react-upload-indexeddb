@@ -35,7 +35,7 @@ async function fetchWithRetry(
     retryInterval?: number;
   } = {}
 ): Promise<Response> {
-  debug(`开始请求: ${url}`, { method: options.method });
+  debug(`开始请求: ${url}`, { method: options.method, maxRetries });
 
   return new Promise<Response>((resolve, reject) => {
     // 自定义重试逻辑，不使用async库
@@ -45,12 +45,13 @@ async function fetchWithRetry(
       // 如果超过最大重试次数，则拒绝
       if (attempts >= maxRetries) {
         const error = new Error(`已达到最大重试次数: ${maxRetries}`);
-        debug(`请求最终失败: ${url}`, { error: error.message });
+        debug(`请求最终失败: ${url}`, { error: error.message, maxRetries });
         self.postMessage({
           type: "retry",
           error: error.message,
           attemptNumber: maxRetries,
           retriesLeft: 0,
+          message: `已达到最大重试次数(${maxRetries}次)，上传失败`,
         });
         reject(error);
         return;
