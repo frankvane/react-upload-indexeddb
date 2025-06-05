@@ -19,6 +19,7 @@ interface UploadState {
 
   // 处理进度
   processProgress: ProcessProgress | null;
+  fileTimings: Record<string, number>; // 每个文件的处理时间（毫秒）
 
   // 上传状态
   isUploading: boolean;
@@ -51,6 +52,11 @@ interface UploadState {
     batchInfo: BatchInfo | null | ((prev: BatchInfo | null) => BatchInfo | null)
   ) => void;
   setProcessProgress: (progress: ProcessProgress | null) => void;
+  setFileTimings: (
+    timings:
+      | Record<string, number>
+      | ((prev: Record<string, number>) => Record<string, number>)
+  ) => void;
   setIsUploading: (isUploading: boolean) => void;
   setIsRetryingAll: (isRetryingAll: boolean) => void;
   setLoading: (loading: boolean) => void;
@@ -99,6 +105,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   retryingFiles: {},
   batchInfo: null,
   processProgress: null,
+  fileTimings: {},
   isUploading: false,
   isRetryingAll: false,
   loading: false,
@@ -146,6 +153,13 @@ export const useUploadStore = create<UploadState>((set, get) => ({
           : batchInfo,
     })),
   setProcessProgress: (processProgress) => set({ processProgress }),
+  setFileTimings: (fileTimings) =>
+    set((state) => ({
+      fileTimings:
+        typeof fileTimings === "function"
+          ? fileTimings(state.fileTimings)
+          : fileTimings,
+    })),
   setIsUploading: (isUploading) => set({ isUploading }),
   setIsRetryingAll: (isRetryingAll) => set({ isRetryingAll }),
   setLoading: (loading) => set({ loading }),

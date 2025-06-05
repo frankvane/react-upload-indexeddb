@@ -1,4 +1,5 @@
 import localforage from "localforage";
+import { useRef } from "react";
 import { useUploadStore } from "../store/upload";
 
 // 导入Worker
@@ -19,11 +20,15 @@ export function useFileProcessor() {
     setProcessProgress,
     setLoading,
     setCost,
+    setFileTimings,
     uploadAll,
     getMessageApi,
   } = useUploadStore();
 
   const messageApi = getMessageApi();
+
+  // 使用ref来存储文件处理开始时间
+  const fileStartTimesRef = useRef<Record<string, number>>({});
 
   // 处理文件选择
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -38,8 +43,17 @@ export function useFileProcessor() {
       return;
     }
 
+    // 重置文件处理时间记录
+    fileStartTimesRef.current = {};
+    setFileTimings({});
+
     setLoading(true);
     const startTime = Date.now();
+
+    // 记录每个文件的处理开始时间
+    files.forEach((file) => {
+      fileStartTimesRef.current[file.name] = Date.now();
+    });
 
     // 启动Worker处理文件
     FilePrepareWorker.postMessage({
@@ -63,6 +77,7 @@ export function useFileProcessor() {
         oversized,
         uploadFiles,
         stats,
+        fileDetails,
       } = event.data;
 
       if (type === "progress") {
@@ -74,6 +89,21 @@ export function useFileProcessor() {
           failed,
           oversized,
         });
+
+        // 如果有文件详情，记录处理时间
+        if (fileDetails && fileDetails.fileName) {
+          const fileName = fileDetails.fileName;
+          const startTime = fileStartTimesRef.current[fileName] || 0;
+          if (startTime > 0) {
+            const processingTime = Date.now() - startTime;
+            setFileTimings((prev: Record<string, number>) => ({
+              ...prev,
+              [fileName]: processingTime,
+            }));
+            // 清除已处理文件的开始时间记录
+            delete fileStartTimesRef.current[fileName];
+          }
+        }
       } else if (type === "complete") {
         // 处理完成
         setProcessProgress(null);
@@ -87,6 +117,14 @@ export function useFileProcessor() {
         // 保存文件到IndexedDB
         for (const file of uploadFiles) {
           await localforage.setItem(file.id, file);
+
+          // 确保所有文件都有处理时间记录
+          if (!fileStartTimesRef.current[file.fileName]) {
+            setFileTimings((prev: Record<string, number>) => ({
+              ...prev,
+              [file.fileName]: Math.round(cost / uploadFiles.length), // 估算时间
+            }));
+          }
         }
 
         // 刷新文件列表

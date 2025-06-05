@@ -1,7 +1,7 @@
 import { Button, Switch, Tooltip } from "antd";
+import { NetworkStatusBadge, ProcessProgressDisplay } from "./";
 
 import { BarChartOutlined } from "@ant-design/icons";
-import { NetworkStatusBadge } from "./";
 import React from "react";
 import { useUploadStore } from "../store/upload";
 
@@ -29,6 +29,9 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
     handleClearList,
     handleRetryAllUpload,
     setStorageStatsVisible,
+    loading,
+    cost,
+    processProgress,
   } = useUploadStore();
 
   // 计算错误文件数量
@@ -110,6 +113,15 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
             {isRetryingAll ? "重试中..." : retryButtonTitle}
           </Button>
         </Tooltip>
+
+        {/* 显示文件处理进度 */}
+        {(loading || processProgress || cost !== null) && (
+          <ProcessProgressDisplay
+            loading={loading}
+            processProgress={processProgress}
+            cost={cost}
+          />
+        )}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>

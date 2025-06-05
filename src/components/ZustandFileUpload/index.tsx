@@ -91,6 +91,7 @@ const ZustandFileUpload: React.FC = () => {
       />
 
       <FileUploadActions triggerFileInput={triggerFileInput} />
+
       <BatchInfoDisplay />
       <FileTable />
       <StorageStatsDrawer />

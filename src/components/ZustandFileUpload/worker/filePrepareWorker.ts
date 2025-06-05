@@ -71,7 +71,7 @@ self.onmessage = async (e) => {
       const chunkSize = CHUNK_SIZE;
       const chunkCount = Math.ceil(file.size / chunkSize);
 
-      // 发送进度更新
+      // 发送进度更新，包含当前处理的文件信息
       processed++;
       self.postMessage({
         type: "progress",
@@ -80,6 +80,13 @@ self.onmessage = async (e) => {
         success,
         failed,
         oversized,
+        fileDetails: {
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+          index: i + 1,
+          total: files.length,
+        },
       });
 
       const arrayBuffer = await file.arrayBuffer();
@@ -109,6 +116,28 @@ self.onmessage = async (e) => {
     } catch (error) {
       console.error("Error processing file:", error);
       failed++;
+
+      // 发送错误文件的信息
+      if (files[i]) {
+        self.postMessage({
+          type: "progress",
+          processed,
+          total,
+          success,
+          failed,
+          oversized,
+          fileDetails: {
+            fileName: files[i].name,
+            fileSize: files[i].size,
+            fileType: files[i].type,
+            index: i + 1,
+            total: files.length,
+            error: true,
+            errorMessage:
+              error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
     }
   }
 
