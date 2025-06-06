@@ -1,31 +1,16 @@
 /**
- * API客户端类型定义文件
+ * API客户端类型声明
  */
 
-export interface FileListParams {
-  page?: number;
-  limit?: number;
-  search?: string;
-  category_id?: string;
-}
-
-export interface FileItem {
+export interface FileInfo {
   id: string;
   fileName: string;
   fileSize: number;
   fileType: string;
   fileExt?: string;
-  url?: string;
   thumbnailUrl?: string | null;
   md5?: string;
-  createdAt: string;
-}
-
-export interface FileListResponse {
-  files: FileItem[];
-  total: number;
-  page: number;
-  limit: number;
+  createdAt?: string | number;
 }
 
 export interface DownloadInfo {
@@ -33,8 +18,8 @@ export interface DownloadInfo {
   fileName: string;
   fileSize: number;
   fileType: string;
-  fileExt?: string;
-  md5?: string;
+  fileExt: string;
+  md5: string;
   lastModified: string;
   supportsRanges: boolean;
   recommendedChunkSize: number;
@@ -46,27 +31,13 @@ export interface DownloadInfo {
   };
 }
 
-export interface DownloadFileItem {
-  id: string;
-  url: string;
-  fileName: string;
-  fileSize: number;
-  mimeType?: string;
-  metadata?: {
-    fileExt?: string;
-    thumbnailUrl?: string | null;
-    md5?: string;
-    createdAt?: string;
-  };
-}
-
-export interface DownloadPreparation {
+export interface PreparedDownloadInfo {
   id: string;
   fileName: string;
   fileSize: number;
   fileType: string;
-  md5?: string;
-  lastModified?: string;
+  md5: string;
+  lastModified: string;
   resumeSupported: boolean;
   chunkSize: number;
   totalChunks: number;
@@ -82,19 +53,82 @@ export interface DownloadPreparation {
   }>;
 }
 
-declare const apiClient: {
-  getFileList: (params?: FileListParams) => Promise<FileListResponse>;
-  getFileInfo: (fileId: string) => Promise<FileItem>;
-  getDownloadInfo: (fileId: string) => Promise<DownloadInfo>;
-  createDownloadUrl: (fileId: string) => string;
-  createChunkDownloadUrl: (
-    fileId: string,
-    index: number,
-    chunkSize: number
-  ) => string;
-  getDownloadFiles: (params?: FileListParams) => Promise<DownloadFileItem[]>;
-  checkResumeSupport: (fileId: string) => Promise<boolean>;
-  prepareDownload: (fileId: string) => Promise<DownloadPreparation>;
+export interface FileListResponse {
+  total: number;
+  page: number;
+  limit: number;
+  files: FileInfo[];
+}
+
+/**
+ * 获取可下载文件列表
+ */
+export function getFileList(
+  params?: Record<string, any>
+): Promise<FileListResponse>;
+
+/**
+ * 获取文件信息
+ */
+export function getFileInfo(fileId: string): Promise<FileInfo>;
+
+/**
+ * 获取下载信息（支持断点续传）
+ */
+export function getDownloadInfo(fileId: string): Promise<DownloadInfo>;
+
+/**
+ * 创建下载URL
+ */
+export function createDownloadUrl(fileId: string): string;
+
+/**
+ * 创建分片下载URL
+ */
+export function createChunkDownloadUrl(
+  fileId: string,
+  index: number,
+  chunkSize: number
+): string;
+
+/**
+ * 获取下载文件列表（格式化为ZustandFileDownload组件使用的格式）
+ */
+export function getDownloadFiles(params?: Record<string, any>): Promise<
+  Array<{
+    id: string;
+    url: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    metadata: {
+      fileExt?: string;
+      thumbnailUrl?: string | null;
+      md5?: string;
+      createdAt?: string | number;
+    };
+  }>
+>;
+
+/**
+ * 检查文件是否支持断点续传
+ */
+export function checkResumeSupport(fileId: string): Promise<boolean>;
+
+/**
+ * 获取文件下载预处理信息
+ */
+export function prepareDownload(fileId: string): Promise<PreparedDownloadInfo>;
+
+declare const api: {
+  getFileList: typeof getFileList;
+  getFileInfo: typeof getFileInfo;
+  getDownloadInfo: typeof getDownloadInfo;
+  createDownloadUrl: typeof createDownloadUrl;
+  createChunkDownloadUrl: typeof createChunkDownloadUrl;
+  getDownloadFiles: typeof getDownloadFiles;
+  checkResumeSupport: typeof checkResumeSupport;
+  prepareDownload: typeof prepareDownload;
 };
 
-export default apiClient;
+export default api;
