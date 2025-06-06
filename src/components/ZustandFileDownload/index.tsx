@@ -3,21 +3,20 @@ import * as apiClient from "./api.client.js";
 import {
   Button,
   Card,
-  Divider,
   List,
-  Modal,
   Progress,
-  Radio,
   Space,
   Tag,
-  Tooltip,
   Typography,
   message,
 } from "antd";
 import {
+  CheckCircleOutlined,
   DeleteOutlined,
   DownloadOutlined,
   FileOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
 import React, { useCallback, useEffect, useState } from "react";
@@ -47,13 +46,6 @@ const completeFileStore = localforage.createInstance({
   description: "用于存储合并后的完整文件",
 });
 
-// 存储模式
-enum StorageMode {
-  CHUNKS_ONLY = "CHUNKS_ONLY", // 只存储分片，需要时合并
-  COMPLETE_ONLY = "COMPLETE_ONLY", // 只存储完整文件，不保留分片
-  BOTH = "BOTH", // 同时存储分片和完整文件
-}
-
 // 下载状态枚举
 const DownloadStatus = {
   IDLE: "idle",
@@ -66,6 +58,9 @@ const DownloadStatus = {
 
 type DownloadStatusType = (typeof DownloadStatus)[keyof typeof DownloadStatus];
 
+// 文件分片大小（5MB）
+const CHUNK_SIZE = 5 * 1024 * 1024;
+
 // 扩展文件信息接口，包含下载状态
 interface DownloadFile {
   id: string;
@@ -73,23 +68,17 @@ interface DownloadFile {
   fileSize: number;
   mimeType: string;
   fileType?: string;
-  url: string;
-  chunks?: number;
-  totalChunks?: number;
+  totalChunks: number;
   chunkSize?: number;
   downloadedChunks?: number;
-  progress: number;
+  progress?: number;
   status: DownloadStatusType;
-  error?: string;
-  createdAt: number;
   completedAt?: number;
-  metadata?: Record<string, any>;
+  error?: string;
 }
 
 /**
- * 文件下载测试组件
- *
- * 用于测试大文件通过IndexedDB和localforage存储的可行性
+ * 文件下载测试组件 - 支持暂停和续传的简化版本
  */
 const ZustandFileDownload: React.FC = () => {
   const [messageApi, contextHolder] = message.useMessage();
@@ -101,9 +90,9 @@ const ZustandFileDownload: React.FC = () => {
     quota: number;
     percent: number;
   }>({ usage: 0, quota: 0, percent: 0 });
-  const [storageMode, setStorageMode] = useState<StorageMode>(
-    StorageMode.COMPLETE_ONLY
-  );
+  const [abortControllers, setAbortControllers] = useState<
+    Record<string, AbortController>
+  >({});
 
   // 获取文件列表
   const fetchFileList = useCallback(async () => {
@@ -114,11 +103,10 @@ const ZustandFileDownload: React.FC = () => {
       setFiles(
         downloadFiles.map((file: any) => ({
           ...file,
-          chunks: Math.ceil(file.fileSize / (5 * 1024 * 1024)), // 默认5MB一个分片
+          totalChunks: Math.ceil(file.fileSize / CHUNK_SIZE),
           downloadedChunks: 0,
           progress: 0,
-          status: DownloadStatus.IDLE as DownloadStatusType,
-          createdAt: Date.now(),
+          status: DownloadStatus.IDLE,
         }))
       );
     } catch (error) {
@@ -183,17 +171,18 @@ const ZustandFileDownload: React.FC = () => {
     fileId: string,
     url: string,
     chunkIndex: number,
-    chunkSize: number,
-    fileSize: number
+    fileSize: number,
+    abortController: AbortController
   ) => {
-    const start = chunkIndex * chunkSize;
-    const end = Math.min(start + chunkSize - 1, fileSize - 1);
+    const start = chunkIndex * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
 
     try {
       const response = await fetch(url, {
         headers: {
           Range: `bytes=${start}-${end}`,
         },
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -211,7 +200,18 @@ const ZustandFileDownload: React.FC = () => {
         chunkIndex,
         size: blob.size,
       };
-    } catch (error) {
+    } catch (err: unknown) {
+      // 检查是否是因为中止导致的错误
+      const error = err as Error;
+      if (error.name === "AbortError") {
+        console.log(`下载分片 ${chunkIndex} 已暂停`);
+        return {
+          success: false,
+          chunkIndex,
+          paused: true,
+        };
+      }
+
       console.error(`下载分片 ${chunkIndex} 失败:`, error);
       return {
         success: false,
@@ -224,7 +224,7 @@ const ZustandFileDownload: React.FC = () => {
   // 合并文件分片
   const mergeFileChunks = async (file: DownloadFile): Promise<Blob> => {
     // 获取所有分片
-    const totalChunks = file.totalChunks || 1;
+    const totalChunks = file.totalChunks;
     const chunkKeys = Array.from(
       { length: totalChunks },
       (_, i) => `${file.id}_chunk_${i}`
@@ -241,8 +241,241 @@ const ZustandFileDownload: React.FC = () => {
 
     // 合并所有分片
     return new Blob(blobs, {
-      type: file.fileType || file.mimeType,
+      type: file.mimeType,
     });
+  };
+
+  // 下载剩余分片
+  const downloadRemainingChunks = async (file: DownloadFile) => {
+    try {
+      // 确保totalChunks已定义
+      const totalChunks = file.totalChunks;
+      // 下载使用固定的CHUNK_SIZE
+
+      // 检查已下载的分片
+      const pendingChunks: number[] = [];
+
+      // 检查哪些分片已经下载
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkId = `${file.id}_chunk_${i}`;
+        const chunk = await chunkStore.getItem(chunkId);
+        if (!chunk) {
+          pendingChunks.push(i);
+        }
+      }
+
+      if (pendingChunks.length === 0) {
+        // 所有分片已下载，直接完成
+        await completeDownload(file);
+        return;
+      }
+
+      messageApi.success(
+        `继续下载 ${file.fileName}，剩余 ${pendingChunks.length} 个分片`
+      );
+
+      // 开始下载剩余分片
+      let downloadedChunks = totalChunks - pendingChunks.length;
+      const maxConcurrent = 3; // 最大并发数
+
+      // 创建新的AbortController
+      const controller = new AbortController();
+      setAbortControllers((prev) => ({
+        ...prev,
+        [file.id]: controller,
+      }));
+
+      while (pendingChunks.length > 0) {
+        // 检查是否已暂停或取消
+        const currentFile = await fileStore.getItem<DownloadFile>(file.id);
+        if (
+          !currentFile ||
+          currentFile.status === DownloadStatus.PAUSED ||
+          currentFile.status === DownloadStatus.ERROR
+        ) {
+          console.log("下载已暂停或取消");
+          return;
+        }
+
+        const currentBatch = pendingChunks.splice(0, maxConcurrent);
+        const chunkPromises = currentBatch.map((chunkIndex) =>
+          downloadChunk(
+            file.id,
+            apiClient.createDownloadUrl(file.id),
+            chunkIndex,
+            file.fileSize,
+            controller
+          )
+        );
+
+        const results = await Promise.all(chunkPromises);
+
+        // 检查是否有暂停信号
+        if (results.some((r) => r.paused)) {
+          console.log("检测到暂停信号");
+          return;
+        }
+
+        // 更新进度
+        downloadedChunks += results.filter((r) => r.success).length;
+        const progress = Math.round((downloadedChunks / totalChunks) * 100);
+
+        const progressUpdate: DownloadFile = {
+          ...file,
+          downloadedChunks,
+          progress,
+          status:
+            progress === 100
+              ? DownloadStatus.COMPLETED
+              : DownloadStatus.DOWNLOADING,
+        };
+
+        // 更新状态
+        setFiles((prevFiles) =>
+          prevFiles.map((f) => (f.id === file.id ? progressUpdate : f))
+        );
+
+        // 更新存储
+        await fileStore.setItem(file.id, progressUpdate);
+      }
+
+      // 下载完成，处理文件
+      await completeDownload(file);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("下载剩余分片失败:", error);
+
+      // 更新状态为错误
+      const errorFile: DownloadFile = {
+        ...file,
+        status: DownloadStatus.ERROR,
+        error: error instanceof Error ? error.message : String(error),
+      };
+
+      setFiles((prevFiles) =>
+        prevFiles.map((f) => (f.id === file.id ? errorFile : f))
+      );
+
+      await fileStore.setItem(file.id, errorFile);
+      messageApi.error(`下载文件 ${file.fileName} 失败: ${errorFile.error}`);
+    }
+  };
+
+  // 暂停下载
+  const pauseDownload = async (fileId: string) => {
+    try {
+      // 获取当前文件信息
+      const fileData = await fileStore.getItem<DownloadFile>(fileId);
+      if (!fileData) {
+        messageApi.error("找不到下载任务");
+        return;
+      }
+
+      // 中止当前下载
+      if (abortControllers[fileId]) {
+        abortControllers[fileId].abort();
+        const newAbortControllers = { ...abortControllers };
+        delete newAbortControllers[fileId];
+        setAbortControllers(newAbortControllers);
+      }
+
+      // 更新文件状态为暂停
+      const pausedFile = {
+        ...fileData,
+        status: DownloadStatus.PAUSED,
+      };
+
+      // 更新状态
+      setFiles((prevFiles) =>
+        prevFiles.map((f) => (f.id === fileId ? pausedFile : f))
+      );
+
+      // 更新存储
+      await fileStore.setItem(fileId, pausedFile);
+      messageApi.info(`已暂停下载 ${pausedFile.fileName}`);
+    } catch (error) {
+      console.error("暂停下载失败:", error);
+      messageApi.error("暂停下载失败");
+    }
+  };
+
+  // 继续下载
+  const resumeDownload = async (fileId: string) => {
+    try {
+      // 获取当前文件信息
+      const fileData = await fileStore.getItem<DownloadFile>(fileId);
+      if (!fileData) {
+        messageApi.error("找不到下载任务");
+        return;
+      }
+
+      // 更新文件状态为下载中
+      const updatedFile = {
+        ...fileData,
+        status: DownloadStatus.DOWNLOADING,
+      };
+
+      // 更新状态
+      setFiles((prevFiles) =>
+        prevFiles.map((f) => (f.id === fileId ? updatedFile : f))
+      );
+
+      // 更新存储
+      await fileStore.setItem(fileId, updatedFile);
+
+      // 开始下载剩余分片
+      await downloadRemainingChunks(updatedFile);
+    } catch (error) {
+      console.error("继续下载失败:", error);
+      messageApi.error("继续下载失败");
+    }
+  };
+
+  // 完成下载处理
+  const completeDownload = async (file: DownloadFile) => {
+    try {
+      // 更新为已完成状态
+      const completedFile: DownloadFile = {
+        ...file,
+        downloadedChunks: file.totalChunks,
+        progress: 100,
+        status: DownloadStatus.COMPLETED,
+        completedAt: Date.now(),
+      };
+
+      setFiles((prevFiles) =>
+        prevFiles.map((f) => (f.id === file.id ? completedFile : f))
+      );
+
+      await fileStore.setItem(file.id, completedFile);
+
+      // 合并文件
+      try {
+        messageApi.loading("正在处理文件...");
+
+        // 合并文件
+        const mergedBlob = await mergeFileChunks(completedFile);
+
+        // 存储合并后的完整文件
+        await completeFileStore.setItem(file.id, mergedBlob);
+
+        messageApi.success(`文件 ${file.fileName} 下载完成并已合并保存`);
+      } catch (error) {
+        console.error("处理文件失败:", error);
+        messageApi.warning(
+          `文件已下载，但处理失败: ${
+            error instanceof Error ? error.message : "未知错误"
+          }`
+        );
+      }
+
+      // 刷新已存储文件列表和存储使用情况
+      getStoredFiles();
+      getStorageUsage();
+    } catch (error) {
+      console.error("完成下载处理失败:", error);
+      messageApi.error("完成下载处理失败");
+    }
   };
 
   // 开始下载文件
@@ -251,7 +484,7 @@ const ZustandFileDownload: React.FC = () => {
       // 更新文件状态为准备中
       const updatedFile = {
         ...file,
-        status: DownloadStatus.PREPARING as DownloadStatusType,
+        status: DownloadStatus.PREPARING,
       };
       setFiles((prevFiles) =>
         prevFiles.map((f) => (f.id === file.id ? updatedFile : f))
@@ -259,15 +492,18 @@ const ZustandFileDownload: React.FC = () => {
 
       // 获取文件下载预处理信息
       messageApi.loading("正在准备下载...");
-      const preparedData = await apiClient.prepareDownload(file.id);
+
+      // 计算分片数量
+      const totalChunks = Math.ceil(file.fileSize / CHUNK_SIZE);
 
       // 更新文件信息
       const fileWithChunks: DownloadFile = {
         ...updatedFile,
-        fileType: preparedData.fileType,
-        totalChunks: preparedData.totalChunks,
-        chunkSize: preparedData.chunkSize,
-        status: DownloadStatus.DOWNLOADING as DownloadStatusType,
+        totalChunks,
+        chunkSize: CHUNK_SIZE,
+        status: DownloadStatus.DOWNLOADING,
+        downloadedChunks: 0,
+        progress: 0,
       };
 
       // 存储文件信息
@@ -280,121 +516,16 @@ const ZustandFileDownload: React.FC = () => {
 
       messageApi.success("开始下载文件");
 
-      // 开始下载分片
-      let downloadedChunks = 0;
-      const maxConcurrent = 3; // 最大并发数
-      const pendingChunks = Array.from(
-        { length: preparedData.totalChunks },
-        (_, i) => i
-      );
-
-      while (pendingChunks.length > 0) {
-        const currentBatch = pendingChunks.splice(0, maxConcurrent);
-        const chunkPromises = currentBatch.map((chunkIndex) =>
-          downloadChunk(
-            file.id,
-            apiClient.createDownloadUrl(file.id),
-            chunkIndex,
-            preparedData.chunkSize,
-            file.fileSize
-          )
-        );
-
-        const results = await Promise.all(chunkPromises);
-
-        // 更新进度
-        downloadedChunks += results.filter((r) => r.success).length;
-        const progress = Math.round(
-          (downloadedChunks / preparedData.totalChunks) * 100
-        );
-
-        const progressUpdate: DownloadFile = {
-          ...fileWithChunks,
-          downloadedChunks,
-          progress,
-          status:
-            progress === 100
-              ? (DownloadStatus.COMPLETED as DownloadStatusType)
-              : (DownloadStatus.DOWNLOADING as DownloadStatusType),
-        };
-
-        // 更新状态
-        setFiles((prevFiles) =>
-          prevFiles.map((f) => (f.id === file.id ? progressUpdate : f))
-        );
-
-        // 更新存储
-        await fileStore.setItem(file.id, progressUpdate);
-      }
-
-      // 所有分片下载完成，更新状态
-      const completedFile: DownloadFile = {
-        ...fileWithChunks,
-        downloadedChunks: preparedData.totalChunks,
-        progress: 100,
-        status: DownloadStatus.COMPLETED as DownloadStatusType,
-        completedAt: Date.now(),
-      };
-
-      setFiles((prevFiles) =>
-        prevFiles.map((f) => (f.id === file.id ? completedFile : f))
-      );
-
-      await fileStore.setItem(file.id, completedFile);
-
-      // 下载完成后根据存储模式处理文件
-      try {
-        messageApi.loading("正在处理文件...");
-
-        if (storageMode === StorageMode.CHUNKS_ONLY) {
-          // 只保留分片，不存储合并文件
-          messageApi.success(`文件 ${file.fileName} 下载完成，以分片形式存储`);
-        } else {
-          // 需要合并文件
-          const mergedBlob = await mergeFileChunks(completedFile);
-
-          // 存储合并后的完整文件
-          await completeFileStore.setItem(file.id, mergedBlob);
-
-          // 如果只保留完整文件，则删除分片
-          if (storageMode === StorageMode.COMPLETE_ONLY) {
-            // 删除所有分片
-            const chunkKeys = await chunkStore.keys();
-            const fileChunkKeys = chunkKeys.filter((key) =>
-              key.startsWith(`${file.id}_chunk_`)
-            );
-
-            for (const key of fileChunkKeys) {
-              await chunkStore.removeItem(key);
-            }
-
-            messageApi.success(
-              `文件 ${file.fileName} 下载完成并已合并保存，分片已删除`
-            );
-          } else {
-            // 同时保留分片和完整文件
-            messageApi.success(`文件 ${file.fileName} 下载完成并已合并保存`);
-          }
-        }
-      } catch (error) {
-        console.error("处理文件失败:", error);
-        messageApi.warning(
-          `文件已下载，但处理失败: ${
-            error instanceof Error ? error.message : "未知错误"
-          }`
-        );
-      }
-
-      // 刷新已存储文件列表
-      getStoredFiles();
-      getStorageUsage();
+      // 开始下载剩余分片（全部）
+      await downloadRemainingChunks(fileWithChunks);
     } catch (error) {
       console.error("下载文件失败:", error);
 
       // 更新状态为错误
       const errorFile: DownloadFile = {
         ...file,
-        status: DownloadStatus.ERROR as DownloadStatusType,
+        totalChunks: file.totalChunks || Math.ceil(file.fileSize / CHUNK_SIZE),
+        status: DownloadStatus.ERROR,
         error: error instanceof Error ? error.message : "下载失败",
       };
 
@@ -438,8 +569,8 @@ const ZustandFileDownload: React.FC = () => {
     }
   };
 
-  // 合并并下载文件
-  const mergeAndDownload = async (file: DownloadFile) => {
+  // 导出文件
+  const exportFile = async (file: DownloadFile) => {
     try {
       messageApi.loading("正在准备文件...");
 
@@ -450,11 +581,6 @@ const ZustandFileDownload: React.FC = () => {
       if (!mergedBlob) {
         messageApi.loading("正在合并文件分片...");
         mergedBlob = await mergeFileChunks(file);
-
-        // 如果设置为保存完整文件，则存储合并后的文件
-        if (storageMode !== StorageMode.CHUNKS_ONLY) {
-          await completeFileStore.setItem(file.id, mergedBlob);
-        }
       }
 
       // 创建下载链接
@@ -472,18 +598,6 @@ const ZustandFileDownload: React.FC = () => {
       }, 100);
 
       messageApi.success("文件已准备完成，开始下载");
-
-      // 显示确认对话框询问是否删除缓存
-      Modal.confirm({
-        title: "是否删除缓存数据",
-        content: `文件 ${file.fileName} 已成功导出，是否删除缓存数据以释放存储空间？`,
-        okText: "删除",
-        cancelText: "保留",
-        onOk: async () => {
-          await deleteFile(file.id);
-          messageApi.success("缓存数据已删除");
-        },
-      });
     } catch (error) {
       console.error("合并文件失败:", error);
       messageApi.error(
@@ -492,18 +606,34 @@ const ZustandFileDownload: React.FC = () => {
     }
   };
 
-  // 清空所有数据
-  const clearAllData = async () => {
+  // 取消下载任务
+  const cancelDownload = async (fileId: string) => {
     try {
-      await fileStore.clear();
-      await chunkStore.clear();
-      await completeFileStore.clear();
-      setStoredFiles([]);
-      messageApi.success("所有数据已清除");
-      getStorageUsage();
+      // 中止当前下载
+      if (abortControllers[fileId]) {
+        abortControllers[fileId].abort();
+        const newAbortControllers = { ...abortControllers };
+        delete newAbortControllers[fileId];
+        setAbortControllers(newAbortControllers);
+      }
+
+      // 获取文件信息
+      const fileData = await fileStore.getItem<DownloadFile>(fileId);
+      if (!fileData) {
+        messageApi.error("找不到下载任务");
+        return;
+      }
+
+      // 删除文件信息和分片
+      await deleteFile(fileId);
+
+      // 更新文件列表
+      setFiles((prevFiles) => prevFiles.filter((f) => f.id !== fileId));
+
+      messageApi.success(`已取消下载 ${fileData.fileName}`);
     } catch (error) {
-      console.error("清除数据失败:", error);
-      messageApi.error("清除数据失败");
+      console.error("取消下载失败:", error);
+      messageApi.error("取消下载失败");
     }
   };
 
@@ -519,7 +649,8 @@ const ZustandFileDownload: React.FC = () => {
       {contextHolder}
       <Title level={2}>大文件下载测试</Title>
       <Paragraph>
-        此组件用于测试IndexedDB和localforage存储大文件的可行性。通过分片下载和存储，可以有效处理大文件，并支持断点续传。
+        此组件用于测试大文件下载，支持暂停和断点续传功能。
+        每个文件以5MB分片下载，确保稳定可靠的断点续传体验。
       </Paragraph>
 
       <Card title="存储使用情况" style={{ marginBottom: "20px" }}>
@@ -533,45 +664,7 @@ const ZustandFileDownload: React.FC = () => {
           <Button onClick={getStorageUsage} icon={<ReloadOutlined />}>
             刷新
           </Button>
-          <Button danger onClick={clearAllData} icon={<DeleteOutlined />}>
-            清空所有数据
-          </Button>
         </Space>
-      </Card>
-
-      <Card title="存储模式设置" style={{ marginBottom: "20px" }}>
-        <Radio.Group
-          value={storageMode}
-          onChange={(e) => setStorageMode(e.target.value)}
-          buttonStyle="solid"
-        >
-          <Radio.Button value={StorageMode.COMPLETE_ONLY}>
-            <Tooltip title="只存储合并后的完整文件，节省空间但不支持断点续传">
-              只存完整文件
-            </Tooltip>
-          </Radio.Button>
-          <Radio.Button value={StorageMode.CHUNKS_ONLY}>
-            <Tooltip title="只存储文件分片，支持断点续传但导出时需要重新合并">
-              只存分片
-            </Tooltip>
-          </Radio.Button>
-          <Radio.Button value={StorageMode.BOTH}>
-            <Tooltip title="同时存储分片和完整文件，支持断点续传和快速导出，但占用空间最大">
-              两者都存
-            </Tooltip>
-          </Radio.Button>
-        </Radio.Group>
-        <Paragraph style={{ marginTop: "10px" }}>
-          <Text type="secondary">
-            当前模式：
-            {storageMode === StorageMode.COMPLETE_ONLY &&
-              "只存储完整文件（占用空间最少，不支持断点续传）"}
-            {storageMode === StorageMode.CHUNKS_ONLY &&
-              "只存储文件分片（支持断点续传，导出时需要合并）"}
-            {storageMode === StorageMode.BOTH &&
-              "同时存储分片和完整文件（功能完整，但占用空间最大）"}
-          </Text>
-        </Paragraph>
       </Card>
 
       <Card
@@ -589,87 +682,123 @@ const ZustandFileDownload: React.FC = () => {
       >
         <List
           dataSource={files}
-          renderItem={(file) => (
-            <List.Item
-              key={file.id}
-              actions={[
-                <Button
-                  type="primary"
-                  icon={<DownloadOutlined />}
-                  loading={
-                    file.status === DownloadStatus.DOWNLOADING ||
-                    file.status === DownloadStatus.PREPARING
-                  }
-                  disabled={
-                    file.status === DownloadStatus.DOWNLOADING ||
-                    file.status === DownloadStatus.COMPLETED
-                  }
-                  onClick={() => startDownload(file)}
-                >
-                  {file.status === DownloadStatus.COMPLETED
-                    ? "已完成"
-                    : file.status === DownloadStatus.DOWNLOADING
-                    ? "下载中"
-                    : file.status === DownloadStatus.PREPARING
-                    ? "准备中"
-                    : "下载"}
-                </Button>,
-              ]}
-            >
-              <List.Item.Meta
-                avatar={<FileOutlined />}
-                title={<Text>{file.fileName}</Text>}
-                description={
-                  <>
-                    <Text type="secondary">
-                      大小: {formatFileSize(file.fileSize)} | 类型:{" "}
-                      {file.mimeType} | 分片数: {file.chunks}
-                    </Text>
-                    {file.status !== DownloadStatus.IDLE && (
-                      <div style={{ marginTop: "8px" }}>
-                        <Progress percent={file.progress} size="small" />
-                        <div>
-                          <Tag
-                            color={
-                              file.status === DownloadStatus.DOWNLOADING
-                                ? "processing"
-                                : file.status === DownloadStatus.PREPARING
-                                ? "warning"
-                                : file.status === DownloadStatus.COMPLETED
-                                ? "success"
-                                : file.status === DownloadStatus.ERROR
-                                ? "error"
-                                : "default"
-                            }
-                          >
-                            {file.status === DownloadStatus.DOWNLOADING
-                              ? "下载中"
-                              : file.status === DownloadStatus.PREPARING
-                              ? "准备中"
-                              : file.status === DownloadStatus.COMPLETED
-                              ? "已完成"
-                              : file.status === DownloadStatus.ERROR
-                              ? "错误"
-                              : "等待中"}
-                          </Tag>
-                          {file.status === DownloadStatus.ERROR && (
-                            <Text type="danger" style={{ marginLeft: "8px" }}>
-                              {file.error}
-                            </Text>
-                          )}
+          renderItem={(file) => {
+            // 使用变量存储状态，避免类型错误
+            const isDownloading = file.status === "downloading";
+            const isPaused = file.status === "paused";
+            const isCompleted = file.status === "completed";
+            const isPreparing = file.status === "preparing";
+            const isIdle = file.status === "idle";
+            const isError = file.status === "error";
+
+            return (
+              <List.Item
+                key={file.id}
+                actions={[
+                  isDownloading ? (
+                    <Button
+                      icon={<PauseCircleOutlined />}
+                      onClick={() => pauseDownload(file.id)}
+                    >
+                      暂停
+                    </Button>
+                  ) : isPaused ? (
+                    <Button
+                      icon={<PlayCircleOutlined />}
+                      onClick={() => resumeDownload(file.id)}
+                    >
+                      继续
+                    </Button>
+                  ) : isCompleted ? (
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      disabled
+                    >
+                      已完成
+                    </Button>
+                  ) : (
+                    <Button
+                      type="primary"
+                      icon={<DownloadOutlined />}
+                      loading={isPreparing}
+                      disabled={isDownloading || isCompleted}
+                      onClick={() => startDownload(file)}
+                    >
+                      {isPreparing ? "准备中" : "下载"}
+                    </Button>
+                  ),
+                  !isIdle && !isCompleted ? (
+                    <Button
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => cancelDownload(file.id)}
+                    >
+                      取消
+                    </Button>
+                  ) : null,
+                ].filter(Boolean)}
+              >
+                <List.Item.Meta
+                  avatar={<FileOutlined />}
+                  title={<Text>{file.fileName}</Text>}
+                  description={
+                    <>
+                      <Text type="secondary">
+                        大小: {formatFileSize(file.fileSize)} | 类型:{" "}
+                        {file.mimeType} | 分片大小: 5MB | 分片数:{" "}
+                        {file.totalChunks}
+                      </Text>
+                      {!isIdle && (
+                        <div style={{ marginTop: "8px" }}>
+                          <Progress percent={file.progress} size="small" />
+                          <div>
+                            <Tag
+                              color={
+                                isDownloading
+                                  ? "processing"
+                                  : isPreparing
+                                  ? "warning"
+                                  : isPaused
+                                  ? "default"
+                                  : isCompleted
+                                  ? "success"
+                                  : isError
+                                  ? "error"
+                                  : "default"
+                              }
+                            >
+                              {isDownloading
+                                ? "下载中"
+                                : isPreparing
+                                ? "准备中"
+                                : isPaused
+                                ? "已暂停"
+                                : isCompleted
+                                ? "已完成"
+                                : isError
+                                ? "错误"
+                                : "等待中"}
+                            </Tag>
+                            {isError && (
+                              <Text type="danger" style={{ marginLeft: "8px" }}>
+                                {file.error}
+                              </Text>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </>
-                }
-              />
-            </List.Item>
-          )}
+                      )}
+                    </>
+                  }
+                />
+              </List.Item>
+            );
+          }}
           locale={{ emptyText: "暂无可下载文件" }}
         />
       </Card>
 
-      <Card title="已存储文件列表">
+      <Card title="已下载文件列表">
         <List
           dataSource={storedFiles}
           renderItem={(file) => (
@@ -678,8 +807,8 @@ const ZustandFileDownload: React.FC = () => {
               actions={[
                 <Button
                   type="primary"
-                  onClick={() => mergeAndDownload(file)}
-                  disabled={file.status !== DownloadStatus.COMPLETED}
+                  onClick={() => exportFile(file)}
+                  disabled={file.status !== "completed"}
                 >
                   导出
                 </Button>,
@@ -700,13 +829,13 @@ const ZustandFileDownload: React.FC = () => {
                     <Text type="secondary">
                       大小: {formatFileSize(file.fileSize)} | 进度:{" "}
                       {file.progress}% | 状态:{" "}
-                      {file.status === DownloadStatus.DOWNLOADING
+                      {file.status === "downloading"
                         ? "下载中"
-                        : file.status === DownloadStatus.PREPARING
+                        : file.status === "preparing"
                         ? "准备中"
-                        : file.status === DownloadStatus.COMPLETED
+                        : file.status === "completed"
                         ? "已完成"
-                        : file.status === DownloadStatus.ERROR
+                        : file.status === "error"
                         ? "错误"
                         : "等待中"}
                     </Text>
@@ -714,9 +843,9 @@ const ZustandFileDownload: React.FC = () => {
                       percent={file.progress}
                       size="small"
                       status={
-                        file.status === DownloadStatus.ERROR
+                        file.status === "error"
                           ? "exception"
-                          : file.status === DownloadStatus.COMPLETED
+                          : file.status === "completed"
                           ? "success"
                           : "active"
                       }
@@ -726,18 +855,9 @@ const ZustandFileDownload: React.FC = () => {
               />
             </List.Item>
           )}
-          locale={{ emptyText: "暂无已存储文件" }}
+          locale={{ emptyText: "暂无已下载文件" }}
         />
       </Card>
-
-      <Divider />
-      <Paragraph>
-        <Text strong>技术说明：</Text>{" "}
-        此组件使用localforage库操作IndexedDB，通过分片下载大文件并存储到IndexedDB中。
-        根据选择的存储模式，文件可以以分片形式存储、完整文件形式存储或两者兼有。
-        默认模式为"只存完整文件"，可以节省约50%的存储空间。
-        文件保存在浏览器的IndexedDB数据库中，可以通过"导出"按钮将文件下载到本地。
-      </Paragraph>
     </div>
   );
 };
