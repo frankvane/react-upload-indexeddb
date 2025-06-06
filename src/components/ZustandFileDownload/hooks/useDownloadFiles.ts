@@ -35,7 +35,6 @@ export const useDownloadFiles = () => {
 
       // 获取服务器文件列表
       const downloadFiles = await apiClient.getDownloadFiles();
-      console.log("已从服务器获取文件列表:", downloadFiles.length);
 
       // 获取本地存储的文件状态
       const localFiles: Record<string, DownloadFile> = {};
@@ -48,9 +47,6 @@ export const useDownloadFiles = () => {
 
           // 如果页面刷新前文件正在下载，改为暂停状态以便用户继续
           if (storedFile.status === DownloadStatus.DOWNLOADING) {
-            console.log(
-              `文件 ${storedFile.fileName} 在刷新前正在下载，改为暂停状态`
-            );
             storedFile.status = DownloadStatus.PAUSED;
 
             // 确保进度信息准确
@@ -71,10 +67,6 @@ export const useDownloadFiles = () => {
             storedFile.progress = progress;
             storedFile.downloadedChunks = downloadedChunks;
 
-            console.log(
-              `更新文件 ${storedFile.fileName} 的进度为 ${progress}%，已下载分片 ${downloadedChunks}/${storedFile.totalChunks}`
-            );
-
             await fileStore.setItem(storedFile.id, storedFile);
             localFiles[key] = storedFile;
           }
@@ -89,7 +81,6 @@ export const useDownloadFiles = () => {
               storedFile.id
             );
             if (completeFile && completeFile.size > 0) {
-              console.log(`文件 ${storedFile.fileName} 已完成下载，更新状态`);
               storedFile.status = DownloadStatus.COMPLETED;
               storedFile.completedAt = storedFile.completedAt || Date.now();
               await fileStore.setItem(storedFile.id, storedFile);
@@ -112,7 +103,6 @@ export const useDownloadFiles = () => {
                 storedFile.progress = Math.round(
                   (storedFile.downloadedChunks / storedFile.totalChunks) * 100
                 );
-                console.log(`根据分片计算进度: ${storedFile.progress}%`);
               } else {
                 // 如果没有分片信息，重新计算
                 await chunkStore.ready();
@@ -128,9 +118,6 @@ export const useDownloadFiles = () => {
                 storedFile.downloadedChunks = downloadedChunks;
                 storedFile.progress = Math.round(
                   (downloadedChunks / storedFile.totalChunks) * 100
-                );
-                console.log(
-                  `重新计算分片进度: ${storedFile.progress}%，已下载分片 ${downloadedChunks}/${storedFile.totalChunks}`
                 );
               }
 
@@ -172,16 +159,13 @@ export const useDownloadFiles = () => {
         })
       );
 
-      console.log("已更新文件列表，合并了本地状态");
-
       // 在文件列表初次加载时获取一次存储使用情况
       if (prevState.current.totalFiles === 0) {
         setTimeout(() => {
           getStorageUsage();
         }, 500);
       }
-    } catch (error) {
-      console.error("获取文件列表失败:", error);
+    } catch {
       message.error("获取文件列表失败，请检查网络连接");
     } finally {
       setFetchingFiles(false);
@@ -204,60 +188,43 @@ export const useDownloadFiles = () => {
       (file) => file.status === DownloadStatus.DOWNLOADING
     ).length;
 
-    // 检查是否有重大变化
-    const hasSignificantChanges =
-      files.length !== prevState.current.totalFiles ||
-      completedFiles !== prevState.current.completedFiles ||
-      downloadingFiles !== prevState.current.downloadingFiles;
-
-    // 最小更新间隔（毫秒）
-    const MIN_UPDATE_INTERVAL = 10000; // 10秒
-    const now = Date.now();
-    const shouldUpdateDueToTime =
-      now - prevState.current.lastUpdateTime > MIN_UPDATE_INTERVAL;
-
-    // 更新状态引用
-    prevState.current = {
-      totalFiles: files.length,
-      completedFiles,
-      downloadingFiles,
-      lastUpdateTime: hasSignificantChanges
-        ? now
-        : prevState.current.lastUpdateTime,
-    };
-
-    // 只在有重大变化且文件列表不为空时触发更新，并且限制更新频率
-    if (hasSignificantChanges && files.length > 0 && shouldUpdateDueToTime) {
-      console.log("文件列表发生重大变化，准备更新存储使用情况");
-
-      // 使用setTimeout延迟更新，避免频繁触发
-      const timer = setTimeout(() => {
+    if (
+      prevState.current.totalFiles !== files.length ||
+      prevState.current.completedFiles !== completedFiles ||
+      Math.abs(prevState.current.downloadingFiles - downloadingFiles) > 1
+    ) {
+      // 如果文件数量变化、完成文件数量变化或下载中文件数量变化超过1个，更新存储使用情况
+      setTimeout(() => {
         getStorageUsage();
-      }, 1000);
+      }, 500);
 
-      return () => clearTimeout(timer);
+      // 更新上一次状态
+      prevState.current = {
+        totalFiles: files.length,
+        completedFiles,
+        downloadingFiles,
+        lastUpdateTime: Date.now(),
+      };
     }
   }, [files, getStorageUsage]);
 
   // 记录文件状态变化
   useEffect(() => {
-    console.log("文件列表更新:", files.length);
-
     // 记录暂停文件的进度
     const pausedFiles = files.filter((file) => file.status === "paused");
     if (pausedFiles.length > 0) {
-      console.log("暂停的文件:");
-      pausedFiles.forEach((file) => {
-        console.log(
-          `- ${file.fileName}: 进度 ${file.progress}%, 已下载分片 ${file.downloadedChunks}/${file.totalChunks}`
-        );
-      });
+      // 暂停文件状态监控
     }
   }, [files]);
+
+  // 刷新文件列表
+  const refreshFiles = useCallback(async () => {
+    await fetchFileList();
+  }, [fetchFileList]);
 
   return {
     files,
     fetchingFiles,
-    refreshFiles: fetchFileList,
+    refreshFiles,
   };
 };

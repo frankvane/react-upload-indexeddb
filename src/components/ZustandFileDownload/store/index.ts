@@ -50,44 +50,4 @@ export const useDownloadStore = create<DownloadState>((set) => ({
         ...updates,
       },
     })),
-
-  updateLocalSizeEstimate: (sizeChange) =>
-    set((state) => {
-      // 确保estimatedUsage存在
-      const currentEstimatedUsage =
-        state.storageUsage.estimatedUsage || state.storageUsage.usage || 0;
-
-      // 计算新的估计使用量，确保不会小于0
-      const newEstimatedUsage = Math.max(0, currentEstimatedUsage + sizeChange);
-
-      // 计算新的百分比
-      const newPercent =
-        state.storageUsage.quota > 0
-          ? (newEstimatedUsage / state.storageUsage.quota) * 100
-          : state.storageUsage.percent;
-
-      console.log(
-        `更新存储估算: 变化 ${sizeChange} 字节, 新估计值: ${newEstimatedUsage} 字节, 新百分比: ${newPercent.toFixed(
-          2
-        )}%`
-      );
-
-      return {
-        storageUsage: {
-          ...state.storageUsage,
-          estimatedUsage: newEstimatedUsage,
-          percent: newPercent,
-          lastUpdated: Date.now(), // 更新最后更新时间
-        },
-      };
-    }),
-
-  resetStorageEstimate: () =>
-    set((state) => ({
-      storageUsage: {
-        ...state.storageUsage,
-        estimatedUsage: 0,
-        percent: 0,
-      },
-    })),
 }));

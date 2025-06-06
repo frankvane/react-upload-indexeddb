@@ -7,7 +7,6 @@ export interface StorageUsage {
   percent: number;
   isLoading: boolean;
   lastUpdated: number;
-  estimatedUsage: number;
 }
 
 // 下载状态接口
@@ -29,6 +28,4 @@ export interface DownloadState {
   addAbortController: (fileId: string, controller: AbortController) => void;
   removeAbortController: (fileId: string) => void;
   updateStorageUsage: (updates: Partial<StorageUsage>) => void;
-  updateLocalSizeEstimate: (sizeChange: number) => void;
-  resetStorageEstimate: () => void;
 }

@@ -2,7 +2,7 @@ import { DownloadFile } from "../types";
 import localforage from "localforage";
 
 // 设置统一的版本号，确保所有实例使用相同的版本
-const DB_VERSION = 4;
+const DB_VERSION = 8;
 
 // 初始化IndexedDB存储
 export const fileStore = localforage.createInstance({
@@ -37,7 +37,6 @@ export const initializeStorage = async (): Promise<void> => {
       chunkStore.ready(),
       completeFileStore.ready(),
     ]);
-    console.log("存储初始化成功");
   } catch (error: any) {
     console.error("存储初始化失败:", error);
     // 如果是版本错误，尝试清除数据并重新初始化
@@ -50,7 +49,6 @@ export const initializeStorage = async (): Promise<void> => {
           chunkStore.ready(),
           completeFileStore.ready(),
         ]);
-        console.log("存储重新初始化成功");
       } catch (retryError) {
         console.error("存储重新初始化失败:", retryError);
         throw retryError;

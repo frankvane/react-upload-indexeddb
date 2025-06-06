@@ -41,7 +41,6 @@ export const downloadChunk = async (
     // 检查是否是因为中止导致的错误
     const error = err as Error;
     if (error.name === "AbortError") {
-      console.log(`下载分片 ${chunkIndex} 已暂停`);
       return {
         success: false,
         chunkIndex,

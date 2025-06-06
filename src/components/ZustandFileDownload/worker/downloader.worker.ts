@@ -47,9 +47,6 @@ async function handleDownload(payload: {
     payload;
 
   const isFirstDownload = !processedFiles.has(fileId);
-  console.log(
-    `开始下载文件: ${fileId}, 总分片: ${totalChunks}, 待下载分片: ${pendingChunks.length}, 是否首次下载: ${isFirstDownload}`
-  );
 
   // 标记为活跃下载
   activeDownloads[fileId] = true;
@@ -77,13 +74,11 @@ async function handleDownload(payload: {
   while (remainingChunks.length > 0) {
     // 每次循环都检查是否已暂停或取消
     if (!activeDownloads[fileId]) {
-      console.log(`检测到下载已暂停或取消: ${fileId}`);
       return;
     }
 
     // 获取当前批次
     const currentBatch = remainingChunks.splice(0, maxConcurrent);
-    console.log(`准备下载下一批分片: ${currentBatch.join(", ")}`);
 
     // 创建下载Promise
     const chunkPromises = currentBatch.map((chunkIndex) =>
@@ -95,7 +90,6 @@ async function handleDownload(payload: {
 
     // 再次检查是否已暂停或取消
     if (!activeDownloads[fileId]) {
-      console.log(`分片下载完成后检测到下载已暂停或取消: ${fileId}`);
       return;
     }
 
@@ -103,10 +97,6 @@ async function handleDownload(payload: {
     const successfulDownloads = results.filter((r) => r.success).length;
     downloadedChunks += successfulDownloads;
     const progress = Math.round((downloadedChunks / totalChunks) * 100);
-
-    console.log(
-      `更新下载进度: ${fileId}, 完成: ${downloadedChunks}/${totalChunks}, 进度: ${progress}%`
-    );
 
     // 发送进度更新
     ctx.postMessage({
@@ -124,8 +114,6 @@ async function handleDownload(payload: {
       .map((r) => r.chunkIndex);
 
     if (failedChunks.length > 0) {
-      console.log(`有分片下载失败: ${failedChunks.join(", ")}`);
-
       // 增加重试计数
       retryAttempts[fileId] = (retryAttempts[fileId] || 0) + 1;
 
@@ -146,8 +134,6 @@ async function handleDownload(payload: {
         return;
       }
 
-      // 添加延迟，避免立即重试
-      console.log(`等待 ${RETRY_DELAY}ms 后重试下载失败的分片`);
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
     } else {
       // 重置重试计数，因为这一批次成功了
@@ -159,8 +145,6 @@ async function handleDownload(payload: {
 
     // 如果没有更多分片，完成下载
     if (remainingChunks.length === 0) {
-      console.log(`所有分片下载完成: ${fileId}`);
-
       // 确保所有分片都已成功保存
       ctx.postMessage({
         type: "COMPLETE",
@@ -195,15 +179,8 @@ async function downloadChunk(
     try {
       // 开始前检查是否已暂停
       if (!activeDownloads[fileId]) {
-        console.log(`分片${chunkIndex}下载前检测到暂停状态`);
         return { success: false, chunkIndex, paused: true };
       }
-
-      console.log(
-        `开始下载分片 ${chunkIndex}: 字节范围 ${start}-${end}, 尝试 ${
-          retryCount + 1
-        }/${maxRetries + 1}`
-      );
 
       // 添加超时处理
       const controller = new AbortController();
@@ -221,7 +198,6 @@ async function downloadChunk(
 
         // 下载后再次检查是否已暂停
         if (!activeDownloads[fileId]) {
-          console.log(`分片${chunkIndex}下载后检测到暂停状态`);
           return { success: false, chunkIndex, paused: true };
         }
 
@@ -235,8 +211,6 @@ async function downloadChunk(
         if (blob.size === 0) {
           throw new Error(`分片 ${chunkIndex} 下载完成，但大小为0字节`);
         }
-
-        console.log(`分片 ${chunkIndex} 下载完成，大小: ${blob.size} 字节`);
 
         // 发送分片数据到主线程
         ctx.postMessage({
@@ -303,7 +277,6 @@ async function downloadChunk(
 
       // 等待一段时间再重试，时间随重试次数增加
       const delay = 1000 * Math.pow(2, retryCount - 1); // 指数退避: 1s, 2s, 4s...
-      console.log(`等待 ${delay}ms 后重试下载分片 ${chunkIndex}`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -319,7 +292,6 @@ async function downloadChunk(
 // 处理暂停
 function handlePause(payload: { fileId: string }) {
   const { fileId } = payload;
-  console.log(`Worker收到暂停命令: ${fileId}`);
 
   // 立即设置为非活跃状态，阻止后续下载
   activeDownloads[fileId] = false;
@@ -331,8 +303,6 @@ function handlePause(payload: { fileId: string }) {
       type: "PAUSED",
       payload: { fileId },
     });
-
-    console.log(`Worker已暂停下载: ${fileId}`);
   }, 100);
 }
 

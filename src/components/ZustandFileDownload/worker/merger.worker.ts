@@ -9,7 +9,6 @@ ctx.addEventListener("message", async (event) => {
     await mergeFileChunks(payload);
   } else if (type === "CANCEL") {
     // 取消操作
-    console.log("合并操作已取消");
   }
 });
 
