@@ -4,14 +4,15 @@ import {
   Button,
   Card,
   List,
+  Modal,
   Progress,
   Space,
+  Spin,
   Tag,
   Typography,
   message,
 } from "antd";
 import {
-  CheckCircleOutlined,
   DeleteOutlined,
   DownloadOutlined,
   FileOutlined,
@@ -89,10 +90,41 @@ const ZustandFileDownload: React.FC = () => {
     usage: number;
     quota: number;
     percent: number;
-  }>({ usage: 0, quota: 0, percent: 0 });
+    isLoading: boolean;
+    lastUpdated: number;
+    estimatedUsage: number;
+  }>({
+    usage: 0,
+    quota: 0,
+    percent: 0,
+    isLoading: false,
+    lastUpdated: 0,
+    estimatedUsage: 0,
+  });
   const [abortControllers, setAbortControllers] = useState<
     Record<string, AbortController>
   >({});
+
+  // 更新本地存储估算
+  const updateLocalSizeEstimate = useCallback(
+    async (fileId: string, sizeChange: number) => {
+      // 更新存储使用情况的估计值
+      setStorageUsage((prev) => {
+        const newEstimatedUsage = prev.estimatedUsage + sizeChange;
+        const newPercent =
+          prev.quota > 0
+            ? (newEstimatedUsage / prev.quota) * 100
+            : prev.percent;
+
+        return {
+          ...prev,
+          estimatedUsage: newEstimatedUsage,
+          percent: newPercent,
+        };
+      });
+    },
+    []
+  );
 
   // 获取文件列表
   const fetchFileList = useCallback(async () => {
@@ -100,14 +132,44 @@ const ZustandFileDownload: React.FC = () => {
       setFetchingFiles(true);
       const downloadFiles = await apiClient.getDownloadFiles();
 
+      // 获取本地存储的文件状态
+      const localFiles: Record<string, DownloadFile> = {};
+      const keys = await fileStore.keys();
+
+      for (const key of keys) {
+        const storedFile = await fileStore.getItem<DownloadFile>(key);
+        if (storedFile) {
+          localFiles[key] = storedFile;
+        }
+      }
+
+      // 合并服务器文件列表与本地状态
       setFiles(
-        downloadFiles.map((file: any) => ({
-          ...file,
-          totalChunks: Math.ceil(file.fileSize / CHUNK_SIZE),
-          downloadedChunks: 0,
-          progress: 0,
-          status: DownloadStatus.IDLE,
-        }))
+        downloadFiles.map((file: any) => {
+          const localFile = localFiles[file.id];
+
+          if (localFile) {
+            // 如果本地已有该文件的信息，保留其状态和进度
+            return {
+              ...file,
+              totalChunks:
+                localFile.totalChunks || Math.ceil(file.fileSize / CHUNK_SIZE),
+              downloadedChunks: localFile.downloadedChunks || 0,
+              progress: localFile.progress || 0,
+              status: localFile.status || DownloadStatus.IDLE,
+              error: localFile.error,
+            };
+          } else {
+            // 新文件，设置初始状态
+            return {
+              ...file,
+              totalChunks: Math.ceil(file.fileSize / CHUNK_SIZE),
+              downloadedChunks: 0,
+              progress: 0,
+              status: DownloadStatus.IDLE,
+            };
+          }
+        })
       );
     } catch (error) {
       console.error("获取文件列表失败:", error);
@@ -126,6 +188,12 @@ const ZustandFileDownload: React.FC = () => {
       for (const key of keys) {
         const fileData = await fileStore.getItem<DownloadFile>(key);
         if (fileData) {
+          // 检查文件下载状态，确保中断状态的文件能继续下载
+          if (fileData.status === DownloadStatus.DOWNLOADING) {
+            // 如果页面刷新前文件正在下载，改为暂停状态以便用户继续
+            fileData.status = DownloadStatus.PAUSED;
+            await fileStore.setItem(key, fileData);
+          }
           storedFilesData.push(fileData);
         }
       }
@@ -140,6 +208,8 @@ const ZustandFileDownload: React.FC = () => {
   // 获取存储使用情况
   const getStorageUsage = useCallback(async () => {
     try {
+      setStorageUsage((prev) => ({ ...prev, isLoading: true }));
+
       if ("storage" in navigator && "estimate" in navigator.storage) {
         const estimate = await navigator.storage.estimate();
         const usage = estimate.usage || 0;
@@ -150,10 +220,14 @@ const ZustandFileDownload: React.FC = () => {
           usage,
           quota,
           percent,
+          isLoading: false,
+          lastUpdated: Date.now(),
+          estimatedUsage: usage, // 重置估计值为实际值
         });
       }
     } catch (error) {
       console.error("获取存储使用情况失败:", error);
+      setStorageUsage((prev) => ({ ...prev, isLoading: false }));
     }
   }, []);
 
@@ -174,6 +248,7 @@ const ZustandFileDownload: React.FC = () => {
     fileSize: number,
     abortController: AbortController
   ) => {
+    // 为什么我们要设置开始与结束？
     const start = chunkIndex * CHUNK_SIZE;
     const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
 
@@ -194,6 +269,9 @@ const ZustandFileDownload: React.FC = () => {
 
       // 存储分片到IndexedDB
       await chunkStore.setItem(chunkId, blob);
+
+      // 更新本地存储估算
+      await updateLocalSizeEstimate(fileId, blob.size);
 
       return {
         success: true,
@@ -443,6 +521,7 @@ const ZustandFileDownload: React.FC = () => {
         completedAt: Date.now(),
       };
 
+      // 直接更新文件状态，不改变其在列表中的位置
       setFiles((prevFiles) =>
         prevFiles.map((f) => (f.id === file.id ? completedFile : f))
       );
@@ -453,11 +532,33 @@ const ZustandFileDownload: React.FC = () => {
       try {
         messageApi.loading("正在处理文件...");
 
+        // 记录合并前的总分片大小，用于后续估算
+        let totalChunksSize = 0;
+        const chunkIds = Array.from(
+          { length: file.totalChunks },
+          (_, i) => `${file.id}_chunk_${i}`
+        );
+
+        for (const chunkId of chunkIds) {
+          const chunk = await chunkStore.getItem<Blob>(chunkId);
+          if (chunk) {
+            totalChunksSize += chunk.size;
+          }
+        }
+
         // 合并文件
         const mergedBlob = await mergeFileChunks(completedFile);
 
         // 存储合并后的完整文件
         await completeFileStore.setItem(file.id, mergedBlob);
+
+        // 更新存储估算 (合并文件大小 - 分片总大小的差值，避免重复计算)
+        // 如果保留分片，那么差值应该是正的；如果删除分片，则差值应该是负的
+        const sizeDelta = mergedBlob.size - totalChunksSize;
+        if (Math.abs(sizeDelta) > 100) {
+          // 只有当差值显著时才更新
+          await updateLocalSizeEstimate(file.id, sizeDelta);
+        }
 
         messageApi.success(`文件 ${file.fileName} 下载完成并已合并保存`);
       } catch (error) {
@@ -469,9 +570,11 @@ const ZustandFileDownload: React.FC = () => {
         );
       }
 
-      // 刷新已存储文件列表和存储使用情况
-      getStoredFiles();
-      getStorageUsage();
+      // 不立即调用navigator.storage.estimate()，使用估算值
+      if (Date.now() - storageUsage.lastUpdated > 60000) {
+        // 如果上次更新超过1分钟，才进行实际更新
+        getStorageUsage();
+      }
     } catch (error) {
       console.error("完成下载处理失败:", error);
       messageApi.error("完成下载处理失败");
@@ -540,33 +643,103 @@ const ZustandFileDownload: React.FC = () => {
 
   // 删除文件
   const deleteFile = async (fileId: string) => {
-    try {
-      // 删除文件信息
-      await fileStore.removeItem(fileId);
+    Modal.confirm({
+      title: "确认删除",
+      content:
+        "确定要删除此文件吗？此操作将清除所有已下载的数据和下载进度，无法撤销。",
+      okText: "删除",
+      okType: "danger",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          // 获取文件信息用于显示
+          const fileToDelete =
+            files.find((f) => f.id === fileId) ||
+            storedFiles.find((f) => f.id === fileId);
 
-      // 删除合并后的完整文件
-      await completeFileStore.removeItem(fileId);
+          if (!fileToDelete) {
+            messageApi.error("找不到要删除的文件");
+            return;
+          }
 
-      // 删除所有相关分片
-      const chunkKeys = await chunkStore.keys();
-      const fileChunkKeys = chunkKeys.filter((key) =>
-        key.startsWith(`${fileId}_chunk_`)
-      );
+          // 中止正在进行的下载
+          if (abortControllers[fileId]) {
+            abortControllers[fileId].abort();
+            const newAbortControllers = { ...abortControllers };
+            delete newAbortControllers[fileId];
+            setAbortControllers(newAbortControllers);
+          }
 
-      for (const key of fileChunkKeys) {
-        await chunkStore.removeItem(key);
-      }
+          // 估算要删除的大小
+          let totalSize = 0;
 
-      // 更新列表
-      setStoredFiles((prev) => prev.filter((f) => f.id !== fileId));
-      messageApi.success("文件已删除");
+          // 获取并删除完整文件
+          const completeFile = await completeFileStore.getItem<Blob>(fileId);
+          if (completeFile) {
+            totalSize += completeFile.size;
+          }
+          await completeFileStore.removeItem(fileId);
 
-      // 刷新存储使用情况
-      getStorageUsage();
-    } catch (error) {
-      console.error("删除文件失败:", error);
-      messageApi.error("删除文件失败");
-    }
+          // 获取所有分片的大小
+          const chunkKeys = await chunkStore.keys();
+          const fileChunkKeys = chunkKeys.filter((key) =>
+            key.startsWith(`${fileId}_chunk_`)
+          );
+
+          for (const key of fileChunkKeys) {
+            const chunk = await chunkStore.getItem<Blob>(key);
+            if (chunk) {
+              totalSize += chunk.size;
+            }
+            await chunkStore.removeItem(key);
+          }
+
+          // 删除文件信息
+          await fileStore.removeItem(fileId);
+
+          // 更新本地存储估算（负值表示减少）
+          await updateLocalSizeEstimate(fileId, -totalSize);
+
+          // 从本地存储列表中移除
+          setStoredFiles((prev) => prev.filter((f) => f.id !== fileId));
+
+          // 如果文件在服务器列表中，重置其状态而不是移除
+          setFiles((prevFiles) =>
+            prevFiles.map((f) => {
+              if (f.id === fileId) {
+                return {
+                  ...f,
+                  status: DownloadStatus.IDLE,
+                  progress: 0,
+                  downloadedChunks: 0,
+                  error: undefined,
+                  completedAt: undefined,
+                };
+              }
+              return f;
+            })
+          );
+
+          messageApi.success(
+            `文件 ${fileToDelete.fileName} 已删除，下载状态已重置`
+          );
+
+          // 不立即调用navigator.storage.estimate()，使用估算值
+          if (Date.now() - storageUsage.lastUpdated > 60000) {
+            // 如果上次更新超过1分钟，才进行实际更新
+            getStorageUsage();
+          }
+        } catch (error) {
+          console.error("删除文件失败:", error);
+          messageApi.error("删除文件失败");
+
+          // 删除失败时，重新获取文件列表恢复状态
+          await fetchFileList();
+          await getStoredFiles();
+          getStorageUsage(); // 更新实际存储使用情况
+        }
+      },
+    });
   };
 
   // 导出文件
@@ -608,40 +781,154 @@ const ZustandFileDownload: React.FC = () => {
 
   // 取消下载任务
   const cancelDownload = async (fileId: string) => {
+    Modal.confirm({
+      title: "确认取消",
+      content:
+        "确定要取消下载此文件吗？已下载的数据将被清除，下载进度将会丢失。",
+      okText: "取消下载",
+      okType: "danger",
+      cancelText: "继续下载",
+      onOk: async () => {
+        try {
+          // 获取文件信息
+          const fileData = await fileStore.getItem<DownloadFile>(fileId);
+          const fileToCancel = files.find((f) => f.id === fileId) || fileData;
+
+          if (!fileToCancel) {
+            messageApi.error("找不到下载任务");
+            return;
+          }
+
+          // 中止当前下载
+          if (abortControllers[fileId]) {
+            abortControllers[fileId].abort();
+            const newAbortControllers = { ...abortControllers };
+            delete newAbortControllers[fileId];
+            setAbortControllers(newAbortControllers);
+          }
+
+          // 估算要删除的大小
+          let totalSize = 0;
+
+          // 获取分片大小
+          const chunkKeys = await chunkStore.keys();
+          const fileChunkKeys = chunkKeys.filter((key) =>
+            key.startsWith(`${fileId}_chunk_`)
+          );
+
+          for (const key of fileChunkKeys) {
+            const chunk = await chunkStore.getItem<Blob>(key);
+            if (chunk) {
+              totalSize += chunk.size;
+            }
+            await chunkStore.removeItem(key);
+          }
+
+          // 删除文件信息
+          await fileStore.removeItem(fileId);
+
+          // 更新本地存储估算
+          if (totalSize > 0) {
+            await updateLocalSizeEstimate(fileId, -totalSize);
+          }
+
+          // 更新服务器文件列表中的状态
+          setFiles((prevFiles) =>
+            prevFiles.map((f) => {
+              if (f.id === fileId) {
+                return {
+                  ...f,
+                  status: DownloadStatus.IDLE,
+                  progress: 0,
+                  downloadedChunks: 0,
+                  error: undefined,
+                  completedAt: undefined,
+                };
+              }
+              return f;
+            })
+          );
+
+          // 从本地存储文件列表中移除
+          setStoredFiles((prev) => prev.filter((f) => f.id !== fileId));
+
+          messageApi.success(`已取消下载 ${fileToCancel.fileName}`);
+
+          // 不立即调用navigator.storage.estimate()，使用估算值
+          if (Date.now() - storageUsage.lastUpdated > 60000) {
+            // 如果上次更新超过1分钟，才进行实际更新
+            getStorageUsage();
+          }
+        } catch (error) {
+          console.error("取消下载失败:", error);
+          messageApi.error("取消下载失败");
+
+          // 取消失败时，重新获取文件列表恢复状态
+          await fetchFileList();
+          await getStoredFiles();
+          getStorageUsage(); // 更新实际存储使用情况
+        }
+      },
+    });
+  };
+
+  // 清空所有数据
+  const clearAllData = async () => {
     try {
-      // 中止当前下载
-      if (abortControllers[fileId]) {
-        abortControllers[fileId].abort();
-        const newAbortControllers = { ...abortControllers };
-        delete newAbortControllers[fileId];
-        setAbortControllers(newAbortControllers);
-      }
+      setStorageUsage((prev) => ({ ...prev, isLoading: true }));
 
-      // 获取文件信息
-      const fileData = await fileStore.getItem<DownloadFile>(fileId);
-      if (!fileData) {
-        messageApi.error("找不到下载任务");
-        return;
-      }
+      await fileStore.clear();
+      await chunkStore.clear();
+      await completeFileStore.clear();
 
-      // 删除文件信息和分片
-      await deleteFile(fileId);
+      // 清空本地存储的文件记录
+      setStoredFiles([]);
 
-      // 更新文件列表
-      setFiles((prevFiles) => prevFiles.filter((f) => f.id !== fileId));
+      // 重置服务器文件列表中的文件状态为初始状态
+      setFiles((prevFiles) =>
+        prevFiles.map((file) => ({
+          ...file,
+          status: DownloadStatus.IDLE,
+          progress: 0,
+          downloadedChunks: 0,
+          error: undefined,
+          completedAt: undefined,
+        }))
+      );
 
-      messageApi.success(`已取消下载 ${fileData.fileName}`);
+      // 中止所有正在进行的下载
+      Object.values(abortControllers).forEach((controller) => {
+        controller.abort();
+      });
+      setAbortControllers({});
+
+      // 重置估算值
+      setStorageUsage((prev) => ({
+        ...prev,
+        estimatedUsage: 0,
+        percent: 0,
+      }));
+
+      messageApi.success("所有数据已清除，文件状态已重置");
+
+      // 强制更新存储使用情况
+      getStorageUsage();
     } catch (error) {
-      console.error("取消下载失败:", error);
-      messageApi.error("取消下载失败");
+      console.error("清除数据失败:", error);
+      messageApi.error("清除数据失败");
+      setStorageUsage((prev) => ({ ...prev, isLoading: false }));
     }
   };
 
   // 初始化
   useEffect(() => {
-    fetchFileList();
-    getStoredFiles();
-    getStorageUsage();
+    const initializeData = async () => {
+      await fetchFileList();
+      await getStoredFiles();
+      getStorageUsage();
+    };
+
+    initializeData();
   }, [fetchFileList, getStoredFiles, getStorageUsage]);
 
   return (
@@ -653,22 +940,75 @@ const ZustandFileDownload: React.FC = () => {
         每个文件以5MB分片下载，确保稳定可靠的断点续传体验。
       </Paragraph>
 
-      <Card title="存储使用情况" style={{ marginBottom: "20px" }}>
+      <Card
+        title={
+          <Space>
+            <span>存储使用情况</span>
+            {storageUsage.isLoading && <Spin size="small" />}
+          </Space>
+        }
+        style={{ marginBottom: "20px" }}
+        extra={
+          <Space>
+            {storageUsage.lastUpdated > 0 && (
+              <Text type="secondary">
+                更新于:{" "}
+                {new Date(storageUsage.lastUpdated).toLocaleTimeString()}
+              </Text>
+            )}
+            <Button
+              size="small"
+              onClick={getStorageUsage}
+              icon={<ReloadOutlined />}
+              loading={storageUsage.isLoading}
+            >
+              刷新
+            </Button>
+          </Space>
+        }
+      >
         <Paragraph>
-          已使用: {formatFileSize(storageUsage.usage)} /{" "}
-          {formatFileSize(storageUsage.quota)}（
-          {storageUsage.percent.toFixed(2)}%）
+          <Space direction="vertical" style={{ width: "100%" }}>
+            <Text>
+              已使用:{" "}
+              {formatFileSize(
+                storageUsage.estimatedUsage || storageUsage.usage
+              )}{" "}
+              / {formatFileSize(storageUsage.quota)}（
+              {(storageUsage.estimatedUsage
+                ? (storageUsage.estimatedUsage / storageUsage.quota) * 100
+                : storageUsage.percent
+              ).toFixed(2)}
+              %）
+              {storageUsage.estimatedUsage !== storageUsage.usage && (
+                <Text type="secondary" style={{ marginLeft: 8 }}>
+                  (实际值: {formatFileSize(storageUsage.usage)})
+                </Text>
+              )}
+            </Text>
+            <Progress
+              percent={parseFloat(
+                (storageUsage.estimatedUsage
+                  ? (storageUsage.estimatedUsage / storageUsage.quota) * 100
+                  : storageUsage.percent
+                ).toFixed(1)
+              )}
+              status={storageUsage.isLoading ? "active" : "normal"}
+            />
+          </Space>
         </Paragraph>
-        <Progress percent={parseFloat(storageUsage.percent.toFixed(1))} />
-        <Space style={{ marginTop: "10px" }}>
-          <Button onClick={getStorageUsage} icon={<ReloadOutlined />}>
-            刷新
-          </Button>
-        </Space>
+        <Button
+          danger
+          onClick={clearAllData}
+          icon={<DeleteOutlined />}
+          disabled={storageUsage.isLoading}
+        >
+          清空所有数据
+        </Button>
       </Card>
 
       <Card
-        title="可下载文件列表"
+        title="文件列表"
         extra={
           <Button
             loading={fetchingFiles}
@@ -681,7 +1021,12 @@ const ZustandFileDownload: React.FC = () => {
         style={{ marginBottom: "20px" }}
       >
         <List
-          dataSource={files}
+          dataSource={[
+            // 优先显示服务器上的文件，保持原始顺序
+            ...files,
+            // 最后显示本地存储但不在服务器列表中的文件
+            ...storedFiles.filter((sf) => !files.some((f) => f.id === sf.id)),
+          ]}
           renderItem={(file) => {
             // 使用变量存储状态，避免类型错误
             const isDownloading = file.status === "downloading";
@@ -712,10 +1057,10 @@ const ZustandFileDownload: React.FC = () => {
                   ) : isCompleted ? (
                     <Button
                       type="primary"
-                      icon={<CheckCircleOutlined />}
-                      disabled
+                      onClick={() => exportFile(file)}
+                      icon={<DownloadOutlined />}
                     >
-                      已完成
+                      导出
                     </Button>
                   ) : (
                     <Button
@@ -736,6 +1081,14 @@ const ZustandFileDownload: React.FC = () => {
                     >
                       取消
                     </Button>
+                  ) : isCompleted ? (
+                    <Button
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => deleteFile(file.id)}
+                    >
+                      删除
+                    </Button>
                   ) : null,
                 ].filter(Boolean)}
               >
@@ -751,7 +1104,17 @@ const ZustandFileDownload: React.FC = () => {
                       </Text>
                       {!isIdle && (
                         <div style={{ marginTop: "8px" }}>
-                          <Progress percent={file.progress} size="small" />
+                          <Progress
+                            percent={file.progress}
+                            size="small"
+                            status={
+                              isError
+                                ? "exception"
+                                : isCompleted
+                                ? "success"
+                                : "active"
+                            }
+                          />
                           <div>
                             <Tag
                               color={
@@ -794,68 +1157,7 @@ const ZustandFileDownload: React.FC = () => {
               </List.Item>
             );
           }}
-          locale={{ emptyText: "暂无可下载文件" }}
-        />
-      </Card>
-
-      <Card title="已下载文件列表">
-        <List
-          dataSource={storedFiles}
-          renderItem={(file) => (
-            <List.Item
-              key={file.id}
-              actions={[
-                <Button
-                  type="primary"
-                  onClick={() => exportFile(file)}
-                  disabled={file.status !== "completed"}
-                >
-                  导出
-                </Button>,
-                <Button
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => deleteFile(file.id)}
-                >
-                  删除
-                </Button>,
-              ]}
-            >
-              <List.Item.Meta
-                avatar={<FileOutlined />}
-                title={<Text>{file.fileName}</Text>}
-                description={
-                  <>
-                    <Text type="secondary">
-                      大小: {formatFileSize(file.fileSize)} | 进度:{" "}
-                      {file.progress}% | 状态:{" "}
-                      {file.status === "downloading"
-                        ? "下载中"
-                        : file.status === "preparing"
-                        ? "准备中"
-                        : file.status === "completed"
-                        ? "已完成"
-                        : file.status === "error"
-                        ? "错误"
-                        : "等待中"}
-                    </Text>
-                    <Progress
-                      percent={file.progress}
-                      size="small"
-                      status={
-                        file.status === "error"
-                          ? "exception"
-                          : file.status === "completed"
-                          ? "success"
-                          : "active"
-                      }
-                    />
-                  </>
-                }
-              />
-            </List.Item>
-          )}
-          locale={{ emptyText: "暂无已下载文件" }}
+          locale={{ emptyText: "暂无文件" }}
         />
       </Card>
     </div>
