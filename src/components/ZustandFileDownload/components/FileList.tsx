@@ -1,38 +1,27 @@
 import { Card, Empty, List, Spin } from "antd";
 
-import { DownloadFile } from "../types";
 import { FileListItem } from "./FileListItem";
 import React from "react";
-
-interface FileListProps {
-  files: DownloadFile[];
-  storedFiles?: DownloadFile[];
-  fetchingFiles: boolean;
-  processingFiles: string[];
-  onStartDownload: (file: DownloadFile) => void;
-  onPauseDownload: (fileId: string) => void;
-  onResumeDownload: (fileId: string) => void;
-  onCancelDownload: (fileId: string) => void;
-  onDeleteFile: (fileId: string) => void;
-  onExportFile: (file: DownloadFile) => void;
-  onResetProcessingState?: (fileId: string) => void;
-}
+import { useDownloadFiles } from "../hooks/useDownloadFiles";
+import { useFileDownloader } from "../hooks/useFileDownloader";
 
 /**
  * 文件列表组件
  */
-export const FileList: React.FC<FileListProps> = ({
-  files,
-  fetchingFiles,
-  processingFiles,
-  onStartDownload,
-  onPauseDownload,
-  onResumeDownload,
-  onCancelDownload,
-  onDeleteFile,
-  onExportFile,
-  onResetProcessingState,
-}) => {
+export const FileList: React.FC = () => {
+  // 直接从store获取状态和方法
+  const { files, fetchingFiles } = useDownloadFiles();
+  const {
+    startDownload,
+    pauseDownload,
+    resumeDownload,
+    cancelDownload,
+    deleteFile,
+    exportFile,
+    processingFiles,
+    resetProcessingState,
+  } = useFileDownloader();
+
   return (
     <Card
       title={
@@ -50,13 +39,13 @@ export const FileList: React.FC<FileListProps> = ({
           <FileListItem
             file={file}
             isProcessing={processingFiles.includes(file.id)}
-            onStartDownload={onStartDownload}
-            onPauseDownload={onPauseDownload}
-            onResumeDownload={onResumeDownload}
-            onCancelDownload={onCancelDownload}
-            onDeleteFile={onDeleteFile}
-            onExportFile={onExportFile}
-            onResetProcessingState={onResetProcessingState}
+            onStartDownload={startDownload}
+            onPauseDownload={pauseDownload}
+            onResumeDownload={resumeDownload}
+            onCancelDownload={cancelDownload}
+            onDeleteFile={deleteFile}
+            onExportFile={exportFile}
+            onResetProcessingState={resetProcessingState}
           />
         )}
       />

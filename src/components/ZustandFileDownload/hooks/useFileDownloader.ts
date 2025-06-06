@@ -27,8 +27,12 @@ export const useFileDownloader = () => {
   } = useDownloadStore();
 
   // 使用存储管理Hook
-  const { updateLocalSize, getStorageUsage, calculateFileSize } =
-    useStorageManager();
+  const {
+    updateLocalSize,
+    getStorageUsage,
+    calculateFileSize,
+    triggerStorageUpdate,
+  } = useStorageManager();
 
   // 下载Worker引用
   const downloadWorkerRef = useRef<Worker | null>(null);
@@ -294,10 +298,11 @@ export const useFileDownloader = () => {
         console.log(`文件 ${file.fileName} 所有分片验证完成，开始合并...`);
 
         // 所有分片都存在且有效，更新文件状态
+        const completedAt = Date.now();
         updateFile(fileId, {
           status: DownloadStatus.COMPLETED,
           progress: 100,
-          completedAt: Date.now(),
+          completedAt,
         });
 
         // 保存到IndexedDB以确保刷新后能正确显示完成状态
@@ -305,7 +310,7 @@ export const useFileDownloader = () => {
           ...file,
           status: DownloadStatus.COMPLETED,
           progress: 100,
-          completedAt: Date.now(),
+          completedAt,
         });
 
         // 开始合并文件
@@ -328,27 +333,11 @@ export const useFileDownloader = () => {
         // 显示成功消息
         message.success(`文件 ${file.fileName} 下载完成`);
 
-        // 计算已下载的文件大小并更新存储使用情况
-        let downloadedSize = 0;
-        for (let i = 0; i < file.totalChunks; i++) {
-          const chunkId = `${fileId}_chunk_${i}`;
-          const chunk = await chunkStore.getItem<Blob>(chunkId);
-          if (chunk) {
-            downloadedSize += chunk.size;
-          }
-        }
-
-        console.log(
-          `文件 ${file.fileName} 下载完成，大小：${downloadedSize} 字节`
-        );
-
-        // 更新存储使用情况估算
-        if (downloadedSize > 0) {
-          updateLocalSize(fileId, downloadedSize);
-        } else {
-          // 如果无法计算具体大小，触发重新计算
-          getStorageUsage();
-        }
+        // 文件操作完成后，触发一次存储使用情况更新
+        // 使用延迟以确保所有操作完成
+        setTimeout(() => {
+          triggerStorageUpdate();
+        }, 500);
       } catch (error) {
         console.error("处理下载完成失败:", error);
         updateFile(fileId, {
@@ -357,7 +346,7 @@ export const useFileDownloader = () => {
         });
       }
     },
-    [updateFile, getStorageUsage, updateLocalSize]
+    [updateFile, triggerStorageUpdate]
   );
 
   // 处理下载错误
@@ -403,10 +392,11 @@ export const useFileDownloader = () => {
         }
 
         // 更新文件状态
+        const completedAt = Date.now();
         updateFile(fileId, {
           status: DownloadStatus.COMPLETED,
           progress: 100,
-          completedAt: Date.now(),
+          completedAt,
         });
 
         // 保存到IndexedDB以确保刷新后能正确显示完成状态
@@ -414,7 +404,7 @@ export const useFileDownloader = () => {
           ...file,
           status: DownloadStatus.COMPLETED,
           progress: 100,
-          completedAt: Date.now(),
+          completedAt,
         });
 
         // 移除处理中状态
@@ -426,11 +416,12 @@ export const useFileDownloader = () => {
 
         // 更新存储使用情况估算
         console.log(`文件 ${fileId} 合并完成，大小：${size} 字节`);
-        updateLocalSize(fileId, size);
 
-        // 获取最新的存储使用情况
+        // 文件操作完成后，触发一次存储使用情况更新
+        // 使用延迟以确保所有操作完成
         setTimeout(() => {
-          getStorageUsage();
+          updateLocalSize(fileId, size);
+          triggerStorageUpdate();
         }, 500);
       } catch (error) {
         console.error("存储合并文件失败:", error);
@@ -440,7 +431,7 @@ export const useFileDownloader = () => {
         });
       }
     },
-    [updateFile, updateLocalSize, getStorageUsage]
+    [updateFile, updateLocalSize, triggerStorageUpdate]
   );
 
   // 处理合并错误
@@ -889,7 +880,13 @@ export const useFileDownloader = () => {
         // 更新存储使用情况估算（减去已删除的文件大小）
         if (fileSize > 0) {
           updateLocalSize(fileId, -fileSize);
+        } else {
+          // 如果无法计算具体大小，触发重新计算
+          getStorageUsage();
         }
+
+        // 文件操作完成后，触发存储使用情况更新
+        triggerStorageUpdate();
 
         // 显示消息
         message.info(`已取消下载 ${file.fileName}`);
@@ -898,7 +895,14 @@ export const useFileDownloader = () => {
         message.error("取消下载失败");
       }
     },
-    [abortControllers, removeAbortController, updateFile, updateLocalSize]
+    [
+      abortControllers,
+      removeAbortController,
+      updateFile,
+      updateLocalSize,
+      getStorageUsage,
+      triggerStorageUpdate,
+    ]
   );
 
   // 删除文件
@@ -927,6 +931,9 @@ export const useFileDownloader = () => {
           getStorageUsage();
         }
 
+        // 文件操作完成后，触发存储使用情况更新
+        triggerStorageUpdate();
+
         // 显示消息
         message.success(`已删除文件 ${file.fileName}`);
       } catch (error) {
@@ -934,7 +941,13 @@ export const useFileDownloader = () => {
         message.error("删除文件失败");
       }
     },
-    [cancelDownload, calculateFileSize, updateLocalSize, getStorageUsage]
+    [
+      cancelDownload,
+      calculateFileSize,
+      updateLocalSize,
+      getStorageUsage,
+      triggerStorageUpdate,
+    ]
   );
 
   // 导出文件
@@ -991,6 +1004,8 @@ export const useFileDownloader = () => {
             return newSet;
           });
 
+          // 文件操作完成后，触发存储使用情况更新
+          triggerStorageUpdate();
           return;
         }
 
@@ -1085,6 +1100,9 @@ export const useFileDownloader = () => {
             newSet.delete(file.id);
             return newSet;
           });
+
+          // 文件操作完成后，触发存储使用情况更新
+          triggerStorageUpdate();
         }
       } catch (error) {
         console.error("合并文件失败:", error);
@@ -1109,7 +1127,7 @@ export const useFileDownloader = () => {
         );
       }
     },
-    [updateFile]
+    [updateFile, triggerStorageUpdate]
   );
 
   // 重置处理中状态

@@ -1,13 +1,14 @@
 import * as apiClient from "../api.client.js";
 
 import { CHUNK_SIZE, DownloadFile, DownloadStatus } from "../types";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { chunkStore } from "../utils";
 import { completeFileStore } from "../utils";
 import { fileStore } from "../utils";
 import { message } from "antd";
 import { useDownloadStore } from "../store";
+import { useStorageManager } from "./useStorageManager";
 
 /**
  * 文件列表管理Hook
@@ -15,6 +16,17 @@ import { useDownloadStore } from "../store";
 export const useDownloadFiles = () => {
   const { files, fetchingFiles, setFiles, setFetchingFiles } =
     useDownloadStore();
+
+  // 使用存储管理Hook
+  const { getStorageUsage } = useStorageManager();
+
+  // 使用ref保存上一次文件状态，用于比较变化
+  const prevState = useRef({
+    totalFiles: 0,
+    completedFiles: 0,
+    downloadingFiles: 0,
+    lastUpdateTime: 0, // 上次更新时间
+  });
 
   // 获取文件列表
   const fetchFileList = useCallback(async () => {
@@ -79,6 +91,7 @@ export const useDownloadFiles = () => {
             if (completeFile && completeFile.size > 0) {
               console.log(`文件 ${storedFile.fileName} 已完成下载，更新状态`);
               storedFile.status = DownloadStatus.COMPLETED;
+              storedFile.completedAt = storedFile.completedAt || Date.now();
               await fileStore.setItem(storedFile.id, storedFile);
               localFiles[key] = storedFile;
             }
@@ -160,18 +173,87 @@ export const useDownloadFiles = () => {
       );
 
       console.log("已更新文件列表，合并了本地状态");
+
+      // 在文件列表初次加载时获取一次存储使用情况
+      if (prevState.current.totalFiles === 0) {
+        setTimeout(() => {
+          getStorageUsage();
+        }, 500);
+      }
     } catch (error) {
       console.error("获取文件列表失败:", error);
       message.error("获取文件列表失败，请检查网络连接");
     } finally {
       setFetchingFiles(false);
     }
-  }, [setFetchingFiles, setFiles]);
+  }, [setFetchingFiles, setFiles, getStorageUsage]);
 
   // 初始化时加载文件列表
   useEffect(() => {
     fetchFileList();
   }, [fetchFileList]);
+
+  // 在文件列表变化时更新存储使用情况
+  useEffect(() => {
+    // 只在文件列表发生重大变化时更新存储使用情况
+    // 例如：文件数量变化、下载完成、删除文件等
+    const completedFiles = files.filter(
+      (file) => file.status === DownloadStatus.COMPLETED
+    ).length;
+    const downloadingFiles = files.filter(
+      (file) => file.status === DownloadStatus.DOWNLOADING
+    ).length;
+
+    // 检查是否有重大变化
+    const hasSignificantChanges =
+      files.length !== prevState.current.totalFiles ||
+      completedFiles !== prevState.current.completedFiles ||
+      downloadingFiles !== prevState.current.downloadingFiles;
+
+    // 最小更新间隔（毫秒）
+    const MIN_UPDATE_INTERVAL = 10000; // 10秒
+    const now = Date.now();
+    const shouldUpdateDueToTime =
+      now - prevState.current.lastUpdateTime > MIN_UPDATE_INTERVAL;
+
+    // 更新状态引用
+    prevState.current = {
+      totalFiles: files.length,
+      completedFiles,
+      downloadingFiles,
+      lastUpdateTime: hasSignificantChanges
+        ? now
+        : prevState.current.lastUpdateTime,
+    };
+
+    // 只在有重大变化且文件列表不为空时触发更新，并且限制更新频率
+    if (hasSignificantChanges && files.length > 0 && shouldUpdateDueToTime) {
+      console.log("文件列表发生重大变化，准备更新存储使用情况");
+
+      // 使用setTimeout延迟更新，避免频繁触发
+      const timer = setTimeout(() => {
+        getStorageUsage();
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [files, getStorageUsage]);
+
+  // 记录文件状态变化
+  useEffect(() => {
+    console.log("文件列表更新:", files.length);
+
+    // 记录暂停文件的进度
+    const pausedFiles = files.filter((file) => file.status === "paused");
+    if (pausedFiles.length > 0) {
+      console.log("暂停的文件:");
+      pausedFiles.forEach((file) => {
+        console.log(
+          `- ${file.fileName}: 进度 ${file.progress}%, 已下载分片 ${file.downloadedChunks}/${file.totalChunks}`
+        );
+      });
+    }
+  }, [files]);
 
   return {
     files,
