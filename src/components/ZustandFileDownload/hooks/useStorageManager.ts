@@ -1,8 +1,8 @@
+import { DownloadFile, DownloadStatus } from "../types";
 import { chunkStore, completeFileStore, fileStore } from "../utils";
 import { clearAllStorageData, getStorageEstimate } from "../utils";
 import { useCallback, useEffect, useRef } from "react";
 
-import { DownloadFile } from "../types";
 import { message } from "antd";
 import { useDownloadStore } from "../store";
 
@@ -290,6 +290,22 @@ export const useStorageManager = () => {
       for (const controller of Object.values(abortControllers)) {
         controller.abort();
       }
+
+      // 获取当前文件列表
+      const { files, setFiles } = useDownloadStore.getState();
+
+      // 重置所有文件状态为等待下载模式
+      const resetFiles = files.map((file) => ({
+        ...file,
+        status: DownloadStatus.IDLE,
+        progress: 0,
+        downloadedChunks: 0,
+        error: undefined,
+        completedAt: undefined,
+      }));
+
+      // 更新文件列表状态
+      setFiles(resetFiles);
 
       // 更新存储使用情况
       await getStorageUsage(true);
