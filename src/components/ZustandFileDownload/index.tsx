@@ -15,7 +15,7 @@ import { initializeStorage } from "./utils/storage";
  */
 const ZustandFileDownload: React.FC = () => {
   // 使用自定义hooks
-  const { files, storedFiles, fetchingFiles } = useDownloadFiles();
+  const { files, fetchingFiles } = useDownloadFiles();
   const { storageUsage, getStorageUsage, clearAllData } = useStorageManager();
   const {
     startDownload,
@@ -49,7 +49,7 @@ const ZustandFileDownload: React.FC = () => {
   // 在文件列表变化时更新存储使用情况
   useEffect(() => {
     // 如果文件列表发生变化，可能需要更新存储使用情况
-    if (files.length > 0 || storedFiles.length > 0) {
+    if (files.length > 0) {
       console.log("文件列表更新，准备更新存储使用情况");
 
       // 使用setTimeout延迟更新，避免频繁触发
@@ -59,17 +59,14 @@ const ZustandFileDownload: React.FC = () => {
 
       return () => clearTimeout(timer);
     }
-  }, [files.length, storedFiles.length, getStorageUsage]);
+  }, [files.length, getStorageUsage]);
 
   // 记录文件状态变化
   useEffect(() => {
     console.log("文件列表更新:", files.length);
-    console.log("已存储文件更新:", storedFiles.length);
 
     // 记录暂停文件的进度
-    const pausedFiles = [...files, ...storedFiles].filter(
-      (file) => file.status === "paused"
-    );
+    const pausedFiles = files.filter((file) => file.status === "paused");
     if (pausedFiles.length > 0) {
       console.log("暂停的文件:");
       pausedFiles.forEach((file) => {
@@ -78,7 +75,7 @@ const ZustandFileDownload: React.FC = () => {
         );
       });
     }
-  }, [files, storedFiles]);
+  }, [files]);
 
   return (
     <div style={{ padding: "20px" }}>
@@ -96,7 +93,6 @@ const ZustandFileDownload: React.FC = () => {
         {/* 文件列表组件 */}
         <FileList
           files={files}
-          storedFiles={storedFiles}
           fetchingFiles={fetchingFiles}
           processingFiles={processingFiles}
           onStartDownload={startDownload}

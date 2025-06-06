@@ -14,7 +14,6 @@ export interface StorageUsage {
 export interface DownloadState {
   // 文件列表
   files: DownloadFile[];
-  storedFiles: DownloadFile[];
   fetchingFiles: boolean;
 
   // 存储使用情况
@@ -25,7 +24,6 @@ export interface DownloadState {
 
   // Actions
   setFiles: (files: DownloadFile[]) => void;
-  setStoredFiles: (files: DownloadFile[]) => void;
   setFetchingFiles: (fetching: boolean) => void;
   updateFile: (fileId: string, updates: Partial<DownloadFile>) => void;
   addAbortController: (fileId: string, controller: AbortController) => void;

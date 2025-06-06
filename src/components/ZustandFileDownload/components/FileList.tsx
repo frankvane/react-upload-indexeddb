@@ -1,4 +1,4 @@
-import { Card, Empty, List, Spin, Tabs } from "antd";
+import { Card, Empty, List, Spin } from "antd";
 
 import { DownloadFile } from "../types";
 import { FileListItem } from "./FileListItem";
@@ -6,7 +6,7 @@ import React from "react";
 
 interface FileListProps {
   files: DownloadFile[];
-  storedFiles: DownloadFile[];
+  storedFiles?: DownloadFile[];
   fetchingFiles: boolean;
   processingFiles: string[];
   onStartDownload: (file: DownloadFile) => void;
@@ -23,7 +23,6 @@ interface FileListProps {
  */
 export const FileList: React.FC<FileListProps> = ({
   files,
-  storedFiles,
   fetchingFiles,
   processingFiles,
   onStartDownload,
@@ -34,57 +33,6 @@ export const FileList: React.FC<FileListProps> = ({
   onExportFile,
   onResetProcessingState,
 }) => {
-  const tabItems = [
-    {
-      key: "all",
-      label: "所有文件",
-      children: (
-        <List
-          dataSource={files}
-          loading={fetchingFiles}
-          locale={{ emptyText: <Empty description="暂无文件" /> }}
-          renderItem={(file) => (
-            <FileListItem
-              file={file}
-              isProcessing={processingFiles.includes(file.id)}
-              onStartDownload={onStartDownload}
-              onPauseDownload={onPauseDownload}
-              onResumeDownload={onResumeDownload}
-              onCancelDownload={onCancelDownload}
-              onDeleteFile={onDeleteFile}
-              onExportFile={onExportFile}
-              onResetProcessingState={onResetProcessingState}
-            />
-          )}
-        />
-      ),
-    },
-    {
-      key: "stored",
-      label: "已存储文件",
-      children: (
-        <List
-          dataSource={storedFiles}
-          loading={fetchingFiles}
-          locale={{ emptyText: <Empty description="暂无已存储文件" /> }}
-          renderItem={(file) => (
-            <FileListItem
-              file={file}
-              isProcessing={processingFiles.includes(file.id)}
-              onStartDownload={onStartDownload}
-              onPauseDownload={onPauseDownload}
-              onResumeDownload={onResumeDownload}
-              onCancelDownload={onCancelDownload}
-              onDeleteFile={onDeleteFile}
-              onExportFile={onExportFile}
-              onResetProcessingState={onResetProcessingState}
-            />
-          )}
-        />
-      ),
-    },
-  ];
-
   return (
     <Card
       title={
@@ -94,7 +42,24 @@ export const FileList: React.FC<FileListProps> = ({
         </span>
       }
     >
-      <Tabs items={tabItems} />
+      <List
+        dataSource={files}
+        loading={fetchingFiles}
+        locale={{ emptyText: <Empty description="暂无文件" /> }}
+        renderItem={(file) => (
+          <FileListItem
+            file={file}
+            isProcessing={processingFiles.includes(file.id)}
+            onStartDownload={onStartDownload}
+            onPauseDownload={onPauseDownload}
+            onResumeDownload={onResumeDownload}
+            onCancelDownload={onCancelDownload}
+            onDeleteFile={onDeleteFile}
+            onExportFile={onExportFile}
+            onResetProcessingState={onResetProcessingState}
+          />
+        )}
+      />
     </Card>
   );
 };

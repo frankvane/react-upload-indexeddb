@@ -300,6 +300,14 @@ export const useFileDownloader = () => {
           completedAt: Date.now(),
         });
 
+        // 保存到IndexedDB以确保刷新后能正确显示完成状态
+        await fileStore.setItem(fileId, {
+          ...file,
+          status: DownloadStatus.COMPLETED,
+          progress: 100,
+          completedAt: Date.now(),
+        });
+
         // 开始合并文件
         setTimeout(() => {
           // 使用setTimeout来避免直接调用mergeFile，防止循环引用
@@ -387,8 +395,23 @@ export const useFileDownloader = () => {
         // 存储合并后的文件
         await completeFileStore.setItem(fileId, blob);
 
+        // 获取文件信息
+        const file = await fileStore.getItem<DownloadFile>(fileId);
+        if (!file) {
+          console.error(`处理合并完成失败: 未找到文件 ${fileId}`);
+          return;
+        }
+
         // 更新文件状态
         updateFile(fileId, {
+          status: DownloadStatus.COMPLETED,
+          progress: 100,
+          completedAt: Date.now(),
+        });
+
+        // 保存到IndexedDB以确保刷新后能正确显示完成状态
+        await fileStore.setItem(fileId, {
+          ...file,
           status: DownloadStatus.COMPLETED,
           progress: 100,
           completedAt: Date.now(),
@@ -1043,6 +1066,14 @@ export const useFileDownloader = () => {
           await completeFileStore.setItem(file.id, mergedBlob);
 
           updateFile(file.id, {
+            status: DownloadStatus.COMPLETED,
+            progress: 100,
+            completedAt: Date.now(),
+          });
+
+          // 保存到IndexedDB以确保刷新后能正确显示完成状态
+          await fileStore.setItem(file.id, {
+            ...file,
             status: DownloadStatus.COMPLETED,
             progress: 100,
             completedAt: Date.now(),

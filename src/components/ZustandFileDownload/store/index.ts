@@ -5,7 +5,6 @@ import { create } from "zustand";
 export const useDownloadStore = create<DownloadState>((set) => ({
   // 状态
   files: [],
-  storedFiles: [],
   fetchingFiles: false,
   storageUsage: {
     usage: 0,
@@ -20,16 +19,11 @@ export const useDownloadStore = create<DownloadState>((set) => ({
   // Actions
   setFiles: (files) => set({ files }),
 
-  setStoredFiles: (storedFiles) => set({ storedFiles }),
-
   setFetchingFiles: (fetchingFiles) => set({ fetchingFiles }),
 
   updateFile: (fileId, updates) =>
     set((state) => ({
       files: state.files.map((file) =>
-        file.id === fileId ? { ...file, ...updates } : file
-      ),
-      storedFiles: state.storedFiles.map((file) =>
         file.id === fileId ? { ...file, ...updates } : file
       ),
     })),
