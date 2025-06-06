@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 import * as apiClient from "../api.client.js";
 
 import { DownloadFile, DownloadStatus } from "../types";
@@ -128,55 +130,6 @@ export const useFileDownloader = () => {
     [updateFile]
   );
 
-  // 存储分片到IndexedDB
-  const storeChunk = useCallback(
-    async (
-      fileId: string,
-      chunkIndex: number,
-      chunk: Blob,
-      size: number,
-      maxRetries = 3
-    ): Promise<boolean> => {
-      let success = false;
-      let retryCount = 0;
-
-      while (!success && retryCount <= maxRetries) {
-        try {
-          // 确保存储已初始化
-          await chunkStore.ready();
-
-          // 存储分片
-          const chunkId = `${fileId}_chunk_${chunkIndex}`;
-          await chunkStore.setItem(chunkId, chunk);
-
-          // 验证分片是否成功保存
-          const savedChunk = await chunkStore.getItem<Blob>(chunkId);
-          if (!savedChunk || savedChunk.size !== size) {
-            throw new Error(
-              `分片 ${chunkIndex} 保存后验证失败，预期大小 ${size}，实际大小 ${
-                savedChunk ? savedChunk.size : 0
-              }`
-            );
-          }
-
-          success = true;
-        } catch (err) {
-          retryCount++;
-          if (retryCount >= maxRetries) {
-            console.error(`分片 ${chunkIndex} 存储失败，已达到最大重试次数`);
-            // 可以在这里添加额外的错误处理，如通知主线程
-          } else {
-            // 短暂延迟后重试
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          }
-        }
-      }
-
-      return success;
-    },
-    []
-  );
-
   // 处理分片下载完成
   const handleChunkDownloaded = useCallback(
     async (payload: {
@@ -217,7 +170,7 @@ export const useFileDownloader = () => {
           }
 
           success = true;
-        } catch (err) {
+        } catch (_) {
           retryCount++;
           if (retryCount >= maxRetries) {
             console.error(`分片 ${chunkIndex} 存储失败，已达到最大重试次数`);
