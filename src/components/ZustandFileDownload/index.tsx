@@ -33,9 +33,9 @@ const ZustandFileDownload: React.FC = () => {
 
   return (
     <div style={{ padding: "20px" }}>
-      <h2>大文件下载测试</h2>
-      <p>此组件用于测试大文件下载，支持暂停和断点续传功能。</p>
-
+      <center>
+        <h2>大文件下载</h2>
+      </center>
       <Space direction="vertical" style={{ width: "100%" }}>
         {/* 存储统计组件 - 直接从store获取数据 */}
         <StorageStats />
