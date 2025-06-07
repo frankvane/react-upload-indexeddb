@@ -12,6 +12,13 @@ export const useDownloadStore = create<DownloadState>((set) => ({
     percent: 0,
     isLoading: false,
     lastUpdated: 0,
+
+    networkType: "unknown",
+    fileConcurrency: 2,
+    chunkConcurrency: 2,
+    chunkSize: 1024 * 1024,
+    maxRetries: 3, // 默认最大重试3次
+    isNetworkOffline: false,
   },
   abortControllers: {},
 
