@@ -230,22 +230,25 @@ export const useDownloadFiles = () => {
 
   // 监听store中的chunkSize变化，当变化时重新获取文件列表
   useEffect(() => {
-    // 创建订阅函数
-    const unsubscribe = useDownloadStore.subscribe(
-      (state) => state.chunkSize,
-      (currentChunkSize) => {
-        const prevChunkSize = prevState.current.chunkSize;
-        // 如果chunkSize变化了且不是初始值，重新获取文件列表
-        if (prevChunkSize !== 0 && prevChunkSize !== currentChunkSize) {
-          console.log(
-            `检测到chunkSize变化: ${prevChunkSize} -> ${currentChunkSize}，重新获取文件列表`
-          );
-          // 更新prevState中的chunkSize
-          prevState.current.chunkSize = currentChunkSize;
-          fetchFileList();
-        }
+    // 获取初始chunkSize
+    const initialChunkSize = useDownloadStore.getState().chunkSize;
+    prevState.current.chunkSize = initialChunkSize;
+
+    // 创建订阅函数，监听状态变化
+    const unsubscribe = useDownloadStore.subscribe((state) => {
+      const currentChunkSize = state.chunkSize;
+      const prevChunkSize = prevState.current.chunkSize;
+
+      // 如果chunkSize变化了且不是初始值，重新获取文件列表
+      if (prevChunkSize !== 0 && prevChunkSize !== currentChunkSize) {
+        console.log(
+          `检测到chunkSize变化: ${prevChunkSize} -> ${currentChunkSize}，重新获取文件列表`
+        );
+        // 更新prevState中的chunkSize
+        prevState.current.chunkSize = currentChunkSize;
+        fetchFileList();
       }
-    );
+    });
 
     // 组件卸载时取消订阅
     return () => unsubscribe();
