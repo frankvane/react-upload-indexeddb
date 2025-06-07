@@ -21,13 +21,7 @@ const { Text } = Typography;
  * 文件列表组件
  */
 export const FileList: React.FC = () => {
-  // 直接从store获取状态和方法
   const { files, fetchingFiles, fetchFileList } = useDownloadFiles();
-  console.log("FileList组件渲染:", {
-    filesCount: files?.length || 0,
-    fetchingFiles,
-    firstFile: files?.[0]?.id,
-  });
 
   const {
     startDownload,
@@ -39,14 +33,10 @@ export const FileList: React.FC = () => {
     processingFiles,
   } = useFileDownloader();
 
-  // 添加选中的文件ID状态
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  // 添加防抖标志，防止短时间内多次请求
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 批量下载处理函数
   const handleBatchDownload = useCallback(() => {
-    // 获取所有可下载的文件（IDLE或ERROR或PAUSED状态）
     const downloadableFiles = files.filter(
       (file) =>
         file.status === DownloadStatus.IDLE ||
@@ -54,61 +44,48 @@ export const FileList: React.FC = () => {
         file.status === DownloadStatus.PAUSED
     );
 
-    // 依次下载所有可下载的文件
     downloadableFiles.forEach((file) => {
       startDownload(file);
     });
 
-    // 下载开始后清空选择
     setSelectedRowKeys([]);
   }, [files, startDownload]);
 
-  // 批量暂停处理函数
   const handleBatchPause = useCallback(() => {
-    // 获取所有正在下载的文件，不限于选中的
     const downloadingFiles = files.filter(
       (file) => file.status === DownloadStatus.DOWNLOADING
     );
 
-    // 依次暂停所有下载中的文件
     downloadingFiles.forEach((file) => {
       pauseDownload(file.id);
     });
 
-    // 清空选择
     setSelectedRowKeys([]);
   }, [files, pauseDownload]);
 
-  // 批量继续处理函数
   const handleBatchResume = useCallback(() => {
-    // 获取所有已暂停的文件，不限于选中的
     const pausedFiles = files.filter(
       (file) => file.status === DownloadStatus.PAUSED
     );
 
-    // 依次继续所有暂停的文件
     pausedFiles.forEach((file) => {
       resumeDownload(file.id);
     });
 
-    // 清空选择
     setSelectedRowKeys([]);
   }, [files, resumeDownload]);
 
-  // 刷新文件列表（添加防抖处理）
   const handleRefreshFiles = useCallback(() => {
     if (isRefreshing || fetchingFiles) return;
 
     setIsRefreshing(true);
     fetchFileList();
 
-    // 1秒后重置刷新状态，防止频繁点击
     setTimeout(() => {
       setIsRefreshing(false);
     }, 1000);
   }, [fetchFileList, isRefreshing, fetchingFiles]);
 
-  // 行选择配置
   const rowSelection = useMemo(
     () => ({
       selectedRowKeys,
@@ -116,14 +93,12 @@ export const FileList: React.FC = () => {
         setSelectedRowKeys(selectedKeys);
       },
       getCheckboxProps: (record: DownloadFile) => ({
-        // 处理中的文件不可选
         disabled: processingFiles.includes(record.id),
       }),
     }),
     [selectedRowKeys, processingFiles]
   );
 
-  // 表格列定义
   const columns = useMemo(
     () => [
       {
@@ -150,12 +125,9 @@ export const FileList: React.FC = () => {
         key: "chunks",
         width: "12%",
         render: (_: unknown, record: DownloadFile) => {
-          // 计算每个分片的大小
           const chunkSize = record.chunkSize || CHUNK_SIZE;
-          // 格式化分片大小
           const formattedChunkSize = formatFileSize(chunkSize);
 
-          // 计算最后一个分片的大小（可能小于常规分片大小）
           const lastChunkSize = record.fileSize % chunkSize || chunkSize;
           const isLastChunkDifferent =
             lastChunkSize !== chunkSize && record.totalChunks > 1;
@@ -266,7 +238,6 @@ export const FileList: React.FC = () => {
 
           return (
             <Space>
-              {/* 下载/暂停/继续/导出按钮 */}
               {isDownloading && (
                 <Button
                   size="small"
@@ -310,7 +281,6 @@ export const FileList: React.FC = () => {
                 </Button>
               )}
 
-              {/* 取消/删除按钮 */}
               {!isIdle && !isCompleted && (
                 <Button
                   size="small"
@@ -347,19 +317,15 @@ export const FileList: React.FC = () => {
     ]
   );
 
-  // 计算各种状态的文件是否有被选中
   const fileStatus = useMemo(() => {
-    // 检查是否有文件正在下载
     const hasDownloadingFiles = files.some(
       (file) => file.status === DownloadStatus.DOWNLOADING
     );
 
-    // 检查是否有文件已暂停
     const hasPausedFiles = files.some(
       (file) => file.status === DownloadStatus.PAUSED
     );
 
-    // 检查是否有可下载的文件
     const hasDownloadableFiles = files.some(
       (file) =>
         file.status === DownloadStatus.IDLE ||
@@ -368,19 +334,12 @@ export const FileList: React.FC = () => {
     );
 
     return {
-      hasDownloadableFiles, // 是否有可下载的文件
-      hasDownloadingFiles, // 是否有文件在下载中
-      hasPausedFiles, // 是否有文件已暂停
+      hasDownloadableFiles,
+      hasDownloadingFiles,
+      hasPausedFiles,
       selectionCount: selectedRowKeys.length,
     };
   }, [selectedRowKeys, files]);
-
-  // 移除调试日志，减少不必要的控制台输出
-  // console.log("Selected status:", selectedStatus);
-  // console.log(
-  //   "Selected files:",
-  //   selectedRowKeys.map((id) => files.find((f) => f.id === id))
-  // );
 
   return (
     <Card

@@ -26,7 +26,6 @@ import { useDownloadStore } from "../store";
 
 const { Text } = Typography;
 
-// Badge状态类型
 type BadgeStatusType =
   | "success"
   | "processing"
@@ -38,7 +37,6 @@ interface NetworkStatusBadgeProps {
   isOffline: boolean;
 }
 
-// 创建一个包装Badge的组件
 const BadgeWrapper = React.forwardRef<
   HTMLSpanElement,
   { status: BadgeStatusType; text: string }
@@ -54,7 +52,6 @@ BadgeWrapper.displayName = "BadgeWrapper";
 
 export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
   ({ isOffline }) => {
-    // 从store获取网络状态数据
     const networkType = useDownloadStore((state) => state.networkType);
     const chunkSize = useDownloadStore((state) => state.chunkSize);
     const fileConcurrency = useDownloadStore((state) => state.fileConcurrency);
@@ -64,7 +61,6 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
     const isManuallySet = useDownloadStore((state) => state.isManuallySet);
     const displayMode = useDownloadStore((state) => state.displayMode);
 
-    // 获取store方法
     const updateNetworkStatus = useDownloadStore(
       (state) => state.updateNetworkStatus
     );
@@ -73,10 +69,8 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
       (state) => state.toggleDisplayMode
     );
 
-    // 获取文件列表刷新函数
     const { fetchFileList } = useDownloadFiles();
 
-    // 网络参数设置相关状态
     const [isSettingsVisible, setIsSettingsVisible] = useState(false);
     const [localChunkSize, setLocalChunkSize] = useState(chunkSize);
     const [localFileConcurrency, setLocalFileConcurrency] =
@@ -84,10 +78,8 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
     const [localChunkConcurrency, setLocalChunkConcurrency] =
       useState(chunkConcurrency);
 
-    // 创建一个引用
     const badgeRef = useRef<HTMLSpanElement>(null);
 
-    // 当store中的网络参数变化且设置对话框未打开时，更新本地设置
     useEffect(() => {
       if (!isSettingsVisible) {
         setLocalChunkSize(chunkSize);
@@ -96,38 +88,30 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
       }
     }, [chunkSize, fileConcurrency, chunkConcurrency, isSettingsVisible]);
 
-    // 切换手动设置标记
     const handleToggleManualFlag = useCallback(() => {
       if (isManuallySet) {
         resetManualFlag();
         message.info("已解除手动设置锁定，网络参数将自动适应网络状态");
       } else {
-        // 不更改任何参数，只设置手动标记为true
         updateNetworkStatus({}, true);
         message.info("已锁定网络参数，将忽略自动检测的网络状态");
       }
     }, [isManuallySet, resetManualFlag, updateNetworkStatus]);
 
-    // 打开设置对话框
     const showSettings = useCallback(() => {
-      // 初始化本地状态为当前值
       setLocalChunkSize(chunkSize);
       setLocalFileConcurrency(fileConcurrency);
       setLocalChunkConcurrency(chunkConcurrency);
       setIsSettingsVisible(true);
     }, [chunkSize, fileConcurrency, chunkConcurrency]);
 
-    // 关闭设置对话框
     const hideSettings = useCallback(() => {
       setIsSettingsVisible(false);
     }, []);
 
-    // 应用设置
     const applySettings = useCallback(() => {
-      // 检查chunkSize是否发生了变化
       const chunkSizeChanged = chunkSize !== localChunkSize;
 
-      // 更新网络设置，标记为手动设置
       updateNetworkStatus(
         {
           chunkSize: localChunkSize,
@@ -137,16 +121,13 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
         true
       );
 
-      // 显示成功消息
       message.success(
         `已应用网络设置：分片大小 ${formatFileSize(
           localChunkSize
         )}，文件并发 ${localFileConcurrency}，分片并发 ${localChunkConcurrency}`
       );
 
-      // 如果分片大小发生了变化，刷新文件列表以更新分片数据
       if (chunkSizeChanged) {
-        console.log("分片大小已变更，正在刷新文件列表...");
         fetchFileList(true);
       }
 
@@ -161,17 +142,14 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
       hideSettings,
     ]);
 
-    // 重置设置
     const resetSettings = useCallback(() => {
-      setLocalChunkSize(1024 * 1024); // 1MB
+      setLocalChunkSize(1024 * 1024);
       setLocalFileConcurrency(3);
       setLocalChunkConcurrency(3);
     }, []);
 
-    // 将KB转换为B，用于分片大小的滑块显示
     const chunkSizeKB = Math.round(localChunkSize / 1024);
 
-    // 网络类型对应的颜色和文本
     const getNetworkInfo = useCallback(() => {
       if (isOffline) {
         return {
@@ -229,9 +207,7 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
 
     const networkInfo = getNetworkInfo();
 
-    // 根据当前显示模式决定如何展示
     const renderContent = useCallback(() => {
-      // 网络参数详情
       const networkDetails = (
         <>
           <div>网络类型: {networkInfo.text}</div>
@@ -279,7 +255,6 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
       badgeRef,
     ]);
 
-    // 处理显示模式切换
     const handleToggleDisplayMode = useCallback(() => {
       toggleDisplayMode();
     }, [toggleDisplayMode]);

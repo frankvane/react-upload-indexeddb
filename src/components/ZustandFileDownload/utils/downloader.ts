@@ -95,8 +95,6 @@ export const exportFileToLocal = async (
 
     // 如果完整文件不存在，尝试从分片重新合并
     if (!blob) {
-      console.log("完整文件不存在，尝试从分片重新合并...");
-
       // 检查所有分片是否存在
       const totalChunks = file.totalChunks;
       let allChunksExist = true;
@@ -120,7 +118,6 @@ export const exportFileToLocal = async (
 
       // 保存合并后的文件到completeFileStore
       await completeFileStore.setItem(file.id, blob);
-      console.log("文件已成功合并并保存");
     }
 
     // 创建下载链接

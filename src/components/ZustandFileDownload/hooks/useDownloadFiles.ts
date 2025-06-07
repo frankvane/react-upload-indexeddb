@@ -37,7 +37,6 @@ export const useDownloadFiles = () => {
 
         // 如果没有文件，则不进行处理
         if (!filesToProcess || filesToProcess.length === 0) {
-          console.log("没有文件需要更新本地状态");
           return;
         }
 
@@ -152,8 +151,6 @@ export const useDownloadFiles = () => {
 
           return file;
         });
-
-        console.log("更新本地文件状态后的文件列表:", updatedFiles);
         setFiles(updatedFiles);
       } catch (error) {
         console.error("更新本地文件状态失败:", error);
@@ -167,27 +164,17 @@ export const useDownloadFiles = () => {
   const fetchFileList = useCallback(
     async (forceUpdate = false) => {
       try {
-        console.log("fetchFileList被调用，forceUpdate:", forceUpdate);
-
         // 使用store中的方法获取服务器文件列表，并自动更新store中的files
         const downloadedFiles = await fetchDownloadFiles({}, forceUpdate);
-        console.log(
-          "fetchDownloadFiles返回结果:",
-          downloadedFiles?.length || 0,
-          "个文件"
-        );
 
         // 获取本地存储的文件状态并合并
         if (downloadedFiles && downloadedFiles.length > 0) {
-          console.log("开始更新本地文件状态...");
           await updateLocalFileStatus(downloadedFiles);
         } else {
-          console.log("没有获取到文件或文件列表为空，跳过本地状态更新");
         }
 
         // 在文件列表初次加载时获取一次存储使用情况
         if (!prevState.current.isInitialized) {
-          console.log("初次加载，触发存储使用情况更新");
           triggerStorageUpdate();
           prevState.current.isInitialized = true;
         }
@@ -201,7 +188,6 @@ export const useDownloadFiles = () => {
 
   // 初始化时加载文件列表，使用空依赖数组确保只执行一次
   useEffect(() => {
-    console.log("初始化加载文件列表");
     fetchFileList(true); // 强制更新，确保获取最新数据
   }, []); // 空依赖数组，确保只执行一次
 
@@ -226,7 +212,6 @@ export const useDownloadFiles = () => {
       Math.abs(prevState.current.downloadingFiles - downloadingFiles) > 1;
 
     if (hasSignificantChanges) {
-      console.log("文件列表发生重大变化，更新存储使用情况");
       // 使用triggerStorageUpdate替代getStorageUsage，这样可以避免多次触发
       triggerStorageUpdate();
 
@@ -254,9 +239,6 @@ export const useDownloadFiles = () => {
 
       // 如果chunkSize变化了且不是初始值，重新获取文件列表
       if (prevChunkSize !== 0 && prevChunkSize !== currentChunkSize) {
-        console.log(
-          `检测到chunkSize变化: ${prevChunkSize} -> ${currentChunkSize}，重新获取文件列表`
-        );
         // 更新prevState中的chunkSize
         prevState.current.chunkSize = currentChunkSize;
         // 使用forceUpdate参数强制更新文件列表

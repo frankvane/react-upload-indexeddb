@@ -8,14 +8,9 @@ import { useStorageManager } from "../hooks/useStorageManager";
 
 const { Text } = Typography;
 
-/**
- * 存储统计组件 - 单行紧凑版
- */
 export const StorageStats: React.FC = React.memo(() => {
-  // 直接从hooks获取状态和方法
   const { storageUsage, getStorageUsage, clearAllData } = useStorageManager();
 
-  // 计算显示的使用量和百分比
   const { displayUsage, displayPercent, textType } = useMemo(() => {
     const usage = storageUsage.usage;
     const percent = storageUsage.percent;
@@ -30,7 +25,6 @@ export const StorageStats: React.FC = React.memo(() => {
     };
   }, [storageUsage.usage, storageUsage.percent]);
 
-  // 处理清空数据按钮点击
   const handleClearData = () => {
     Modal.confirm({
       title: "确认清空所有数据",
@@ -44,9 +38,8 @@ export const StorageStats: React.FC = React.memo(() => {
     });
   };
 
-  // 强制更新存储使用情况
   const handleRefresh = () => {
-    getStorageUsage(true); // 传入true表示强制更新
+    getStorageUsage(true);
   };
 
   return (
@@ -54,7 +47,6 @@ export const StorageStats: React.FC = React.memo(() => {
       <div
         style={{ display: "flex", alignItems: "center", flexWrap: "nowrap" }}
       >
-        {/* 标题和状态 */}
         <div style={{ marginRight: "8px", whiteSpace: "nowrap" }}>
           <Text strong>存储使用情况:</Text>
           {storageUsage.isLoading && (
@@ -62,7 +54,6 @@ export const StorageStats: React.FC = React.memo(() => {
           )}
         </div>
 
-        {/* 使用量信息 */}
         <div style={{ flex: "1", display: "flex", alignItems: "center" }}>
           <Text strong>{displayUsage}</Text>
           <Text type="secondary" style={{ margin: "0 4px" }}>
@@ -71,7 +62,6 @@ export const StorageStats: React.FC = React.memo(() => {
           <Text type={textType}>（{displayPercent}%）</Text>
         </div>
 
-        {/* 按钮组 */}
         <Space size="small">
           <Button
             size="small"

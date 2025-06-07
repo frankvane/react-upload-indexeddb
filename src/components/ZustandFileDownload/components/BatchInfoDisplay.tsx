@@ -7,9 +7,7 @@ import { useDownloadStore } from "../store";
 export const BatchInfoDisplay: React.FC = () => {
   const { files } = useDownloadStore();
 
-  // 使用useMemo计算统计数据
   const stats = useMemo(() => {
-    // 计算各种状态的文件数量
     const active = files.filter(
       (file) =>
         file.status === DownloadStatus.DOWNLOADING ||
@@ -30,20 +28,15 @@ export const BatchInfoDisplay: React.FC = () => {
       (file) => file.status === DownloadStatus.ERROR
     ).length;
 
-    // 已处理的文件数量
     const current = completed + failed;
 
-    // 总文件数量（不包括已完成的文件）
     const total = files.length;
 
-    // 计算进度百分比
     const percent = total > 0 ? Math.floor((current / total) * 100) : 0;
 
-    // 判断是否已完成
     const isCompleted =
       active === 0 && queued === 0 && total > 0 && current > 0;
 
-    // 验证批次信息的一致性
     const validatedCurrent = Math.min(current, total);
     const validatedTotal = Math.max(total, 1);
 
@@ -59,7 +52,6 @@ export const BatchInfoDisplay: React.FC = () => {
     };
   }, [files]);
 
-  // 如果没有文件，不显示组件
   if (files.length === 0) {
     return null;
   }

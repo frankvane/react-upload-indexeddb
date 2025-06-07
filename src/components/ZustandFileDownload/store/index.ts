@@ -91,16 +91,9 @@ export const useDownloadStore = create<DownloadState>()(
         // 获取下载文件列表（从API获取）
         fetchDownloadFiles: async (params = {}, forceUpdate = false) => {
           const state = get();
-          console.log("开始获取文件列表，当前状态:", {
-            isFetchingFileList: state.isFetchingFileList,
-            lastFetchTime: state.lastFetchTime,
-            forceUpdate,
-            currentFiles: state.files.length,
-          });
 
           // 如果已经在获取中，直接返回当前状态
           if (state.isFetchingFileList) {
-            console.log("已有文件列表请求正在进行中，跳过本次请求");
             return state.files;
           }
 
@@ -112,7 +105,6 @@ export const useDownloadStore = create<DownloadState>()(
             now - state.lastFetchTime > 5000;
 
           if (!shouldFetch) {
-            console.log("距离上次请求时间不足5秒，使用缓存数据");
             return state.files;
           }
 
@@ -123,14 +115,9 @@ export const useDownloadStore = create<DownloadState>()(
               false,
               "fetchDownloadFiles/start"
             );
-            console.log(
-              "设置获取状态: isFetchingFileList=true, fetchingFiles=true"
-            );
 
             // 从API获取文件列表
-            console.log("调用API获取文件列表...");
             const downloadFiles = await apiClient.getDownloadFiles(params);
-            console.log("API返回原始文件列表:", downloadFiles);
 
             // 处理文件数据，添加必要的字段
             const processedFiles = downloadFiles.map((file) => {
@@ -148,11 +135,6 @@ export const useDownloadStore = create<DownloadState>()(
             });
 
             // 更新状态，包括文件列表
-            console.log(
-              "更新store中的文件列表:",
-              processedFiles.length,
-              "个文件"
-            );
             set(
               {
                 lastFetchTime: now,
@@ -163,12 +145,8 @@ export const useDownloadStore = create<DownloadState>()(
               false,
               "fetchDownloadFiles/success"
             );
-            console.log(
-              "文件列表更新完成，状态重置为: isFetchingFileList=false, fetchingFiles=false"
-            );
 
             // 返回获取的文件列表
-            console.log("获取文件列表成功:", processedFiles);
             return processedFiles;
           } catch (error) {
             console.error("获取文件列表失败:", error);
@@ -204,13 +182,6 @@ export const useDownloadStore = create<DownloadState>()(
           const chunkSizeChanged =
             updates.chunkSize !== undefined &&
             updates.chunkSize !== currentState.chunkSize;
-
-          // 如果chunkSize发生变化，记录日志
-          if (chunkSizeChanged) {
-            console.log(
-              `Store: chunkSize变化 ${currentState.chunkSize} -> ${updates.chunkSize}`
-            );
-          }
 
           // 更新状态，如果指定了manuallySet参数，则同时更新isManuallySet状态
           set(
