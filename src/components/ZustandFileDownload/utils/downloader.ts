@@ -91,10 +91,36 @@ export const exportFileToLocal = async (
 ): Promise<boolean> => {
   try {
     // 从存储中获取完整文件
-    const blob = await completeFileStore.getItem<Blob>(file.id);
+    let blob = await completeFileStore.getItem<Blob>(file.id);
 
+    // 如果完整文件不存在，尝试从分片重新合并
     if (!blob) {
-      throw new Error("文件不存在或已被删除");
+      console.log("完整文件不存在，尝试从分片重新合并...");
+
+      // 检查所有分片是否存在
+      const totalChunks = file.totalChunks;
+      let allChunksExist = true;
+
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkId = `${file.id}_chunk_${i}`;
+        const chunk = await chunkStore.getItem<Blob>(chunkId);
+        if (!chunk) {
+          allChunksExist = false;
+          console.error(`分片 ${i} 不存在，无法合并文件`);
+          break;
+        }
+      }
+
+      if (!allChunksExist) {
+        throw new Error("文件分片不完整，无法导出文件");
+      }
+
+      // 从分片合并文件
+      blob = await mergeFileChunks(file);
+
+      // 保存合并后的文件到completeFileStore
+      await completeFileStore.setItem(file.id, blob);
+      console.log("文件已成功合并并保存");
     }
 
     // 创建下载链接

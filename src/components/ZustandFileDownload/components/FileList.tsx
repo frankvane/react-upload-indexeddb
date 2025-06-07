@@ -1,4 +1,5 @@
 import { Button, Progress, Tag, Typography } from "antd";
+import { CHUNK_SIZE, DownloadFile, DownloadStatus } from "../types";
 import { Card, Empty, Space, Spin, Table } from "antd";
 import {
   DeleteOutlined,
@@ -7,7 +8,6 @@ import {
   PauseCircleOutlined,
   PlayCircleOutlined,
 } from "@ant-design/icons";
-import { DownloadFile, DownloadStatus } from "../types";
 import React, { useMemo, useState } from "react";
 
 import { formatFileSize } from "../utils";
@@ -117,7 +117,7 @@ export const FileList: React.FC = () => {
         dataIndex: "fileName",
         key: "fileName",
         ellipsis: true,
-        width: "30%",
+        width: "25%",
         render: (text: string) => (
           <Text ellipsis title={text}>
             {text}
@@ -128,14 +128,48 @@ export const FileList: React.FC = () => {
         title: "大小",
         dataIndex: "fileSize",
         key: "fileSize",
-        width: "15%",
+        width: "12%",
         render: (size: number) => formatFileSize(size),
+      },
+      {
+        title: "分片",
+        key: "chunks",
+        width: "12%",
+        render: (_: unknown, record: DownloadFile) => {
+          // 计算每个分片的大小
+          const chunkSize = record.chunkSize || CHUNK_SIZE;
+          // 格式化分片大小
+          const formattedChunkSize = formatFileSize(chunkSize);
+
+          // 计算最后一个分片的大小（可能小于常规分片大小）
+          const lastChunkSize = record.fileSize % chunkSize || chunkSize;
+          const isLastChunkDifferent =
+            lastChunkSize !== chunkSize && record.totalChunks > 1;
+
+          return (
+            <div>
+              <div>
+                {record.downloadedChunks || 0}/{record.totalChunks || 0}
+              </div>
+              <div style={{ fontSize: "12px", color: "#999" }}>
+                {formattedChunkSize}/片
+                {isLastChunkDifferent && (
+                  <span
+                    title={`最后一个分片大小: ${formatFileSize(lastChunkSize)}`}
+                  >
+                    *
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        },
       },
       {
         title: "状态",
         dataIndex: "status",
         key: "status",
-        width: "15%",
+        width: "12%",
         render: (
           status: (typeof DownloadStatus)[keyof typeof DownloadStatus],
           record: DownloadFile
@@ -173,7 +207,6 @@ export const FileList: React.FC = () => {
           return (
             <Space>
               <Tag color={tagColor}>{statusText}</Tag>
-              {isProcessing && <Text type="secondary">处理中...</Text>}
             </Space>
           );
         },
@@ -182,7 +215,7 @@ export const FileList: React.FC = () => {
         title: "进度",
         dataIndex: "progress",
         key: "progress",
-        width: "20%",
+        width: "18%",
         render: (progress: number, record: DownloadFile) => {
           if (
             record.status === DownloadStatus.DOWNLOADING ||
@@ -212,7 +245,7 @@ export const FileList: React.FC = () => {
       {
         title: "操作",
         key: "action",
-        width: "20%",
+        width: "21%",
         render: (_: any, record: DownloadFile) => {
           const isDownloading = record.status === DownloadStatus.DOWNLOADING;
           const isPaused = record.status === DownloadStatus.PAUSED;

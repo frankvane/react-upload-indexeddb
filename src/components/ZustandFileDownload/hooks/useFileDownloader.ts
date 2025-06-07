@@ -516,6 +516,12 @@ export const useFileDownloader = () => {
   const startDownload = useCallback(
     async (file: DownloadFile) => {
       try {
+        const {
+          chunkSize: storeChunkSize,
+          fileConcurrency,
+          chunkConcurrency,
+        } = useDownloadStore.getState();
+
         // 标记为处理中
         setProcessingFiles((prev) => {
           const newSet = new Set(prev);
@@ -531,6 +537,35 @@ export const useFileDownloader = () => {
 
         // 确保存储已初始化
         await Promise.all([fileStore.ready(), chunkStore.ready()]);
+
+        // 确定要使用的chunkSize
+        const finalChunkSize =
+          file.chunkSize || storeChunkSize || 5 * 1024 * 1024;
+
+        // 如果文件没有chunkSize属性，或者与当前确定的finalChunkSize不同，更新文件的chunkSize
+        if (!file.chunkSize || file.chunkSize !== finalChunkSize) {
+          file.chunkSize = finalChunkSize;
+          // 更新文件对象中的chunkSize
+          updateFile(file.id, { chunkSize: finalChunkSize });
+          // 保存到IndexedDB
+          await fileStore.setItem(file.id, {
+            ...file,
+            chunkSize: finalChunkSize,
+          });
+        }
+
+        // 重新计算总分片数，确保与chunkSize匹配
+        const calculatedTotalChunks = Math.ceil(file.fileSize / finalChunkSize);
+        if (file.totalChunks !== calculatedTotalChunks) {
+          file.totalChunks = calculatedTotalChunks;
+          // 更新文件对象中的totalChunks
+          updateFile(file.id, { totalChunks: calculatedTotalChunks });
+          // 保存到IndexedDB
+          await fileStore.setItem(file.id, {
+            ...file,
+            totalChunks: calculatedTotalChunks,
+          });
+        }
 
         // 检查已下载的分片
         const pendingChunks: number[] = [];
@@ -576,6 +611,7 @@ export const useFileDownloader = () => {
           status: DownloadStatus.DOWNLOADING,
           downloadedChunks: file.totalChunks - pendingChunks.length,
           progress: progress,
+          chunkSize: finalChunkSize, // 确保chunkSize被包含在更新中
         });
 
         // 保存到IndexedDB
@@ -584,19 +620,32 @@ export const useFileDownloader = () => {
           status: DownloadStatus.DOWNLOADING,
           downloadedChunks: file.totalChunks - pendingChunks.length,
           progress: progress,
+          chunkSize: finalChunkSize, // 确保chunkSize被包含在保存的文件中
         });
 
         // 发送消息到Worker开始下载
         if (downloadWorkerRef.current) {
+          // 发送下载请求，同时传递并发参数和确定的chunkSize
           downloadWorkerRef.current.postMessage({
             type: "START_DOWNLOAD",
             payload: {
               fileId: file.id,
               url: apiClient.createDownloadUrl(file.id),
               fileSize: file.fileSize,
-              chunkSize: file.chunkSize || 5 * 1024 * 1024,
+              chunkSize: finalChunkSize, // 使用确定的finalChunkSize
               totalChunks: file.totalChunks,
               pendingChunks,
+              fileConcurrency,
+              chunkConcurrency,
+            },
+          });
+
+          // 同时更新worker的全局并发设置
+          downloadWorkerRef.current.postMessage({
+            type: "UPDATE_CONCURRENCY",
+            payload: {
+              fileConcurrency,
+              chunkConcurrency,
             },
           });
         } else {

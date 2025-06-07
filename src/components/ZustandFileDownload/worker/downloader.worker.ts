@@ -22,6 +22,14 @@ const lastProgressValue: Record<string, number> = {};
 // 进度变化阈值，超过此值才会触发更新
 const PROGRESS_CHANGE_THRESHOLD = 3; // 百分比
 
+// 默认并发设置
+const DEFAULT_FILE_CONCURRENCY = 3;
+const DEFAULT_CHUNK_CONCURRENCY = 3;
+
+// 存储每个文件的并发设置
+const fileConcurrencySettings: Record<string, number> = {};
+const chunkConcurrencySettings: Record<string, number> = {};
+
 // 接收消息
 ctx.addEventListener("message", async (event) => {
   const { type, payload } = event.data;
@@ -39,10 +47,52 @@ ctx.addEventListener("message", async (event) => {
     case "CANCEL":
       handleCancel(payload);
       break;
+    case "UPDATE_CONCURRENCY":
+      handleUpdateConcurrency(payload);
+      break;
     default:
       console.error("未知的Worker消息类型:", type);
   }
 });
+
+// 处理更新并发设置
+function handleUpdateConcurrency(payload: {
+  fileId?: string;
+  fileConcurrency?: number;
+  chunkConcurrency?: number;
+}) {
+  const { fileId, fileConcurrency, chunkConcurrency } = payload;
+
+  // 如果提供了fileId，更新特定文件的设置
+  if (fileId) {
+    if (fileConcurrency !== undefined) {
+      fileConcurrencySettings[fileId] = fileConcurrency;
+    }
+    if (chunkConcurrency !== undefined) {
+      chunkConcurrencySettings[fileId] = chunkConcurrency;
+    }
+  }
+
+  // 如果没有提供fileId，更新全局默认设置
+  if (!fileId) {
+    console.log("更新全局并发设置", { fileConcurrency, chunkConcurrency });
+  } else {
+    console.log(`更新文件 ${fileId} 的并发设置`, {
+      fileConcurrency,
+      chunkConcurrency,
+    });
+  }
+}
+
+// 获取文件的并发设置
+function getFileConcurrency(fileId: string): number {
+  return fileConcurrencySettings[fileId] || DEFAULT_FILE_CONCURRENCY;
+}
+
+// 获取分片的并发设置
+function getChunkConcurrency(fileId: string): number {
+  return chunkConcurrencySettings[fileId] || DEFAULT_CHUNK_CONCURRENCY;
+}
 
 // 处理下载
 async function handleDownload(payload: {
@@ -52,9 +102,27 @@ async function handleDownload(payload: {
   chunkSize: number;
   totalChunks: number;
   pendingChunks: number[];
+  fileConcurrency?: number;
+  chunkConcurrency?: number;
 }) {
-  const { fileId, url, fileSize, chunkSize, totalChunks, pendingChunks } =
-    payload;
+  const {
+    fileId,
+    url,
+    fileSize,
+    chunkSize,
+    totalChunks,
+    pendingChunks,
+    fileConcurrency,
+    chunkConcurrency,
+  } = payload;
+
+  // 更新并发设置（如果提供）
+  if (fileConcurrency !== undefined) {
+    fileConcurrencySettings[fileId] = fileConcurrency;
+  }
+  if (chunkConcurrency !== undefined) {
+    chunkConcurrencySettings[fileId] = chunkConcurrency;
+  }
 
   const isFirstDownload = !processedFiles.has(fileId);
 
@@ -73,8 +141,9 @@ async function handleDownload(payload: {
     chunkRetryAttempts[chunkId] = 0;
   });
 
-  // 最大并发数 - 对于第一个文件降低并发数以提高稳定性
-  const maxConcurrent = isFirstDownload ? 1 : 3;
+  // 获取分片并发数 - 对于第一个文件降低并发数以提高稳定性
+  const maxConcurrent = isFirstDownload ? 1 : getChunkConcurrency(fileId);
+
   let downloadedChunks = totalChunks - pendingChunks.length;
   let remainingChunks = [...pendingChunks];
 
@@ -88,7 +157,7 @@ async function handleDownload(payload: {
       return;
     }
 
-    // 获取当前批次
+    // 获取当前批次，使用设置的并发数
     const currentBatch = remainingChunks.splice(0, maxConcurrent);
 
     // 创建下载Promise
@@ -249,8 +318,15 @@ async function downloadChunk(
   chunkSize: number
 ) {
   const start = chunkIndex * chunkSize;
+  // 确保最后一个分片不超出文件大小
   const end = Math.min(start + chunkSize - 1, fileSize - 1);
   const chunkId = `${fileId}_${chunkIndex}`;
+
+  // 记录实际分片大小，用于调试
+  const actualChunkSize = end - start + 1;
+  console.debug(
+    `下载分片 ${chunkIndex}: 范围 ${start}-${end}, 大小: ${actualChunkSize}字节`
+  );
 
   // 增加分片重试计数
   chunkRetryAttempts[chunkId] = (chunkRetryAttempts[chunkId] || 0) + 1;

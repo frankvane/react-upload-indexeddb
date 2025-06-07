@@ -36,6 +36,11 @@ export const useDownloadFiles = () => {
       // 获取服务器文件列表
       const downloadFiles = await apiClient.getDownloadFiles();
 
+      // 获取store中的chunkSize
+      const { chunkSize: storeChunkSize } = useDownloadStore.getState();
+      // 确定要使用的chunkSize，优先使用store中的设置，否则使用默认值
+      const finalChunkSize = storeChunkSize || CHUNK_SIZE;
+
       // 获取本地存储的文件状态
       const localFiles: Record<string, DownloadFile> = {};
       const keys = await fileStore.keys();
@@ -133,27 +138,35 @@ export const useDownloadFiles = () => {
       setFiles(
         downloadFiles.map((file: any) => {
           const localFile = localFiles[file.id];
+          // 确定要使用的chunkSize
+          const fileChunkSize = localFile?.chunkSize || finalChunkSize;
+          // 正确计算总分片数
+          const calculatedTotalChunks = Math.ceil(
+            file.fileSize / fileChunkSize
+          );
 
           if (localFile) {
             // 如果本地已有该文件的信息，保留其状态和进度
+            // 但要确保totalChunks是根据正确的chunkSize计算的
             return {
               ...file,
-              totalChunks:
-                localFile.totalChunks || Math.ceil(file.fileSize / CHUNK_SIZE),
+              totalChunks: calculatedTotalChunks,
               downloadedChunks: localFile.downloadedChunks || 0,
               progress: localFile.progress || 0,
               status: localFile.status || DownloadStatus.IDLE,
               error: localFile.error,
               completedAt: localFile.completedAt,
+              chunkSize: fileChunkSize, // 确保使用已保存的chunkSize或新的finalChunkSize
             };
           } else {
             // 新文件，设置初始状态
             return {
               ...file,
-              totalChunks: Math.ceil(file.fileSize / CHUNK_SIZE),
+              totalChunks: calculatedTotalChunks,
               downloadedChunks: 0,
               progress: 0,
               status: DownloadStatus.IDLE,
+              chunkSize: fileChunkSize, // 为新文件设置chunkSize
             };
           }
         })
