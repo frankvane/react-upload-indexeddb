@@ -84,7 +84,6 @@ export const useStorageManager = () => {
     async (forceUpdate = false) => {
       try {
         const now = Date.now();
-        console.log(`开始计算存储使用情况${forceUpdate ? " (强制更新)" : ""}`);
 
         // 设置loading状态
         updateStorageUsage({ isLoading: true });
@@ -95,7 +94,6 @@ export const useStorageManager = () => {
           lastCalculation.current.promise &&
           now - lastCalculation.current.time < STORAGE_CACHE_TIME
         ) {
-          console.log("使用缓存的存储计算结果");
           const { usage, quota } = await lastCalculation.current.promise;
           const percent = quota > 0 ? (usage / quota) * 100 : 0;
 
@@ -119,12 +117,6 @@ export const useStorageManager = () => {
         // 等待计算结果
         const { usage, quota } = await lastCalculation.current.promise;
         const percent = quota > 0 ? (usage / quota) * 100 : 0;
-
-        console.log(
-          `存储计算完成: 使用 ${usage} 字节, 配额 ${quota} 字节, 占用 ${percent.toFixed(
-            2
-          )}%`
-        );
 
         // 更新UI状态
         updateStorageUsage({

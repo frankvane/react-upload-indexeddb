@@ -55,6 +55,48 @@ export const FileList: React.FC = () => {
     setSelectedRowKeys([]);
   };
 
+  // 批量暂停处理函数
+  const handleBatchPause = () => {
+    console.log("执行批量暂停...");
+
+    // 获取所有正在下载的文件，不限于选中的
+    const downloadingFiles = files.filter(
+      (file) => file.status === DownloadStatus.DOWNLOADING
+    );
+
+    console.log("需要暂停的文件:", downloadingFiles.length);
+
+    // 依次暂停所有下载中的文件
+    downloadingFiles.forEach((file) => {
+      console.log("暂停文件:", file.fileName);
+      pauseDownload(file.id);
+    });
+
+    // 清空选择
+    setSelectedRowKeys([]);
+  };
+
+  // 批量继续处理函数
+  const handleBatchResume = () => {
+    console.log("执行批量继续...");
+
+    // 获取所有已暂停的文件，不限于选中的
+    const pausedFiles = files.filter(
+      (file) => file.status === DownloadStatus.PAUSED
+    );
+
+    console.log("需要继续的文件:", pausedFiles.length);
+
+    // 依次继续所有暂停的文件
+    pausedFiles.forEach((file) => {
+      console.log("继续文件:", file.fileName);
+      resumeDownload(file.id);
+    });
+
+    // 清空选择
+    setSelectedRowKeys([]);
+  };
+
   // 行选择配置
   const rowSelection = {
     selectedRowKeys,
@@ -62,11 +104,8 @@ export const FileList: React.FC = () => {
       setSelectedRowKeys(selectedKeys);
     },
     getCheckboxProps: (record: DownloadFile) => ({
-      // 正在下载或已完成的文件不可选
-      disabled:
-        record.status === DownloadStatus.DOWNLOADING ||
-        record.status === DownloadStatus.PREPARING ||
-        record.status === DownloadStatus.COMPLETED,
+      // 处理中的文件不可选
+      disabled: processingFiles.includes(record.id),
     }),
   };
 
@@ -264,19 +303,47 @@ export const FileList: React.FC = () => {
     ]
   );
 
-  // 计算是否有可下载的文件被选中
-  const hasDownloadableSelected = useMemo(() => {
-    return (
-      selectedRowKeys.length > 0 &&
-      files.some(
-        (file) =>
-          selectedRowKeys.includes(file.id) &&
-          (file.status === DownloadStatus.IDLE ||
-            file.status === DownloadStatus.ERROR ||
-            file.status === DownloadStatus.PAUSED)
-      )
+  // 计算各种状态的文件是否有被选中
+  const selectedStatus = useMemo(() => {
+    // 初始化计数器
+    let downloadable = 0;
+
+    // 检查是否有文件正在下载
+    const hasDownloadingFiles = files.some(
+      (file) => file.status === DownloadStatus.DOWNLOADING
     );
+
+    // 检查是否有文件已暂停
+    const hasPausedFiles = files.some(
+      (file) => file.status === DownloadStatus.PAUSED
+    );
+
+    // 遍历已选择的文件计算各种状态
+    files.forEach((file) => {
+      if (selectedRowKeys.includes(file.id)) {
+        if (
+          file.status === DownloadStatus.IDLE ||
+          file.status === DownloadStatus.ERROR
+        ) {
+          downloadable++;
+        }
+      }
+    });
+
+    return {
+      hasDownloadable: downloadable > 0,
+      hasDownloadingFiles: hasDownloadingFiles, // 是否有文件在下载中
+      hasPausedFiles: hasPausedFiles, // 是否有文件已暂停
+      selectionCount: selectedRowKeys.length,
+    };
   }, [selectedRowKeys, files]);
+
+  // 添加调试信息，帮助排查问题
+  console.log("Selected status:", selectedStatus);
+  console.log(
+    "Selected files:",
+    selectedRowKeys.map((id) => files.find((f) => f.id === id))
+  );
 
   return (
     <Card
@@ -288,16 +355,32 @@ export const FileList: React.FC = () => {
       }
       extra={
         <Space>
-          {selectedRowKeys.length > 0 && (
-            <Text type="secondary">已选择 {selectedRowKeys.length} 个文件</Text>
+          {selectedStatus.selectionCount > 0 && (
+            <Text type="secondary">
+              已选择 {selectedStatus.selectionCount} 个文件
+            </Text>
           )}
           <Button
             type="primary"
             icon={<DownloadOutlined />}
             onClick={handleBatchDownload}
-            disabled={!hasDownloadableSelected}
+            disabled={!selectedStatus.hasDownloadable}
           >
             批量下载
+          </Button>
+          <Button
+            icon={<PauseCircleOutlined />}
+            onClick={handleBatchPause}
+            disabled={!selectedStatus.hasDownloadingFiles}
+          >
+            批量暂停
+          </Button>
+          <Button
+            icon={<PlayCircleOutlined />}
+            onClick={handleBatchResume}
+            disabled={!selectedStatus.hasPausedFiles}
+          >
+            批量继续
           </Button>
         </Space>
       }
