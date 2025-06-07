@@ -1,4 +1,4 @@
-import { FileList, StorageStats } from "./components";
+import { BatchInfoDisplay, FileList, StorageStats } from "./components";
 import React, { useEffect } from "react";
 
 import { Space } from "antd";
@@ -34,6 +34,7 @@ const ZustandFileDownload: React.FC = () => {
       </center>
       <Space direction="vertical" style={{ width: "100%" }}>
         <StorageStats />
+        <BatchInfoDisplay />
         <FileList />
       </Space>
     </div>
