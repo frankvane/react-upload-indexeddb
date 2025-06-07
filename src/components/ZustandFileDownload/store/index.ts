@@ -12,14 +12,14 @@ export const useDownloadStore = create<DownloadState>((set) => ({
     percent: 0,
     isLoading: false,
     lastUpdated: 0,
-
-    networkType: "unknown",
-    fileConcurrency: 2,
-    chunkConcurrency: 2,
-    chunkSize: 1024 * 1024,
-    maxRetries: 3, // 默认最大重试3次
-    isNetworkOffline: false,
   },
+  // 网络相关状态
+  networkType: "4G",
+  chunkSize: 1024 * 1024,
+  fileConcurrency: 3,
+  chunkConcurrency: 3,
+  isNetworkOffline: false,
+
   abortControllers: {},
 
   // Actions
@@ -55,5 +55,12 @@ export const useDownloadStore = create<DownloadState>((set) => ({
         ...state.storageUsage,
         ...updates,
       },
+    })),
+
+  // 网络状态更新
+  updateNetworkStatus: (updates) =>
+    set((state) => ({
+      ...state,
+      ...updates,
     })),
 }));

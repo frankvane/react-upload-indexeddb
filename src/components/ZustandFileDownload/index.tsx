@@ -8,6 +8,8 @@ import React, { useEffect } from "react";
 
 import { Space } from "antd";
 import { initializeStorage } from "./utils/storage";
+import { useDownloadStore } from "./store";
+import { useNetworkDetection } from "./hooks/useNetworkDetection";
 import { useStorageManager } from "./hooks";
 
 /**
@@ -15,8 +17,21 @@ import { useStorageManager } from "./hooks";
  * 使用Zustand进行状态管理的大文件下载组件
  */
 const ZustandFileDownload: React.FC = () => {
+  // 获取网络状态
+  const {
+    networkType,
+    chunkSize,
+    fileConcurrency,
+    chunkConcurrency,
+    isNetworkOffline,
+  } = useDownloadStore();
+
   // 只获取初始化所需的方法
   const { getStorageUsage } = useStorageManager();
+
+  // 使用网络检测钩子
+  useNetworkDetection();
+
   // 初始化存储
   useEffect(() => {
     const initStorage = async () => {
@@ -39,7 +54,14 @@ const ZustandFileDownload: React.FC = () => {
       </center>
       <Space direction="vertical" style={{ width: "100%" }}>
         <StorageStats />
-        <NetworkStatusBadge />
+        <NetworkStatusBadge
+          networkType={networkType}
+          chunkSize={chunkSize}
+          fileConcurrency={fileConcurrency}
+          chunkConcurrency={chunkConcurrency}
+          isOffline={isNetworkOffline}
+          displayMode="tooltip"
+        />
         <BatchInfoDisplay />
         <FileList />
       </Space>

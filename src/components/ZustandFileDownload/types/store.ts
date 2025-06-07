@@ -9,6 +9,15 @@ export interface StorageUsage {
   lastUpdated: number;
 }
 
+// 网络状态更新接口
+export interface NetworkStatusUpdate {
+  networkType?: string;
+  chunkSize?: number;
+  fileConcurrency?: number;
+  chunkConcurrency?: number;
+  isNetworkOffline?: boolean;
+}
+
 // 下载状态接口
 export interface DownloadState {
   // 文件列表
@@ -17,6 +26,13 @@ export interface DownloadState {
 
   // 存储使用情况
   storageUsage: StorageUsage;
+
+  // 网络状态
+  networkType: string;
+  chunkSize: number;
+  fileConcurrency: number;
+  chunkConcurrency: number;
+  isNetworkOffline: boolean;
 
   // 下载控制器
   abortControllers: Record<string, AbortController>;
@@ -28,4 +44,5 @@ export interface DownloadState {
   addAbortController: (fileId: string, controller: AbortController) => void;
   removeAbortController: (fileId: string) => void;
   updateStorageUsage: (updates: Partial<StorageUsage>) => void;
+  updateNetworkStatus: (updates: NetworkStatusUpdate) => void;
 }

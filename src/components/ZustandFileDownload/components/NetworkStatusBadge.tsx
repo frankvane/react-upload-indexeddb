@@ -1,6 +1,7 @@
-import { Badge, Tooltip } from "antd";
-import React, { useRef } from "react";
+import { Badge, Button, Space, Tooltip } from "antd";
+import React, { useRef, useState } from "react";
 
+import { SwapOutlined } from "@ant-design/icons";
 import { formatFileSize } from "../utils";
 
 // Badge状态类型
@@ -42,8 +43,20 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = ({
   isOffline,
   displayMode = "tooltip",
 }) => {
+  // 添加内部状态来控制显示模式
+  const [currentDisplayMode, setCurrentDisplayMode] = useState<
+    "tooltip" | "direct"
+  >(displayMode);
+
   // 创建一个引用
   const badgeRef = useRef<HTMLSpanElement>(null);
+
+  // 切换显示模式
+  const toggleDisplayMode = () => {
+    setCurrentDisplayMode((prev) =>
+      prev === "tooltip" ? "direct" : "tooltip"
+    );
+  };
 
   // 网络类型对应的颜色和文本
   const getNetworkInfo = () => {
@@ -113,22 +126,24 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = ({
     </>
   );
 
-  // 根据显示模式决定如何展示
-  if (displayMode === "direct") {
-    return (
-      <div style={{ display: "flex", alignItems: "center", fontSize: "12px" }}>
-        <Badge status={networkInfo.status} text={networkInfo.text} />
-        <span style={{ marginLeft: 8 }}>
-          {formatFileSize(chunkSize)} | {fileConcurrency}文件 |{" "}
-          {chunkConcurrency}
-          分片
-        </span>
-      </div>
-    );
-  }
+  // 根据当前显示模式决定如何展示
+  const renderContent = () => {
+    if (currentDisplayMode === "direct") {
+      return (
+        <div
+          style={{ display: "flex", alignItems: "center", fontSize: "12px" }}
+        >
+          <Badge status={networkInfo.status} text={networkInfo.text} />
+          <span style={{ marginLeft: 8 }}>
+            {formatFileSize(chunkSize)} | {fileConcurrency}文件 |{" "}
+            {chunkConcurrency}
+            分片
+          </span>
+        </div>
+      );
+    }
 
-  return (
-    <>
+    return (
       <Tooltip
         title={networkDetails}
         placement="bottom"
@@ -140,6 +155,21 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = ({
           text={networkInfo.text}
         />
       </Tooltip>
-    </>
+    );
+  };
+
+  return (
+    <Space align="center">
+      {renderContent()}
+      <Button
+        type="link"
+        icon={<SwapOutlined />}
+        size="small"
+        onClick={toggleDisplayMode}
+        title={`切换到${
+          currentDisplayMode === "tooltip" ? "详细" : "简洁"
+        }模式`}
+      />
+    </Space>
   );
 };

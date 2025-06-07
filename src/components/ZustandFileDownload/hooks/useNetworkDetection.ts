@@ -9,6 +9,7 @@ import { useNetwork } from "ahooks";
 export function useNetworkDetection() {
   const network = useNetwork();
   const { rtt, online, effectiveType, type } = network;
+  const { updateNetworkStatus } = useDownloadStore();
 
   useEffect(() => {
     /**
@@ -110,12 +111,12 @@ export function useNetworkDetection() {
       : effectiveType || type || "unknown";
 
     // 更新Zustand store
-    useDownloadStore.setState({
+    updateNetworkStatus({
       networkType,
       isNetworkOffline: isOffline,
       fileConcurrency,
       chunkConcurrency,
       chunkSize,
     });
-  }, [rtt, online, effectiveType, type]);
+  }, [rtt, online, effectiveType, type, updateNetworkStatus]);
 }
