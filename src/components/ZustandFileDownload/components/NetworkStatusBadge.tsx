@@ -16,6 +16,7 @@ import React, { useRef, useState } from "react";
 import { SettingOutlined, SwapOutlined } from "@ant-design/icons";
 
 import { formatFileSize } from "../utils";
+import { useDownloadFiles } from "../hooks/useDownloadFiles";
 import { useDownloadStore } from "../store";
 
 const { Text } = Typography;
@@ -60,6 +61,8 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = ({
   displayMode = "tooltip",
 }) => {
   const { updateNetworkStatus } = useDownloadStore();
+  // 获取文件列表刷新函数
+  const { refreshFiles } = useDownloadFiles();
 
   // 添加内部状态来控制显示模式
   const [currentDisplayMode, setCurrentDisplayMode] = useState<
@@ -100,6 +103,10 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = ({
 
   // 应用设置
   const applySettings = () => {
+    // 检查chunkSize是否发生了变化
+    const chunkSizeChanged = chunkSize !== localChunkSize;
+
+    // 更新网络设置
     updateNetworkStatus({
       chunkSize: localChunkSize,
       fileConcurrency: localFileConcurrency,
@@ -112,6 +119,12 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = ({
         localChunkSize
       )}，文件并发 ${localFileConcurrency}，分片并发 ${localChunkConcurrency}`
     );
+
+    // 如果分片大小发生了变化，刷新文件列表以更新分片数据
+    if (chunkSizeChanged) {
+      console.log("分片大小已变更，正在刷新文件列表...");
+      refreshFiles();
+    }
 
     hideSettings();
   };
