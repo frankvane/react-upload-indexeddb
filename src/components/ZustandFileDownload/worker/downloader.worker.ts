@@ -5,8 +5,10 @@ const ctx: Worker = self as any;
 const activeDownloads: Record<string, boolean> = {};
 // 存储已经处理过的文件ID，用于识别第一次下载的文件
 const processedFiles = new Set<string>();
-// 存储重试次数
+// 存储重试次数 - 每个文件的总重试次数
 const retryAttempts: Record<string, number> = {};
+// 每个分片的重试次数
+const chunkRetryAttempts: Record<string, number> = {};
 // 最大重试次数
 const MAX_RETRY_ATTEMPTS = 3;
 // 重试延迟（毫秒）
@@ -55,6 +57,12 @@ async function handleDownload(payload: {
   // 重置重试计数
   retryAttempts[fileId] = 0;
 
+  // 初始化分片重试计数
+  pendingChunks.forEach((chunkIndex) => {
+    const chunkId = `${fileId}_${chunkIndex}`;
+    chunkRetryAttempts[chunkId] = 0;
+  });
+
   // 最大并发数 - 对于第一个文件降低并发数以提高稳定性
   const maxConcurrent = isFirstDownload ? 1 : 3;
   let downloadedChunks = totalChunks - pendingChunks.length;
@@ -71,7 +79,7 @@ async function handleDownload(payload: {
   });
 
   // 主下载循环
-  while (remainingChunks.length > 0) {
+  while (remainingChunks.length > 0 && activeDownloads[fileId]) {
     // 每次循环都检查是否已暂停或取消
     if (!activeDownloads[fileId]) {
       return;
@@ -114,11 +122,15 @@ async function handleDownload(payload: {
       .map((r) => r.chunkIndex);
 
     if (failedChunks.length > 0) {
-      // 增加重试计数
+      // 增加文件级重试计数
       retryAttempts[fileId] = (retryAttempts[fileId] || 0) + 1;
 
+      console.warn(
+        `文件 ${fileId} 下载重试 ${retryAttempts[fileId]}/${MAX_RETRY_ATTEMPTS}`
+      );
+
       // 如果超过最大重试次数，暂停下载
-      if (retryAttempts[fileId] > MAX_RETRY_ATTEMPTS) {
+      if (retryAttempts[fileId] >= MAX_RETRY_ATTEMPTS) {
         console.warn(`文件 ${fileId} 下载失败次数过多，暂停下载`);
         activeDownloads[fileId] = false;
 
@@ -127,7 +139,29 @@ async function handleDownload(payload: {
           payload: {
             fileId,
             chunkIndex: failedChunks[0],
-            error: `下载失败次数过多，请检查网络连接后重试`,
+            error: `下载失败次数过多（${retryAttempts[fileId]}次），请检查网络连接后重试`,
+          },
+        });
+
+        return;
+      }
+
+      // 检查是否所有失败的分片都已经超过最大重试次数
+      const allChunksExceededRetries = failedChunks.every((chunkIndex) => {
+        const chunkId = `${fileId}_${chunkIndex}`;
+        return chunkRetryAttempts[chunkId] >= MAX_RETRY_ATTEMPTS;
+      });
+
+      if (allChunksExceededRetries) {
+        console.warn(`文件 ${fileId} 的所有分片都已达到最大重试次数，停止下载`);
+        activeDownloads[fileId] = false;
+
+        ctx.postMessage({
+          type: "ERROR",
+          payload: {
+            fileId,
+            chunkIndex: failedChunks[0],
+            error: `多个分片下载失败，请检查网络连接后重试`,
           },
         });
 
@@ -135,13 +169,15 @@ async function handleDownload(payload: {
       }
 
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
-    } else {
-      // 重置重试计数，因为这一批次成功了
-      retryAttempts[fileId] = 0;
     }
 
-    // 将失败的分片添加回队列
-    remainingChunks = [...remainingChunks, ...failedChunks];
+    // 将未达到最大重试次数的失败分片添加回队列
+    const retriableChunks = failedChunks.filter((chunkIndex) => {
+      const chunkId = `${fileId}_${chunkIndex}`;
+      return chunkRetryAttempts[chunkId] < MAX_RETRY_ATTEMPTS;
+    });
+
+    remainingChunks = [...remainingChunks, ...retriableChunks];
 
     // 如果没有更多分片，完成下载
     if (remainingChunks.length === 0) {
@@ -172,121 +208,108 @@ async function downloadChunk(
 ) {
   const start = chunkIndex * chunkSize;
   const end = Math.min(start + chunkSize - 1, fileSize - 1);
-  const maxRetries = 3; // 单个分片的最大重试次数
-  let retryCount = 0;
+  const chunkId = `${fileId}_${chunkIndex}`;
 
-  while (retryCount <= maxRetries) {
+  // 增加分片重试计数
+  chunkRetryAttempts[chunkId] = (chunkRetryAttempts[chunkId] || 0) + 1;
+
+  // 如果已达到最大重试次数，直接返回失败
+  if (chunkRetryAttempts[chunkId] > MAX_RETRY_ATTEMPTS) {
+    console.error(
+      `分片 ${chunkIndex} 已达到最大重试次数 ${MAX_RETRY_ATTEMPTS}`
+    );
+    return {
+      success: false,
+      chunkIndex,
+      error: `达到最大重试次数 ${MAX_RETRY_ATTEMPTS}`,
+    };
+  }
+
+  try {
+    // 开始前检查是否已暂停
+    if (!activeDownloads[fileId]) {
+      return { success: false, chunkIndex, paused: true };
+    }
+
+    // 添加超时处理
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+
     try {
-      // 开始前检查是否已暂停
+      const response = await fetch(url, {
+        headers: {
+          Range: `bytes=${start}-${end}`,
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId); // 清除超时
+
+      // 下载后再次检查是否已暂停
       if (!activeDownloads[fileId]) {
         return { success: false, chunkIndex, paused: true };
       }
 
-      // 添加超时处理
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-      try {
-        const response = await fetch(url, {
-          headers: {
-            Range: `bytes=${start}-${end}`,
-          },
-          signal: controller.signal,
-        });
+      const blob = await response.blob();
 
-        clearTimeout(timeoutId); // 清除超时
+      // 验证blob大小
+      if (blob.size === 0) {
+        throw new Error(`分片 ${chunkIndex} 下载完成，但大小为0字节`);
+      }
 
-        // 下载后再次检查是否已暂停
-        if (!activeDownloads[fileId]) {
-          return { success: false, chunkIndex, paused: true };
-        }
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const blob = await response.blob();
-
-        // 验证blob大小
-        if (blob.size === 0) {
-          throw new Error(`分片 ${chunkIndex} 下载完成，但大小为0字节`);
-        }
-
-        // 发送分片数据到主线程
-        ctx.postMessage({
-          type: "CHUNK_DOWNLOADED",
-          payload: {
-            fileId,
-            chunkIndex,
-            blob,
-            size: blob.size,
-          },
-        });
-
-        return {
-          success: true,
+      // 发送分片数据到主线程
+      ctx.postMessage({
+        type: "CHUNK_DOWNLOADED",
+        payload: {
+          fileId,
           chunkIndex,
+          blob,
           size: blob.size,
-        };
-      } catch (error) {
-        // 清除可能存在的超时
-        clearTimeout(timeoutId);
+        },
+      });
 
-        // 如果是超时错误，特殊处理
-        if (
-          error &&
-          typeof error === "object" &&
-          "name" in error &&
-          error.name === "AbortError"
-        ) {
-          console.error(`下载分片 ${chunkIndex} 超时`);
-          throw new Error(`下载超时`);
-        }
+      // 重置该分片的重试计数，因为成功了
+      chunkRetryAttempts[chunkId] = 0;
 
-        throw error; // 抛出其他错误，进入外层catch处理
-      }
-    } catch (err) {
-      const error = err as Error;
-      console.error(
-        `下载分片 ${chunkIndex} 失败 (尝试 ${retryCount + 1}/${
-          maxRetries + 1
-        }):`,
-        error
-      );
+      return {
+        success: true,
+        chunkIndex,
+        size: blob.size,
+      };
+    } catch (error) {
+      // 清除可能存在的超时
+      clearTimeout(timeoutId);
 
-      // 如果已经达到最大重试次数，报告错误
-      if (retryCount >= maxRetries) {
-        ctx.postMessage({
-          type: "ERROR",
-          payload: {
-            fileId,
-            chunkIndex,
-            error: error instanceof Error ? error.message : "未知错误",
-          },
-        });
-
-        return {
-          success: false,
-          chunkIndex,
-          error: error instanceof Error ? error.message : "未知错误",
-        };
+      // 如果是超时错误，特殊处理
+      if (
+        error &&
+        typeof error === "object" &&
+        "name" in error &&
+        error.name === "AbortError"
+      ) {
+        console.error(`下载分片 ${chunkIndex} 超时`);
+        throw new Error(`下载超时`);
       }
 
-      // 否则增加重试计数并继续
-      retryCount++;
-
-      // 等待一段时间再重试，时间随重试次数增加
-      const delay = 1000 * Math.pow(2, retryCount - 1); // 指数退避: 1s, 2s, 4s...
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      throw error; // 抛出其他错误，进入外层catch处理
     }
-  }
+  } catch (err) {
+    const error = err as Error;
+    console.error(
+      `下载分片 ${chunkIndex} 失败 (尝试 ${chunkRetryAttempts[chunkId]}/${MAX_RETRY_ATTEMPTS}):`,
+      error
+    );
 
-  // 如果所有重试都失败
-  return {
-    success: false,
-    chunkIndex,
-    error: "达到最大重试次数",
-  };
+    return {
+      success: false,
+      chunkIndex,
+      error: error instanceof Error ? error.message : "未知错误",
+    };
+  }
 }
 
 // 处理暂停
