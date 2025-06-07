@@ -26,6 +26,10 @@ export interface DownloadState {
   files: DownloadFile[];
   fetchingFiles: boolean;
 
+  // 文件列表请求状态
+  lastFetchTime: number;
+  isFetchingFileList: boolean;
+
   // 存储使用情况
   storageUsage: StorageUsage;
 
@@ -48,6 +52,10 @@ export interface DownloadState {
   addAbortController: (fileId: string, controller: AbortController) => void;
   removeAbortController: (fileId: string) => void;
   updateStorageUsage: (updates: Partial<StorageUsage>) => void;
+  fetchDownloadFiles: (
+    params?: Record<string, any>,
+    forceUpdate?: boolean
+  ) => Promise<DownloadFile[]>;
   updateNetworkStatus: (
     updates: NetworkStatusUpdate,
     manuallySet?: boolean

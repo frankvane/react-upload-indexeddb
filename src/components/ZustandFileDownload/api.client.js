@@ -30,24 +30,6 @@ export const getFileList = async (params = {}) => {
 };
 
 /**
- * 获取下载信息（支持断点续传）
- * @param {string} fileId 文件ID
- * @returns {Promise} API响应
- */
-export const getDownloadInfo = async (fileId) => {
-  try {
-    const response = await apiClient.get(`/api/file/download/${fileId}/info`);
-    if (response.data.code === 200) {
-      return response.data.data;
-    }
-    throw new Error(response.data.message || "获取下载信息失败");
-  } catch (error) {
-    console.error("获取下载信息失败:", error);
-    throw error;
-  }
-};
-
-/**
  * 创建下载URL
  * @param {string} fileId 文件ID
  * @returns {string} 下载URL
@@ -85,7 +67,6 @@ export const getDownloadFiles = async (params = {}) => {
 
 export default {
   getFileList,
-  getDownloadInfo,
   createDownloadUrl,
   getDownloadFiles,
 };
