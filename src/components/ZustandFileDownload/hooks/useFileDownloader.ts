@@ -341,11 +341,11 @@ export const useFileDownloader = () => {
         });
 
         // 文件下载完成后，触发存储使用情况更新（关键时机1：上传完成）
-        console.log(`文件 ${file.fileName} 下载完成，更新存储统计`);
+        // console.log(`文件 ${file.fileName} 下载完成，更新存储统计`);
         getStorageUsage(true);
 
         // 显示成功消息
-        message.success(`文件 ${file.fileName} 下载完成`);
+        // message.success(`文件 ${file.fileName} 下载完成`);
       } catch (err) {
         console.error("处理下载完成失败:", err);
         updateFile(fileId, {
@@ -429,7 +429,7 @@ export const useFileDownloader = () => {
         getStorageUsage(true);
 
         // 显示成功消息
-        message.success(`文件 ${file.fileName} 下载完成`);
+        // message.success(`文件 ${file.fileName} 下载完成`);
       } catch (err) {
         console.error("处理合并完成失败:", err);
       }
@@ -831,7 +831,7 @@ export const useFileDownloader = () => {
         getStorageUsage(true);
 
         // 显示消息
-        message.error(`文件 ${file.fileName} 成功删除`);
+        // message.error(`文件 ${file.fileName} 成功删除`);
       } catch (err) {
         console.error("删除文件失败:", err);
         message.error("删除文件失败");
@@ -910,7 +910,7 @@ export const useFileDownloader = () => {
           getStorageUsage(true);
 
           // 显示成功消息
-          message.success(`文件 ${file.fileName} 下载完成`);
+          // message.success(`文件 ${file.fileName} 下载完成`);
           return;
         }
 
@@ -1009,7 +1009,7 @@ export const useFileDownloader = () => {
           getStorageUsage(true);
 
           // 显示成功消息
-          message.success(`文件 ${file.fileName} 下载完成`);
+          // message.success(`文件 ${file.fileName} 下载完成`);
         }
       } catch (err) {
         console.error("合并文件失败:", err);

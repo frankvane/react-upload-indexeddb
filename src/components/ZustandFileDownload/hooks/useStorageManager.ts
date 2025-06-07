@@ -224,7 +224,7 @@ export const useStorageManager = () => {
       await getStorageUsage(true);
 
       // 显示成功消息
-      message.success("所有数据已清除");
+      // message.success("所有数据已清除");
       return true;
     } catch {
       // 显示错误消息
