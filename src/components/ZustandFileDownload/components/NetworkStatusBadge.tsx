@@ -74,7 +74,7 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
     );
 
     // 获取文件列表刷新函数
-    const { refreshFiles } = useDownloadFiles();
+    const { fetchFileList } = useDownloadFiles();
 
     // 网络参数设置相关状态
     const [isSettingsVisible, setIsSettingsVisible] = useState(false);
@@ -147,7 +147,7 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
       // 如果分片大小发生了变化，刷新文件列表以更新分片数据
       if (chunkSizeChanged) {
         console.log("分片大小已变更，正在刷新文件列表...");
-        refreshFiles();
+        fetchFileList(true);
       }
 
       hideSettings();
@@ -157,7 +157,7 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
       localFileConcurrency,
       localChunkConcurrency,
       updateNetworkStatus,
-      refreshFiles,
+      fetchFileList,
       hideSettings,
     ]);
 
@@ -229,19 +229,19 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
 
     const networkInfo = getNetworkInfo();
 
-    // 网络参数详情
-    const networkDetails = (
-      <>
-        <div>网络类型: {networkInfo.text}</div>
-        <div>分片大小: {formatFileSize(chunkSize)}</div>
-        <div>文件并发: {fileConcurrency}</div>
-        <div>分片并发: {chunkConcurrency}</div>
-        <div>手动设置: {isManuallySet ? "是" : "否"}</div>
-      </>
-    );
-
     // 根据当前显示模式决定如何展示
     const renderContent = useCallback(() => {
+      // 网络参数详情
+      const networkDetails = (
+        <>
+          <div>网络类型: {networkInfo.text}</div>
+          <div>分片大小: {formatFileSize(chunkSize)}</div>
+          <div>文件并发: {fileConcurrency}</div>
+          <div>分片并发: {chunkConcurrency}</div>
+          <div>手动设置: {isManuallySet ? "是" : "否"}</div>
+        </>
+      );
+
       if (displayMode === "direct") {
         return (
           <div
@@ -279,7 +279,6 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
       fileConcurrency,
       chunkConcurrency,
       isManuallySet,
-      networkDetails,
       badgeRef,
     ]);
 
