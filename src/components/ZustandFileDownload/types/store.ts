@@ -16,6 +16,8 @@ export interface NetworkStatusUpdate {
   fileConcurrency?: number;
   chunkConcurrency?: number;
   isNetworkOffline?: boolean;
+  isManuallySet?: boolean;
+  displayMode?: "tooltip" | "direct";
 }
 
 // 下载状态接口
@@ -33,6 +35,8 @@ export interface DownloadState {
   fileConcurrency: number;
   chunkConcurrency: number;
   isNetworkOffline: boolean;
+  isManuallySet: boolean; // 是否手动设置网络参数
+  displayMode: "tooltip" | "direct"; // 网络状态显示模式
 
   // 下载控制器
   abortControllers: Record<string, AbortController>;
@@ -44,5 +48,10 @@ export interface DownloadState {
   addAbortController: (fileId: string, controller: AbortController) => void;
   removeAbortController: (fileId: string) => void;
   updateStorageUsage: (updates: Partial<StorageUsage>) => void;
-  updateNetworkStatus: (updates: NetworkStatusUpdate) => void;
+  updateNetworkStatus: (
+    updates: NetworkStatusUpdate,
+    manuallySet?: boolean
+  ) => boolean;
+  resetManualFlag: () => void;
+  toggleDisplayMode: () => void;
 }

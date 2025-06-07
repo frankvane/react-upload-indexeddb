@@ -1,17 +1,55 @@
+import { useEffect, useRef } from "react";
+
 import { useDownloadStore } from "../store";
-import { useEffect } from "react";
 import { useNetwork } from "ahooks";
 
 /**
  * 网络状态检测钩子
  * 监听网络状态变化，更新Zustand store中的网络参数
+ * 如果isManuallySet为true，则只更新网络类型和离线状态，不更新其他参数
  */
 export function useNetworkDetection() {
   const network = useNetwork();
   const { rtt, online, effectiveType, type } = network;
-  const { updateNetworkStatus } = useDownloadStore();
+
+  // 使用单独的选择器以避免不必要的重渲染
+  const updateNetworkStatus = useDownloadStore(
+    (state) => state.updateNetworkStatus
+  );
+  const isManuallySet = useDownloadStore((state) => state.isManuallySet);
+
+  // 使用ref跟踪上一次的网络状态，避免不必要的更新
+  const prevNetworkState = useRef({
+    rtt,
+    online,
+    effectiveType,
+    type,
+    isManuallySet,
+  });
 
   useEffect(() => {
+    // 检查网络状态是否真的发生了变化
+    const hasNetworkChanged =
+      prevNetworkState.current.rtt !== rtt ||
+      prevNetworkState.current.online !== online ||
+      prevNetworkState.current.effectiveType !== effectiveType ||
+      prevNetworkState.current.type !== type ||
+      prevNetworkState.current.isManuallySet !== isManuallySet;
+
+    // 如果网络状态没有变化，则不更新
+    if (!hasNetworkChanged) {
+      return;
+    }
+
+    // 更新上一次的网络状态
+    prevNetworkState.current = {
+      rtt,
+      online,
+      effectiveType,
+      type,
+      isManuallySet,
+    };
+
     /**
      * 是否离线
      */
@@ -20,6 +58,22 @@ export function useNetworkDetection() {
       (typeof window !== "undefined" &&
         typeof window.navigator !== "undefined" &&
         window.navigator.onLine === false);
+
+    /**
+     * 网络类型字符串
+     */
+    const networkType = isOffline
+      ? "offline"
+      : effectiveType || type || "unknown";
+
+    // 如果是手动设置模式，只更新网络类型和离线状态
+    if (isManuallySet) {
+      updateNetworkStatus({
+        networkType,
+        isNetworkOffline: isOffline,
+      });
+      return;
+    }
 
     /**
      * 动态分片并发数（单文件分片上传并发）
@@ -103,13 +157,6 @@ export function useNetworkDetection() {
       chunkSize = 512 * 1024;
     }
 
-    /**
-     * 网络类型字符串
-     */
-    const networkType = isOffline
-      ? "offline"
-      : effectiveType || type || "unknown";
-
     // 更新Zustand store
     updateNetworkStatus({
       networkType,
@@ -118,5 +165,5 @@ export function useNetworkDetection() {
       chunkConcurrency,
       chunkSize,
     });
-  }, [rtt, online, effectiveType, type, updateNetworkStatus]);
+  }, [rtt, online, effectiveType, type, updateNetworkStatus, isManuallySet]);
 }

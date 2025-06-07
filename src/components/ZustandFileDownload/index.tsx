@@ -18,13 +18,7 @@ import { useStorageManager } from "./hooks";
  */
 const ZustandFileDownload: React.FC = () => {
   // 获取网络状态
-  const {
-    networkType,
-    chunkSize,
-    fileConcurrency,
-    chunkConcurrency,
-    isNetworkOffline,
-  } = useDownloadStore();
+  const { isNetworkOffline } = useDownloadStore();
 
   // 只获取初始化所需的方法
   const { getStorageUsage } = useStorageManager();
@@ -54,14 +48,7 @@ const ZustandFileDownload: React.FC = () => {
       </center>
       <Space direction="vertical" style={{ width: "100%" }}>
         <StorageStats />
-        <NetworkStatusBadge
-          networkType={networkType}
-          chunkSize={chunkSize}
-          fileConcurrency={fileConcurrency}
-          chunkConcurrency={chunkConcurrency}
-          isOffline={isNetworkOffline}
-          displayMode="tooltip"
-        />
+        <NetworkStatusBadge isOffline={isNetworkOffline} />
         <BatchInfoDisplay />
         <FileList />
       </Space>
