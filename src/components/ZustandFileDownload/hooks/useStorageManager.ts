@@ -84,7 +84,6 @@ export const useStorageManager = () => {
     async (forceUpdate = false) => {
       try {
         const now = Date.now();
-        console.log(`开始计算存储使用情况${forceUpdate ? " (强制)" : ""}`);
 
         // 设置loading状态
         updateStorageUsage({ isLoading: true });
@@ -96,12 +95,6 @@ export const useStorageManager = () => {
         // 等待计算结果
         const { usage, quota } = await lastCalculation.current.promise;
         const percent = quota > 0 ? (usage / quota) * 100 : 0;
-
-        console.log(
-          `存储计算完成: 使用 ${usage} 字节, 配额 ${quota} 字节, 占用 ${percent.toFixed(
-            2
-          )}%`
-        );
 
         // 更新UI状态
         updateStorageUsage({
@@ -123,7 +116,6 @@ export const useStorageManager = () => {
 
   // 触发存储使用情况更新 - 简化版本
   const triggerStorageUpdate = useCallback(() => {
-    console.log("触发存储使用情况更新");
     // 直接调用getStorageUsage
     getStorageUsage(false);
   }, [getStorageUsage]);
