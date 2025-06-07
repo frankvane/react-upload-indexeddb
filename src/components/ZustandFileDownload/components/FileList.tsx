@@ -8,7 +8,7 @@ import {
   PlayCircleOutlined,
 } from "@ant-design/icons";
 import { DownloadFile, DownloadStatus } from "../types";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 
 import { formatFileSize } from "../utils";
 import { useDownloadFiles } from "../hooks/useDownloadFiles";
@@ -31,6 +31,44 @@ export const FileList: React.FC = () => {
     exportFile,
     processingFiles,
   } = useFileDownloader();
+
+  // 添加选中的文件ID状态
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+
+  // 批量下载处理函数
+  const handleBatchDownload = () => {
+    // 过滤出选中的文件
+    const selectedFiles = files.filter(
+      (file) =>
+        selectedRowKeys.includes(file.id) &&
+        (file.status === DownloadStatus.IDLE ||
+          file.status === DownloadStatus.ERROR ||
+          file.status === DownloadStatus.PAUSED)
+    );
+
+    // 依次下载选中的文件
+    selectedFiles.forEach((file) => {
+      startDownload(file);
+    });
+
+    // 下载开始后清空选择
+    setSelectedRowKeys([]);
+  };
+
+  // 行选择配置
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (selectedKeys: React.Key[]) => {
+      setSelectedRowKeys(selectedKeys);
+    },
+    getCheckboxProps: (record: DownloadFile) => ({
+      // 正在下载或已完成的文件不可选
+      disabled:
+        record.status === DownloadStatus.DOWNLOADING ||
+        record.status === DownloadStatus.PREPARING ||
+        record.status === DownloadStatus.COMPLETED,
+    }),
+  };
 
   // 表格列定义
   const columns = useMemo(
@@ -226,6 +264,20 @@ export const FileList: React.FC = () => {
     ]
   );
 
+  // 计算是否有可下载的文件被选中
+  const hasDownloadableSelected = useMemo(() => {
+    return (
+      selectedRowKeys.length > 0 &&
+      files.some(
+        (file) =>
+          selectedRowKeys.includes(file.id) &&
+          (file.status === DownloadStatus.IDLE ||
+            file.status === DownloadStatus.ERROR ||
+            file.status === DownloadStatus.PAUSED)
+      )
+    );
+  }, [selectedRowKeys, files]);
+
   return (
     <Card
       title={
@@ -234,8 +286,24 @@ export const FileList: React.FC = () => {
           {fetchingFiles && <Spin size="small" style={{ marginLeft: 8 }} />}
         </span>
       }
+      extra={
+        <Space>
+          {selectedRowKeys.length > 0 && (
+            <Text type="secondary">已选择 {selectedRowKeys.length} 个文件</Text>
+          )}
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={handleBatchDownload}
+            disabled={!hasDownloadableSelected}
+          >
+            批量下载
+          </Button>
+        </Space>
+      }
     >
       <Table
+        rowSelection={rowSelection}
         columns={columns}
         dataSource={files}
         rowKey="id"
