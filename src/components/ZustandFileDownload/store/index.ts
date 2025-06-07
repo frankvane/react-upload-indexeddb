@@ -12,7 +12,6 @@ export const useDownloadStore = create<DownloadState>((set) => ({
     percent: 0,
     isLoading: false,
     lastUpdated: 0,
-    estimatedUsage: 0,
   },
   abortControllers: {},
 

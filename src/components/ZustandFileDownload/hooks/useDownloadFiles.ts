@@ -18,7 +18,7 @@ export const useDownloadFiles = () => {
     useDownloadStore();
 
   // 使用存储管理Hook
-  const { getStorageUsage } = useStorageManager();
+  const { triggerStorageUpdate } = useStorageManager();
 
   // 使用ref保存上一次文件状态，用于比较变化
   const prevState = useRef({
@@ -161,16 +161,14 @@ export const useDownloadFiles = () => {
 
       // 在文件列表初次加载时获取一次存储使用情况
       if (prevState.current.totalFiles === 0) {
-        setTimeout(() => {
-          getStorageUsage();
-        }, 500);
+        triggerStorageUpdate();
       }
     } catch {
       message.error("获取文件列表失败，请检查网络连接");
     } finally {
       setFetchingFiles(false);
     }
-  }, [setFetchingFiles, setFiles, getStorageUsage]);
+  }, [setFetchingFiles, setFiles, triggerStorageUpdate]);
 
   // 初始化时加载文件列表
   useEffect(() => {
@@ -193,10 +191,8 @@ export const useDownloadFiles = () => {
       prevState.current.completedFiles !== completedFiles ||
       Math.abs(prevState.current.downloadingFiles - downloadingFiles) > 1
     ) {
-      // 如果文件数量变化、完成文件数量变化或下载中文件数量变化超过1个，更新存储使用情况
-      setTimeout(() => {
-        getStorageUsage();
-      }, 500);
+      // 使用triggerStorageUpdate替代getStorageUsage，这样可以避免多次触发
+      triggerStorageUpdate();
 
       // 更新上一次状态
       prevState.current = {
@@ -206,7 +202,7 @@ export const useDownloadFiles = () => {
         lastUpdateTime: Date.now(),
       };
     }
-  }, [files, getStorageUsage]);
+  }, [files, triggerStorageUpdate]);
 
   // 记录文件状态变化
   useEffect(() => {

@@ -40,6 +40,16 @@ export const useFileDownloader = () => {
     new Set()
   );
 
+  // 存储每个文件上次进度更新的时间和值
+  const lastProgressUpdate = useRef<
+    Record<string, { time: number; progress: number }>
+  >({});
+
+  // 进度更新最小间隔（毫秒）
+  const PROGRESS_UPDATE_INTERVAL = 300;
+  // 进度变化阈值（百分比）
+  const PROGRESS_CHANGE_THRESHOLD = 5;
+
   // 初始化Worker
   useEffect(() => {
     // 创建Worker
@@ -120,12 +130,51 @@ export const useFileDownloader = () => {
       downloadedChunks: number;
     }) => {
       const { fileId, progress, downloadedChunks } = payload;
+      const now = Date.now();
 
-      updateFile(fileId, {
-        progress,
-        downloadedChunks,
-        status: DownloadStatus.DOWNLOADING,
-      });
+      // 获取上次更新信息
+      const lastUpdate = lastProgressUpdate.current[fileId] || {
+        time: 0,
+        progress: -1,
+      };
+
+      // 计算进度变化
+      const progressChange = Math.abs(progress - lastUpdate.progress);
+      const timeSinceLastUpdate = now - lastUpdate.time;
+
+      // 更新条件：
+      // 1. 是首次进度更新 (progress=0)
+      // 2. 是最终进度更新 (progress=100)
+      // 3. 进度变化大于阈值
+      // 4. 距离上次更新时间已超过间隔
+      const shouldUpdate =
+        lastUpdate.progress === -1 || // 首次更新
+        progress === 0 || // 初始进度
+        progress === 100 || // 完成时始终更新
+        progressChange >= PROGRESS_CHANGE_THRESHOLD || // 进度变化大时更新
+        timeSinceLastUpdate >= PROGRESS_UPDATE_INTERVAL; // 时间间隔足够长时更新
+
+      if (shouldUpdate) {
+        // 只在需要时更新UI，减少不必要的渲染
+        updateFile(fileId, {
+          progress,
+          downloadedChunks,
+          status: DownloadStatus.DOWNLOADING,
+        });
+
+        // 更新最后一次进度信息
+        lastProgressUpdate.current[fileId] = {
+          time: now,
+          progress,
+        };
+
+        // 调试信息
+        if (progress < 100) {
+          console.log(
+            `更新进度: ${progress}%, 变化: ${progressChange}%, 间隔: ${timeSinceLastUpdate}ms`
+          );
+        }
+      }
     },
     [updateFile]
   );
@@ -193,9 +242,13 @@ export const useFileDownloader = () => {
       const { fileId } = payload;
 
       try {
+        console.log(`处理文件下载完成: ${fileId}`);
         // 获取文件信息
         const file = await fileStore.getItem<DownloadFile>(fileId);
-        if (!file) return;
+        if (!file) {
+          console.error(`处理下载完成失败: 未找到文件 ${fileId}`);
+          return;
+        }
 
         // 在更新状态前进行分片完整性检查
         await chunkStore.ready();
@@ -233,20 +286,21 @@ export const useFileDownloader = () => {
             (completedChunks / file.totalChunks) * 100
           );
 
-          updateFile(fileId, {
+          // 准备更新对象，之后一次性更新状态
+          const fileUpdate = {
             status: DownloadStatus.PAUSED,
             downloadedChunks: completedChunks,
             progress: progress,
             error: `有${totalProblemChunks}个分片问题（缺失: ${missingChunks.length}, 损坏: ${corruptChunks.length}），请点击"继续"按钮重新下载`,
-          });
+          };
+
+          // 更新UI状态和存储状态 (只触发一次状态更新)
+          updateFile(fileId, fileUpdate);
 
           // 保存到IndexedDB
           await fileStore.setItem(fileId, {
             ...file,
-            status: DownloadStatus.PAUSED,
-            downloadedChunks: completedChunks,
-            progress: progress,
-            error: `有${totalProblemChunks}个分片问题（缺失: ${missingChunks.length}, 损坏: ${corruptChunks.length}），请点击"继续"按钮重新下载`,
+            ...fileUpdate,
           });
 
           // 移除处理中状态
@@ -262,31 +316,22 @@ export const useFileDownloader = () => {
           return;
         }
 
-        // 所有分片都存在且有效，更新文件状态
+        // 所有分片都存在且有效，准备一次性更新文件状态
         const completedAt = Date.now();
-        updateFile(fileId, {
+        const fileUpdate = {
           status: DownloadStatus.COMPLETED,
           progress: 100,
           completedAt,
-        });
+        };
+
+        // 更新UI状态 (只触发一次状态更新)
+        updateFile(fileId, fileUpdate);
 
         // 保存到IndexedDB以确保刷新后能正确显示完成状态
         await fileStore.setItem(fileId, {
           ...file,
-          status: DownloadStatus.COMPLETED,
-          progress: 100,
-          completedAt,
+          ...fileUpdate,
         });
-
-        // 开始合并文件
-        setTimeout(() => {
-          // 使用setTimeout来避免直接调用mergeFile，防止循环引用
-          if (file) {
-            mergeFile(file).catch((error) => {
-              console.error("延迟合并文件失败:", error);
-            });
-          }
-        }, 0);
 
         // 移除处理中状态
         setProcessingFiles((prev) => {
@@ -295,11 +340,12 @@ export const useFileDownloader = () => {
           return newSet;
         });
 
-        // 文件操作完成后，触发一次存储使用情况更新
-        // 使用延迟以确保所有操作完成
-        setTimeout(() => {
-          triggerStorageUpdate();
-        }, 500);
+        // 文件下载完成后，触发存储使用情况更新（关键时机1：上传完成）
+        console.log(`文件 ${file.fileName} 下载完成，更新存储统计`);
+        getStorageUsage(true);
+
+        // 显示成功消息
+        message.success(`文件 ${file.fileName} 下载完成`);
       } catch (err) {
         console.error("处理下载完成失败:", err);
         updateFile(fileId, {
@@ -308,7 +354,7 @@ export const useFileDownloader = () => {
         });
       }
     },
-    [updateFile, triggerStorageUpdate]
+    [updateFile, getStorageUsage]
   );
 
   // 处理下载错误
@@ -340,6 +386,7 @@ export const useFileDownloader = () => {
       const { fileId, blob } = payload;
 
       try {
+        console.log(`处理文件合并完成: ${fileId}`);
         // 确保存储已初始化
         await completeFileStore.ready();
 
@@ -353,20 +400,21 @@ export const useFileDownloader = () => {
           return;
         }
 
-        // 更新文件状态
+        // 准备一次性更新文件状态
         const completedAt = Date.now();
-        updateFile(fileId, {
+        const fileUpdate = {
           status: DownloadStatus.COMPLETED,
           progress: 100,
           completedAt,
-        });
+        };
+
+        // 更新UI状态 (只触发一次状态更新)
+        updateFile(fileId, fileUpdate);
 
         // 保存到IndexedDB以确保刷新后能正确显示完成状态
         await fileStore.setItem(fileId, {
           ...file,
-          status: DownloadStatus.COMPLETED,
-          progress: 100,
-          completedAt,
+          ...fileUpdate,
         });
 
         // 移除处理中状态
@@ -376,11 +424,9 @@ export const useFileDownloader = () => {
           return newSet;
         });
 
-        // 文件操作完成后，触发一次存储使用情况更新
-        // 使用延迟以确保所有操作完成
-        setTimeout(() => {
-          triggerStorageUpdate();
-        }, 500);
+        // 文件合并完成后，触发存储使用情况更新（关键时机1：上传完成）
+        console.log(`文件 ${file.fileName} 合并完成，更新存储统计`);
+        getStorageUsage(true);
 
         // 显示成功消息
         message.success(`文件 ${file.fileName} 下载完成`);
@@ -388,7 +434,7 @@ export const useFileDownloader = () => {
         console.error("处理合并完成失败:", err);
       }
     },
-    [updateFile, triggerStorageUpdate]
+    [updateFile, getStorageUsage]
   );
 
   // 处理合并错误
@@ -513,13 +559,9 @@ export const useFileDownloader = () => {
           }
         }
 
-        // 如果有已存在的分片，更新存储使用情况
-        if (existingSize > 0) {
-          getStorageUsage();
-        }
-
         // 如果所有分片已下载，直接合并
         if (pendingChunks.length === 0) {
+          // 直接调用mergeFile，不要在依赖项中声明它以避免循环引用
           await mergeFile(file);
           return;
         }
@@ -593,7 +635,7 @@ export const useFileDownloader = () => {
         );
       }
     },
-    [addAbortController, updateFile, getStorageUsage]
+    [addAbortController, updateFile]
   );
 
   // 暂停下载
@@ -688,7 +730,7 @@ export const useFileDownloader = () => {
 
   // 取消下载
   const cancelDownload = useCallback(
-    async (fileId: string) => {
+    async (fileId: string, updateStorage = true) => {
       try {
         // 获取文件信息
         const file = await fileStore.getItem<DownloadFile>(fileId);
@@ -757,25 +799,17 @@ export const useFileDownloader = () => {
           return newSet;
         });
 
-        // 更新存储使用情况估算（减去已删除的文件大小）
-        if (fileSize > 0) {
-          getStorageUsage();
+        // 只在需要时更新存储统计
+        if (updateStorage) {
+          console.log(`文件 ${file.fileName} 已取消下载，更新存储统计`);
+          getStorageUsage(true);
         }
-
-        // 文件操作完成后，触发存储使用情况更新
-        triggerStorageUpdate();
       } catch (err) {
         console.error("取消下载失败:", err);
         message.error("取消下载失败");
       }
     },
-    [
-      abortControllers,
-      removeAbortController,
-      updateFile,
-      getStorageUsage,
-      triggerStorageUpdate,
-    ]
+    [abortControllers, removeAbortController, updateFile, getStorageUsage]
   );
 
   // 删除文件
@@ -786,14 +820,15 @@ export const useFileDownloader = () => {
         const file = await fileStore.getItem<DownloadFile>(fileId);
         if (!file) return;
 
-        // 取消下载
-        await cancelDownload(fileId);
+        // 取消下载，但不触发存储更新
+        await cancelDownload(fileId, false);
 
         // 删除文件信息
         await fileStore.removeItem(fileId);
 
-        // 文件操作完成后，触发存储使用情况更新
-        triggerStorageUpdate();
+        // 文件删除后，触发存储使用情况更新（关键时机2：删除文件）
+        console.log(`文件 ${file.fileName} 已删除，更新存储统计`);
+        getStorageUsage(true);
 
         // 显示消息
         message.error(`文件 ${file.fileName} 成功删除`);
@@ -802,7 +837,7 @@ export const useFileDownloader = () => {
         message.error("删除文件失败");
       }
     },
-    [cancelDownload, triggerStorageUpdate]
+    [cancelDownload, getStorageUsage]
   );
 
   // 导出文件
@@ -828,8 +863,10 @@ export const useFileDownloader = () => {
   const mergeFile = useCallback(
     async (file: DownloadFile) => {
       try {
+        console.log(`开始合并文件: ${file.id}`);
         // 检查是否已在处理中
         if (processingFiles.has(file.id)) {
+          console.log(`文件 ${file.id} 已在处理中，跳过合并`);
           return;
         }
 
@@ -845,11 +882,20 @@ export const useFileDownloader = () => {
         // 检查是否已有合并后的文件
         const completeFile = await completeFileStore.getItem<Blob>(file.id);
         if (completeFile) {
+          console.log(`文件 ${file.id} 已存在合并后的文件，直接标记为完成`);
           // 已有合并后的文件，直接完成
-          updateFile(file.id, {
+          const fileUpdate = {
             status: DownloadStatus.COMPLETED,
             progress: 100,
             completedAt: Date.now(),
+          };
+
+          updateFile(file.id, fileUpdate);
+
+          // 保存到IndexedDB
+          await fileStore.setItem(file.id, {
+            ...file,
+            ...fileUpdate,
           });
 
           // 移除处理中状态
@@ -859,8 +905,12 @@ export const useFileDownloader = () => {
             return newSet;
           });
 
-          // 文件操作完成后，触发存储使用情况更新
-          triggerStorageUpdate();
+          // 文件完成后更新存储统计（关键时机1：上传完成）
+          console.log(`文件 ${file.fileName} 标记为完成，更新存储统计`);
+          getStorageUsage(true);
+
+          // 显示成功消息
+          message.success(`文件 ${file.fileName} 下载完成`);
           return;
         }
 
@@ -881,25 +931,25 @@ export const useFileDownloader = () => {
 
         // 如果有缺失的分片，尝试重新下载
         if (missingChunks.length > 0) {
+          console.log(
+            `文件 ${file.id} 有 ${missingChunks.length} 个分片缺失，需要重新下载`
+          );
           // 更新文件状态为需要继续下载
-          updateFile(file.id, {
+          const fileUpdate = {
             status: DownloadStatus.PAUSED,
             downloadedChunks: file.totalChunks - missingChunks.length,
             progress: Math.round(
               ((file.totalChunks - missingChunks.length) / file.totalChunks) *
                 100
             ),
-          });
+          };
+
+          updateFile(file.id, fileUpdate);
 
           // 保存到IndexedDB
           await fileStore.setItem(file.id, {
             ...file,
-            status: DownloadStatus.PAUSED,
-            downloadedChunks: file.totalChunks - missingChunks.length,
-            progress: Math.round(
-              ((file.totalChunks - missingChunks.length) / file.totalChunks) *
-                100
-            ),
+            ...fileUpdate,
           });
 
           // 移除处理中状态
@@ -917,6 +967,7 @@ export const useFileDownloader = () => {
 
         // 使用Worker合并文件
         if (mergeWorkerRef.current) {
+          console.log(`使用Worker合并文件: ${file.id}`);
           mergeWorkerRef.current.postMessage({
             type: "MERGE_FILE",
             payload: {
@@ -927,22 +978,23 @@ export const useFileDownloader = () => {
             },
           });
         } else {
+          console.log(`Worker不可用，在主线程合并文件: ${file.id}`);
           // 如果Worker不可用，在主线程合并
           const mergedBlob = await mergeFileChunks(file);
           await completeFileStore.setItem(file.id, mergedBlob);
 
-          updateFile(file.id, {
+          const fileUpdate = {
             status: DownloadStatus.COMPLETED,
             progress: 100,
             completedAt: Date.now(),
-          });
+          };
+
+          updateFile(file.id, fileUpdate);
 
           // 保存到IndexedDB以确保刷新后能正确显示完成状态
           await fileStore.setItem(file.id, {
             ...file,
-            status: DownloadStatus.COMPLETED,
-            progress: 100,
-            completedAt: Date.now(),
+            ...fileUpdate,
           });
 
           // 移除处理中状态
@@ -952,8 +1004,12 @@ export const useFileDownloader = () => {
             return newSet;
           });
 
-          // 文件操作完成后，触发存储使用情况更新
-          triggerStorageUpdate();
+          // 文件合并完成后更新存储统计（关键时机1：上传完成）
+          console.log(`文件 ${file.fileName} 在主线程合并完成，更新存储统计`);
+          getStorageUsage(true);
+
+          // 显示成功消息
+          message.success(`文件 ${file.fileName} 下载完成`);
         }
       } catch (err) {
         console.error("合并文件失败:", err);
@@ -978,7 +1034,7 @@ export const useFileDownloader = () => {
         );
       }
     },
-    [updateFile, triggerStorageUpdate]
+    [updateFile, getStorageUsage]
   );
 
   // 重置处理中状态

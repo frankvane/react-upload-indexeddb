@@ -1,17 +1,13 @@
 import { DownloadFile, DownloadStatus } from "../types";
 import { chunkStore, completeFileStore, fileStore } from "../utils";
 import { clearAllStorageData, getStorageEstimate } from "../utils";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 
 import { message } from "antd";
 import { useDownloadStore } from "../store";
 
 // 计算文件大小的缓存时间（毫秒）
 const STORAGE_CACHE_TIME = 30000; // 30秒
-// 最小更新间隔（毫秒）
-const MIN_UPDATE_INTERVAL = 5000; // 5秒
-// 批量更新延迟（毫秒）
-const BATCH_UPDATE_DELAY = 2000; // 2秒
 
 /**
  * 存储管理Hook
@@ -24,20 +20,8 @@ export const useStorageManager = () => {
   const lastCalculation = useRef({
     time: 0,
     promise: null as Promise<{ usage: number; quota: number }> | null,
-    pendingUpdate: false, // 是否有待处理的更新
     lastUpdateTime: 0, // 上次实际更新的时间
-    updateTimer: null as number | null, // 更新定时器
-    batchedUpdates: 0, // 批处理的更新次数
   });
-
-  // 清除定时器
-  useEffect(() => {
-    return () => {
-      if (lastCalculation.current.updateTimer) {
-        clearTimeout(lastCalculation.current.updateTimer);
-      }
-    };
-  }, []);
 
   /**
    * 使用IndexedDB API直接计算存储大小
@@ -100,66 +84,12 @@ export const useStorageManager = () => {
     async (forceUpdate = false) => {
       try {
         const now = Date.now();
+        console.log(`开始计算存储使用情况${forceUpdate ? " (强制)" : ""}`);
 
-        // 如果不是强制更新，且距离上次更新时间太短，则延迟更新
-        if (
-          !forceUpdate &&
-          now - lastCalculation.current.lastUpdateTime < MIN_UPDATE_INTERVAL
-        ) {
-          // 如果已有待处理的更新，不再重复设置
-          if (lastCalculation.current.pendingUpdate) {
-            return;
-          }
-
-          // 设置待处理标志
-          lastCalculation.current.pendingUpdate = true;
-          lastCalculation.current.batchedUpdates++;
-
-          // 清除之前的定时器
-          if (lastCalculation.current.updateTimer) {
-            clearTimeout(lastCalculation.current.updateTimer);
-          }
-
-          // 设置新的定时器，延迟执行更新
-          lastCalculation.current.updateTimer = setTimeout(() => {
-            getStorageUsage(true);
-            lastCalculation.current.batchedUpdates = 0;
-          }, BATCH_UPDATE_DELAY) as unknown as number;
-
-          return;
-        }
-
-        // 如果是强制更新，取消任何待处理的定时器
-        if (forceUpdate && lastCalculation.current.updateTimer) {
-          clearTimeout(lastCalculation.current.updateTimer);
-          lastCalculation.current.updateTimer = null;
-        }
-
+        // 设置loading状态
         updateStorageUsage({ isLoading: true });
 
-        // 检查是否可以使用缓存的结果
-        if (
-          !forceUpdate &&
-          lastCalculation.current.promise &&
-          now - lastCalculation.current.time < STORAGE_CACHE_TIME
-        ) {
-          const { usage, quota } = await lastCalculation.current.promise;
-          const percent = quota > 0 ? (usage / quota) * 100 : 0;
-
-          updateStorageUsage({
-            usage,
-            quota,
-            percent,
-            isLoading: false,
-            lastUpdated: now,
-          });
-
-          lastCalculation.current.lastUpdateTime = now;
-          lastCalculation.current.pendingUpdate = false;
-          return;
-        }
-
-        // 创建新的计算Promise - 使用IndexedDB API计算
+        // 直接进行计算
         lastCalculation.current.time = now;
         lastCalculation.current.promise = calculateStorageSize();
 
@@ -167,6 +97,13 @@ export const useStorageManager = () => {
         const { usage, quota } = await lastCalculation.current.promise;
         const percent = quota > 0 ? (usage / quota) * 100 : 0;
 
+        console.log(
+          `存储计算完成: 使用 ${usage} 字节, 配额 ${quota} 字节, 占用 ${percent.toFixed(
+            2
+          )}%`
+        );
+
+        // 更新UI状态
         updateStorageUsage({
           usage,
           quota,
@@ -176,14 +113,20 @@ export const useStorageManager = () => {
         });
 
         lastCalculation.current.lastUpdateTime = now;
-        lastCalculation.current.pendingUpdate = false;
-      } catch {
+      } catch (error) {
+        console.error("计算存储使用情况失败:", error);
         updateStorageUsage({ isLoading: false });
-        lastCalculation.current.pendingUpdate = false;
       }
     },
     [updateStorageUsage, calculateStorageSize]
   );
+
+  // 触发存储使用情况更新 - 简化版本
+  const triggerStorageUpdate = useCallback(() => {
+    console.log("触发存储使用情况更新");
+    // 直接调用getStorageUsage
+    getStorageUsage(false);
+  }, [getStorageUsage]);
 
   // 计算文件大小 - 使用缓存优化
   const fileSizeCache = useRef<Record<string, { size: number; time: number }>>(
@@ -249,36 +192,6 @@ export const useStorageManager = () => {
     },
     []
   );
-
-  // 触发存储使用情况更新
-  const triggerStorageUpdate = useCallback(() => {
-    const now = Date.now();
-    const timeSinceLastUpdate = now - lastCalculation.current.lastUpdateTime;
-
-    // 如果距离上次更新时间太短，设置延迟更新
-    if (timeSinceLastUpdate < MIN_UPDATE_INTERVAL) {
-      // 如果已有待处理的更新，不再重复设置
-      if (lastCalculation.current.pendingUpdate) {
-        return;
-      }
-
-      // 设置延迟更新
-      lastCalculation.current.pendingUpdate = true;
-
-      // 清除之前的定时器
-      if (lastCalculation.current.updateTimer) {
-        clearTimeout(lastCalculation.current.updateTimer);
-      }
-
-      // 设置新的定时器
-      lastCalculation.current.updateTimer = setTimeout(() => {
-        getStorageUsage(true);
-      }, MIN_UPDATE_INTERVAL - timeSinceLastUpdate) as unknown as number;
-    } else {
-      // 直接更新
-      getStorageUsage(true);
-    }
-  }, [getStorageUsage]);
 
   // 清空所有数据
   const clearAllData = useCallback(async () => {

@@ -13,6 +13,14 @@ const chunkRetryAttempts: Record<string, number> = {};
 const MAX_RETRY_ATTEMPTS = 3;
 // 重试延迟（毫秒）
 const RETRY_DELAY = 1000;
+// 进度更新的最小间隔（毫秒）
+const PROGRESS_UPDATE_INTERVAL = 500;
+// 记录上次进度更新的时间
+const lastProgressUpdate: Record<string, number> = {};
+// 记录上次发送的进度值
+const lastProgressValue: Record<string, number> = {};
+// 进度变化阈值，超过此值才会触发更新
+const PROGRESS_CHANGE_THRESHOLD = 3; // 百分比
 
 // 接收消息
 ctx.addEventListener("message", async (event) => {
@@ -56,6 +64,8 @@ async function handleDownload(payload: {
   processedFiles.add(fileId);
   // 重置重试计数
   retryAttempts[fileId] = 0;
+  // 初始化进度更新时间
+  lastProgressUpdate[fileId] = 0;
 
   // 初始化分片重试计数
   pendingChunks.forEach((chunkIndex) => {
@@ -69,14 +79,7 @@ async function handleDownload(payload: {
   let remainingChunks = [...pendingChunks];
 
   // 发送初始进度
-  ctx.postMessage({
-    type: "PROGRESS",
-    payload: {
-      fileId,
-      progress: Math.round((downloadedChunks / totalChunks) * 100),
-      downloadedChunks,
-    },
-  });
+  sendProgressUpdate(fileId, downloadedChunks, totalChunks);
 
   // 主下载循环
   while (remainingChunks.length > 0 && activeDownloads[fileId]) {
@@ -104,17 +107,9 @@ async function handleDownload(payload: {
     // 更新进度
     const successfulDownloads = results.filter((r) => r.success).length;
     downloadedChunks += successfulDownloads;
-    const progress = Math.round((downloadedChunks / totalChunks) * 100);
 
-    // 发送进度更新
-    ctx.postMessage({
-      type: "PROGRESS",
-      payload: {
-        fileId,
-        progress,
-        downloadedChunks,
-      },
-    });
+    // 发送进度更新（使用限流函数）
+    sendProgressUpdate(fileId, downloadedChunks, totalChunks);
 
     // 检查失败的分片
     const failedChunks = results
@@ -181,6 +176,9 @@ async function handleDownload(payload: {
 
     // 如果没有更多分片，完成下载
     if (remainingChunks.length === 0) {
+      // 发送最终进度（确保100%）
+      sendProgressUpdate(fileId, totalChunks, totalChunks, true);
+
       // 确保所有分片都已成功保存
       ctx.postMessage({
         type: "COMPLETE",
@@ -195,6 +193,50 @@ async function handleDownload(payload: {
     await new Promise((resolve) =>
       setTimeout(resolve, isFirstDownload ? 100 : 10)
     );
+  }
+}
+
+// 发送进度更新（带限流）
+function sendProgressUpdate(
+  fileId: string,
+  downloadedChunks: number,
+  totalChunks: number,
+  forceUpdate = false
+) {
+  const now = Date.now();
+  const progress = Math.round((downloadedChunks / totalChunks) * 100);
+
+  // 获取上次进度值，如果没有则默认为-1
+  const lastProgress = lastProgressValue[fileId] ?? -1;
+
+  // 进度变化大小
+  const progressChange = Math.abs(progress - lastProgress);
+
+  // 条件判断：
+  // 1. 强制更新
+  // 2. 进度为0%（刚开始）或100%（结束）
+  // 3. 进度变化超过阈值
+  // 4. 距离上次更新时间超过了间隔
+  if (
+    forceUpdate ||
+    progress === 0 ||
+    progress === 100 ||
+    progressChange >= PROGRESS_CHANGE_THRESHOLD ||
+    now - (lastProgressUpdate[fileId] || 0) >= PROGRESS_UPDATE_INTERVAL
+  ) {
+    // 发送进度更新
+    ctx.postMessage({
+      type: "PROGRESS",
+      payload: {
+        fileId,
+        progress,
+        downloadedChunks,
+      },
+    });
+
+    // 更新最后一次进度更新时间和值
+    lastProgressUpdate[fileId] = now;
+    lastProgressValue[fileId] = progress;
   }
 }
 
