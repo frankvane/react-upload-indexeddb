@@ -251,9 +251,6 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
             <span style={{ marginLeft: 8 }}>
               {formatFileSize(chunkSize)} | {fileConcurrency}文件 |{" "}
               {chunkConcurrency}分片
-              {isManuallySet && (
-                <LockOutlined style={{ marginLeft: 4, color: "#1890ff" }} />
-              )}
             </span>
           </div>
         );
