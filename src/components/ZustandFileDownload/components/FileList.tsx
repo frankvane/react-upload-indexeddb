@@ -1,4 +1,4 @@
-import { Button, Progress, Tag, Typography } from "antd";
+import { Button, Progress, Tag, Tooltip, Typography } from "antd";
 import { CHUNK_SIZE, DownloadFile, DownloadStatus } from "../types";
 import { Card, Empty, Space, Spin, Table } from "antd";
 import {
@@ -85,6 +85,43 @@ export const FileList: React.FC = () => {
       setIsRefreshing(false);
     }, 1000);
   }, [fetchFileList, isRefreshing, fetchingFiles]);
+
+  // 下载选中的文件
+  const handleDownloadSelected = useCallback(() => {
+    if (selectedRowKeys.length === 0) return;
+
+    const selectedFiles = files.filter(
+      (file) =>
+        selectedRowKeys.includes(file.id) &&
+        (file.status === DownloadStatus.IDLE ||
+          file.status === DownloadStatus.ERROR ||
+          file.status === DownloadStatus.PAUSED)
+    );
+
+    selectedFiles.forEach((file) => {
+      startDownload(file);
+    });
+
+    setSelectedRowKeys([]);
+  }, [files, selectedRowKeys, startDownload]);
+
+  // 删除选中的文件
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedRowKeys.length === 0) return;
+
+    const selectedFiles = files.filter(
+      (file) =>
+        selectedRowKeys.includes(file.id) &&
+        (file.status === DownloadStatus.IDLE ||
+          file.status === DownloadStatus.COMPLETED)
+    );
+
+    selectedFiles.forEach((file) => {
+      deleteFile(file.id);
+    });
+
+    setSelectedRowKeys([]);
+  }, [files, selectedRowKeys, deleteFile]);
 
   const rowSelection = useMemo(
     () => ({
@@ -239,67 +276,67 @@ export const FileList: React.FC = () => {
           return (
             <Space>
               {isDownloading && (
-                <Button
-                  size="small"
-                  icon={<PauseCircleOutlined />}
-                  onClick={() => pauseDownload(record.id)}
-                >
-                  暂停
-                </Button>
+                <Tooltip title="暂停">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<PauseCircleOutlined />}
+                    onClick={() => pauseDownload(record.id)}
+                  />
+                </Tooltip>
               )}
               {isPaused && (
-                <Button
-                  size="small"
-                  icon={<PlayCircleOutlined />}
-                  onClick={() => resumeDownload(record.id)}
-                >
-                  继续
-                </Button>
+                <Tooltip title="继续">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<PlayCircleOutlined />}
+                    onClick={() => resumeDownload(record.id)}
+                  />
+                </Tooltip>
               )}
               {isCompleted && (
-                <Button
-                  size="small"
-                  type="primary"
-                  ghost
-                  onClick={() => exportFile(record)}
-                  icon={<ExportOutlined />}
-                  style={{ color: "#52c41a", borderColor: "#52c41a" }}
-                >
-                  导出
-                </Button>
+                <Tooltip title="导出">
+                  <Button
+                    size="small"
+                    type="text"
+                    onClick={() => exportFile(record)}
+                    icon={<ExportOutlined style={{ color: "#52c41a" }} />}
+                  />
+                </Tooltip>
               )}
               {(isIdle || (!isDownloading && !isPaused && !isCompleted)) && (
-                <Button
-                  size="small"
-                  type="primary"
-                  icon={<DownloadOutlined />}
-                  loading={isPreparing}
-                  disabled={isDownloading || isCompleted}
-                  onClick={() => startDownload(record)}
-                >
-                  下载
-                </Button>
+                <Tooltip title="下载">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<DownloadOutlined style={{ color: "#1890ff" }} />}
+                    loading={isPreparing}
+                    disabled={isDownloading || isCompleted}
+                    onClick={() => startDownload(record)}
+                  />
+                </Tooltip>
               )}
 
               {!isIdle && !isCompleted && (
-                <Button
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => cancelDownload(record.id)}
-                >
-                  取消
-                </Button>
+                <Tooltip title="取消">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<DeleteOutlined style={{ color: "#ff4d4f" }} />}
+                    onClick={() => cancelDownload(record.id)}
+                  />
+                </Tooltip>
               )}
               {(isIdle || isCompleted) && (
-                <Button
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => deleteFile(record.id)}
-                >
-                  删除
-                </Button>
+                <Tooltip title="删除">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<DeleteOutlined style={{ color: "#ff4d4f" }} />}
+                    onClick={() => deleteFile(record.id)}
+                  />
+                </Tooltip>
               )}
             </Space>
           );
@@ -333,11 +370,34 @@ export const FileList: React.FC = () => {
         file.status === DownloadStatus.PAUSED
     );
 
+    // 检查选中的文件中是否有可下载的文件
+    const hasSelectedDownloadable =
+      selectedRowKeys.length > 0 &&
+      files.some(
+        (file) =>
+          selectedRowKeys.includes(file.id) &&
+          (file.status === DownloadStatus.IDLE ||
+            file.status === DownloadStatus.ERROR ||
+            file.status === DownloadStatus.PAUSED)
+      );
+
+    // 检查选中的文件中是否有可删除的文件
+    const hasSelectedDeletable =
+      selectedRowKeys.length > 0 &&
+      files.some(
+        (file) =>
+          selectedRowKeys.includes(file.id) &&
+          (file.status === DownloadStatus.IDLE ||
+            file.status === DownloadStatus.COMPLETED)
+      );
+
     return {
       hasDownloadableFiles,
       hasDownloadingFiles,
       hasPausedFiles,
       selectionCount: selectedRowKeys.length,
+      hasSelectedDownloadable,
+      hasSelectedDeletable,
     };
   }, [selectedRowKeys, files]);
 
@@ -356,37 +416,52 @@ export const FileList: React.FC = () => {
               已选择 {fileStatus.selectionCount} 个文件
             </Text>
           )}
-          <Button
-            type="primary"
-            icon={<DownloadOutlined />}
-            onClick={handleBatchDownload}
-            disabled={!fileStatus.hasDownloadableFiles}
-          >
-            下载全部
-          </Button>
-          <Button
-            icon={<PauseCircleOutlined />}
-            onClick={handleBatchPause}
-            disabled={!fileStatus.hasDownloadingFiles}
-          >
-            批量暂停
-          </Button>
-          <Button
-            icon={<PlayCircleOutlined />}
-            onClick={handleBatchResume}
-            disabled={!fileStatus.hasPausedFiles}
-          >
-            批量继续
-          </Button>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={handleRefreshFiles}
-            title="刷新文件列表"
-            loading={fetchingFiles || isRefreshing}
-            disabled={fetchingFiles || isRefreshing}
-          >
-            刷新
-          </Button>
+          <Tooltip title="下载选中">
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={handleDownloadSelected}
+              disabled={!fileStatus.hasSelectedDownloadable}
+            />
+          </Tooltip>
+          <Tooltip title="删除选中">
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={handleDeleteSelected}
+              disabled={!fileStatus.hasSelectedDeletable}
+            />
+          </Tooltip>
+          <Tooltip title="下载全部">
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={handleBatchDownload}
+              disabled={!fileStatus.hasDownloadableFiles}
+            />
+          </Tooltip>
+          <Tooltip title="批量暂停">
+            <Button
+              icon={<PauseCircleOutlined />}
+              onClick={handleBatchPause}
+              disabled={!fileStatus.hasDownloadingFiles}
+            />
+          </Tooltip>
+          <Tooltip title="批量继续">
+            <Button
+              icon={<PlayCircleOutlined />}
+              onClick={handleBatchResume}
+              disabled={!fileStatus.hasPausedFiles}
+            />
+          </Tooltip>
+          <Tooltip title="刷新文件列表">
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={handleRefreshFiles}
+              loading={fetchingFiles || isRefreshing}
+              disabled={fetchingFiles || isRefreshing}
+            />
+          </Tooltip>
         </Space>
       }
     >
