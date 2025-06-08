@@ -344,7 +344,6 @@ export const FileList: React.FC = () => {
       },
     ],
     [
-      processingFiles,
       startDownload,
       pauseDownload,
       resumeDownload,
