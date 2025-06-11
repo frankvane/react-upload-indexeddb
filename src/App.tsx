@@ -5,7 +5,11 @@ const App = () => {
   return (
     <div style={{ padding: 16 }}>
       <ZustandFileUpload />
-      <ZustandFileDownload />
+      <ZustandFileDownload
+        baseURL="http://localhost:3000"
+        listApi="/api/files/list"
+        downloadApi="/api/files/download"
+      />
     </div>
   );
 };
