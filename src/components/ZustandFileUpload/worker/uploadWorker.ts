@@ -161,7 +161,7 @@ self.onmessage = async (event: MessageEvent) => {
       return;
     }
 
-    const { fileInfo, fileBuffer, networkParams } = event.data;
+    const { fileInfo, fileBuffer, networkParams, uploadConfig } = event.data;
 
     // 检查必要参数
     if (!fileInfo) {
@@ -232,7 +232,10 @@ self.onmessage = async (event: MessageEvent) => {
       };
       debug("秒传请求体", requestBody);
 
-      const apiUrl = "http://localhost:3000/api/file/instant";
+      // 使用配置的 API 地址
+      const baseURL = uploadConfig?.baseURL || "http://localhost:3000";
+      const checkApi = uploadConfig?.checkApi || "/api/file/instant";
+      const apiUrl = `${baseURL}${checkApi}`;
       debug(`使用API地址: ${apiUrl}`);
 
       const instantRes = await fetchWithRetry(
@@ -312,7 +315,9 @@ self.onmessage = async (event: MessageEvent) => {
 
             debug(`上传分片 ${i + 1}/${chunkCount}`, { size: end - start });
             try {
-              const uploadUrl = "http://localhost:3000/api/file/upload";
+              // 使用配置的上传 API 地址
+              const uploadApi = uploadConfig?.uploadApi || "/api/file/upload";
+              const uploadUrl = `${baseURL}${uploadApi}`;
               debug(`分片上传URL: ${uploadUrl}`);
 
               await fetchWithRetry(

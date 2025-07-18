@@ -1,4 +1,4 @@
-import { BatchInfo, ProcessProgress, UploadFile } from "../types/upload";
+import { BatchInfo, ProcessProgress, UploadFile, UploadConfig } from "../types/upload";
 
 import { MessageInstance } from "antd/es/message/interface";
 import { create } from "zustand";
@@ -42,6 +42,9 @@ interface UploadState {
   networkDisplayMode: "tooltip" | "direct";
   storageStatsVisible: boolean;
 
+  // 配置信息
+  config: UploadConfig | null;
+
   // 操作方法
   setFiles: (files: UploadFile[]) => void;
   refreshFiles: () => Promise<void>;
@@ -69,6 +72,7 @@ interface UploadState {
   setNetworkDisplayMode: (mode: "tooltip" | "direct") => void;
   setStorageStatsVisible: (visible: boolean) => void;
   setRetryingFiles: (files: Record<string, boolean>) => void;
+  setConfig: (config: UploadConfig) => void;
 
   // 文件操作方法
   uploadAll: () => Promise<boolean>;
@@ -124,6 +128,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   cleanupDelay: 10, // 清理延迟时间（秒）
   networkDisplayMode: "tooltip",
   storageStatsVisible: false,
+  config: null,
 
   // 状态设置方法
   setFiles: (files) => set({ files }),
@@ -187,6 +192,15 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   },
   setStorageStatsVisible: (storageStatsVisible) => set({ storageStatsVisible }),
   setRetryingFiles: (retryingFiles) => set({ retryingFiles }),
+  setConfig: (config) => {
+    set({
+      config,
+      chunkSize: config.chunkSize,
+      fileConcurrency: config.fileConcurrency,
+      chunkConcurrency: config.chunkConcurrency,
+      maxRetries: config.maxRetries,
+    });
+  },
 
   // 初始化设置
   initSettings: () => {

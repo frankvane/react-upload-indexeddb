@@ -51,6 +51,56 @@ export interface ProcessingStats {
   totalTime?: number;
 }
 
+// 上传组件配置接口
+export interface ZustandFileUploadProps {
+  // API 配置
+  baseURL?: string;
+  uploadApi?: string;
+  checkApi?: string;
+
+  // 网络参数配置
+  chunkSize?: number;
+  fileConcurrency?: number;
+  chunkConcurrency?: number;
+  maxRetries?: number;
+
+  // 文件限制配置
+  maxFileSize?: number; // 单个文件最大大小（字节）
+  allowedFileTypes?: string[]; // 允许的文件类型
+  maxFiles?: number; // 最大文件数量
+
+  // UI 配置
+  autoUpload?: boolean;
+  autoCleanup?: boolean;
+  cleanupDelay?: number;
+  networkDisplayMode?: "tooltip" | "direct";
+
+  // 回调事件
+  onUploadStart?: (files: UploadFile[]) => void;
+  onUploadProgress?: (file: UploadFile, progress: number) => void;
+  onUploadComplete?: (file: UploadFile, success: boolean) => void;
+  onUploadError?: (file: UploadFile, error: string) => void;
+  onBatchComplete?: (results: { success: number; failed: number; total: number }) => void;
+
+  // 自定义方法
+  customFileValidator?: (file: File) => { valid: boolean; message?: string };
+  customUploadHandler?: (file: UploadFile, config: UploadConfig) => Promise<boolean>;
+}
+
+// 上传配置接口
+export interface UploadConfig {
+  baseURL: string;
+  uploadApi: string;
+  checkApi: string;
+  chunkSize: number;
+  fileConcurrency: number;
+  chunkConcurrency: number;
+  maxRetries: number;
+  maxFileSize: number;
+  allowedFileTypes: string[];
+  maxFiles: number;
+}
+
 export interface FileSelectorProps {
   onFilesSelected: (files: FileList) => void;
   totalFilesCount?: number; // 总文件数

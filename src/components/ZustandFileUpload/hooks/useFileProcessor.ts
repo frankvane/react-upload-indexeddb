@@ -1,6 +1,7 @@
 import localforage from "localforage";
 import { useRef } from "react";
 import { useUploadStore } from "../store/upload";
+import { useUploadContext } from "../context/UploadContext";
 
 // 导入Worker
 const FilePrepareWorker = new Worker(
@@ -25,10 +26,64 @@ export function useFileProcessor() {
     getMessageApi,
   } = useUploadStore();
 
+  // 获取上传配置
+  const uploadConfig = useUploadContext();
+
   const messageApi = getMessageApi();
 
   // 使用ref来存储文件处理开始时间
   const fileStartTimesRef = useRef<Record<string, number>>({});
+
+  // 文件验证函数
+  const validateFiles = (files: File[]): { validFiles: File[]; errors: string[] } => {
+    const validFiles: File[] = [];
+    const errors: string[] = [];
+
+    // 检查文件数量限制
+    if (files.length > uploadConfig.maxFiles) {
+      errors.push(`最多只能选择 ${uploadConfig.maxFiles} 个文件`);
+      return { validFiles: [], errors };
+    }
+
+    files.forEach((file) => {
+      // 检查文件大小
+      if (file.size > uploadConfig.maxFileSize) {
+        errors.push(`文件 "${file.name}" 大小超过限制 (${Math.round(uploadConfig.maxFileSize / 1024 / 1024)}MB)`);
+        return;
+      }
+
+      // 检查文件类型
+      if (uploadConfig.allowedFileTypes.length > 0) {
+        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+        const mimeType = file.type.toLowerCase();
+
+        const isAllowed = uploadConfig.allowedFileTypes.some(type => {
+          if (type.startsWith('.')) {
+            return fileExtension === type.slice(1).toLowerCase();
+          }
+          return mimeType.includes(type.toLowerCase());
+        });
+
+        if (!isAllowed) {
+          errors.push(`文件 "${file.name}" 类型不被允许`);
+          return;
+        }
+      }
+
+      // 自定义验证
+      if (uploadConfig.customFileValidator) {
+        const validation = uploadConfig.customFileValidator(file);
+        if (!validation.valid) {
+          errors.push(validation.message || `文件 "${file.name}" 验证失败`);
+          return;
+        }
+      }
+
+      validFiles.push(file);
+    });
+
+    return { validFiles, errors };
+  };
 
   // 处理文件选择
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,6 +98,19 @@ export function useFileProcessor() {
       return;
     }
 
+    // 验证文件
+    const { validFiles, errors } = validateFiles(files);
+
+    if (errors.length > 0) {
+      errors.forEach(error => messageApi.error(error));
+      if (validFiles.length === 0) return;
+    }
+
+    if (validFiles.length === 0) {
+      messageApi.warning("没有有效的文件可以上传");
+      return;
+    }
+
     // 重置文件处理时间记录
     fileStartTimesRef.current = {};
     setFileTimings({});
@@ -51,13 +119,19 @@ export function useFileProcessor() {
     const startTime = Date.now();
 
     // 记录每个文件的处理开始时间
-    files.forEach((file) => {
+    validFiles.forEach((file) => {
       fileStartTimesRef.current[file.name] = Date.now();
     });
 
+    // 触发上传开始回调
+    if (uploadConfig.onUploadStart) {
+      // 这里需要转换为 UploadFile 格式，但在文件处理阶段我们还没有完整的 UploadFile 对象
+      // 所以我们在后续的处理完成后再调用
+    }
+
     // 启动Worker处理文件
     FilePrepareWorker.postMessage({
-      files,
+      files: validFiles,
       networkParams: {
         networkType,
         fileConcurrency,

@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 
 import localforage from "localforage";
 import { useUploadStore } from "../store/upload";
+import { useUploadContext } from "../context/UploadContext";
 
 // 导入Worker
 const UploadWorker = new Worker(
@@ -28,6 +29,9 @@ export function useBatchUploader() {
     files,
     setFiles,
   } = useUploadStore();
+
+  // 获取上传配置和回调
+  const uploadConfig = useUploadContext();
 
   const messageApi = getMessageApi();
 
@@ -292,7 +296,7 @@ export function useBatchUploader() {
           // 确保批次信息的总数和当前数一致
           setBatchInfo((prev) => {
             if (!prev) {
-              return {
+              const batchInfo = {
                 current: completedFiles,
                 total: completedFiles,
                 queued: 0,
@@ -301,15 +305,37 @@ export function useBatchUploader() {
                 failed: 0,
                 retried: 0,
               };
+
+              // 触发批量完成回调
+              if (uploadConfig.onBatchComplete) {
+                uploadConfig.onBatchComplete({
+                  success: batchInfo.completed,
+                  failed: batchInfo.failed,
+                  total: batchInfo.total,
+                });
+              }
+
+              return batchInfo;
             }
             // 修复批次信息，确保current不超过total，且total反映实际处理的文件数
             const actualTotal = prev.completed + prev.failed;
-            return {
+            const batchInfo = {
               ...prev,
               current: actualTotal,
               total: actualTotal,
               countdown: cleanupDelay,
             };
+
+            // 触发批量完成回调
+            if (uploadConfig.onBatchComplete) {
+              uploadConfig.onBatchComplete({
+                success: batchInfo.completed,
+                failed: batchInfo.failed,
+                total: batchInfo.total,
+              });
+            }
+
+            return batchInfo;
           });
 
           // 开始倒计时
@@ -425,6 +451,11 @@ export function useBatchUploader() {
             chunkSize,
             maxRetries,
           },
+          uploadConfig: {
+            baseURL: uploadConfig.baseURL,
+            uploadApi: uploadConfig.uploadApi,
+            checkApi: uploadConfig.checkApi,
+          },
         });
 
         // 监听Worker消息
@@ -443,6 +474,11 @@ export function useBatchUploader() {
               ...prev,
               [file.id]: progress,
             }));
+
+            // 触发进度回调
+            if (uploadConfig.onUploadProgress) {
+              uploadConfig.onUploadProgress(file, progress);
+            }
 
             // 如果进度变化较大，刷新文件列表以更新UI
             if (progress % 20 === 0) {
@@ -471,6 +507,11 @@ export function useBatchUploader() {
 
               // 立即刷新文件列表，确保UI显示最新状态
               await refreshFiles();
+
+              // 触发上传完成回调
+              if (uploadConfig.onUploadComplete) {
+                uploadConfig.onUploadComplete(updatedFile, true);
+              }
 
               // 将文件添加到已完成列表，稍后统一从UI和IndexedDB中清理
               addCompletedFile(file.id);
@@ -514,6 +555,11 @@ export function useBatchUploader() {
 
               // 保留文件记录在IndexedDB中，以便后续重试
               await localforage.setItem(file.id, updatedFile);
+
+              // 触发错误回调
+              if (uploadConfig.onUploadError) {
+                uploadConfig.onUploadError(updatedFile, updatedFile.errorMessage);
+              }
               console.log(`文件 ${file.fileName} 上传失败，保留记录以便重试`);
 
               // 立即刷新文件列表，确保UI显示错误状态
