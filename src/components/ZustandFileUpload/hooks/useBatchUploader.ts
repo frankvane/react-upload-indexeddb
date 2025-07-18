@@ -24,14 +24,15 @@ export function useBatchUploader() {
     setBatchInfo,
     setIsUploading,
     getMessageApi,
-    autoCleanup = true, // 默认开启自动清理
-    cleanupDelay = 10, // 默认10秒延迟清理
     files,
     setFiles,
   } = useUploadStore();
 
   // 获取上传配置和回调
   const uploadConfig = useUploadContext();
+
+  // 使用 Context 中的配置值，而不是 store 中的默认值
+  const { autoCleanup, cleanupDelay } = uploadConfig;
 
   const messageApi = getMessageApi();
 

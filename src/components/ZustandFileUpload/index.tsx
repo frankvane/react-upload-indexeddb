@@ -4,6 +4,7 @@ import {
   FileUploadActions,
   StorageStatsDrawer,
 } from "./components";
+import ConfigDebugger from "./components/ConfigDebugger";
 import React, { useEffect, useRef } from "react";
 import {
   useBatchUploader,
@@ -63,6 +64,13 @@ const ZustandFileUploadCore: React.FC = () => {
       allowedFileTypes: uploadConfig.allowedFileTypes,
       maxFiles: uploadConfig.maxFiles,
     });
+
+    // 同时更新 UI 配置到 store
+    const { setAutoUpload, setAutoCleanup, setCleanupDelay, setNetworkDisplayMode } = useUploadStore.getState();
+    setAutoUpload(uploadConfig.autoUpload);
+    setAutoCleanup(uploadConfig.autoCleanup);
+    setCleanupDelay(uploadConfig.cleanupDelay);
+    setNetworkDisplayMode(uploadConfig.networkDisplayMode);
   }, [setConfig, uploadConfig]);
 
   // 初始化设置和加载文件
@@ -112,6 +120,7 @@ const ZustandFileUploadCore: React.FC = () => {
         style={{ display: "none" }}
       />
 
+      <ConfigDebugger />
       <FileUploadActions triggerFileInput={triggerFileInput} />
 
       <BatchInfoDisplay />
