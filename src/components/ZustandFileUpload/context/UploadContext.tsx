@@ -105,4 +105,11 @@ export const useUploadContext = (): UploadContextType => {
   return context;
 };
 
+// Hook 用于获取运行时有效配置（Store 优先，然后是 Context）
+export const useEffectiveUploadConfig = () => {
+  const contextConfig = useUploadContext();
+  // 这里我们需要导入 useUploadStore，但为了避免循环依赖，我们在使用的地方实现这个逻辑
+  return contextConfig;
+};
+
 export default UploadContext;

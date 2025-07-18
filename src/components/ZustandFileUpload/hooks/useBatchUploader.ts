@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 
 import localforage from "localforage";
 import { useUploadStore } from "../store/upload";
-import { useUploadContext } from "../context/UploadContext";
+import { useEffectiveUploadConfig } from "./useEffectiveConfig";
 
 // 导入Worker
 const UploadWorker = new Worker(
@@ -28,11 +28,8 @@ export function useBatchUploader() {
     setFiles,
   } = useUploadStore();
 
-  // 获取上传配置和回调
-  const uploadConfig = useUploadContext();
-
-  // 使用 Context 中的配置值，而不是 store 中的默认值
-  const { autoCleanup, cleanupDelay } = uploadConfig;
+  // 获取有效的上传配置（Store 优先，Context 后备）
+  const uploadConfig = useEffectiveUploadConfig();
 
   const messageApi = getMessageApi();
 
@@ -113,12 +110,12 @@ export function useBatchUploader() {
             completed: markedCount,
             failed: 0,
             retried: 0,
-            countdown: cleanupDelay,
+            countdown: uploadConfig.cleanupDelay,
           });
         }
 
         // 开始倒计时
-        startCountdown(cleanupDelay);
+        startCountdown(uploadConfig.cleanupDelay);
       } else {
         console.log("没有需要清理的文件");
       }
@@ -291,8 +288,8 @@ export function useBatchUploader() {
           const completedFiles = completedFilesRef.current.length;
           console.log(`当前有 ${completedFiles} 个文件待清理`);
 
-          // 即使没有需要清理的文件，也保留batchInfo至少10秒，让用户可以看到完成状态
-          console.log(`设置${cleanupDelay}秒后清理的定时器`);
+          // 即使没有需要清理的文件，也保留batchInfo至少指定时间，让用户可以看到完成状态
+          console.log(`设置${uploadConfig.cleanupDelay}秒后清理的定时器`);
 
           // 确保批次信息的总数和当前数一致
           setBatchInfo((prev) => {
@@ -324,7 +321,7 @@ export function useBatchUploader() {
               ...prev,
               current: actualTotal,
               total: actualTotal,
-              countdown: cleanupDelay,
+              countdown: uploadConfig.cleanupDelay,
             };
 
             // 触发批量完成回调
@@ -340,10 +337,10 @@ export function useBatchUploader() {
           });
 
           // 开始倒计时
-          startCountdown(cleanupDelay);
+          startCountdown(uploadConfig.cleanupDelay);
 
           console.log(
-            `定时器已设置，将在${cleanupDelay}秒后清理 ${completedFiles} 个文件`
+            `定时器已设置，将在${uploadConfig.cleanupDelay}秒后清理 ${completedFiles} 个文件`
           );
 
           resolve(true);
@@ -689,14 +686,14 @@ export function useBatchUploader() {
           const completedFiles = completedFilesRef.current.length;
           console.log(`重试完成，当前有 ${completedFiles} 个文件待清理`);
 
-          // 即使没有需要清理的文件，也保留batchInfo至少10秒，让用户可以看到完成状态
-          console.log(`设置${cleanupDelay}秒后清理的定时器`);
+          // 即使没有需要清理的文件，也保留batchInfo至少指定时间，让用户可以看到完成状态
+          console.log(`设置${uploadConfig.cleanupDelay}秒后清理的定时器`);
 
           // 开始倒计时
-          startCountdown(cleanupDelay);
+          startCountdown(uploadConfig.cleanupDelay);
 
           console.log(
-            `定时器已设置，将在${cleanupDelay}秒后清理 ${completedFiles} 个文件`
+            `定时器已设置，将在${uploadConfig.cleanupDelay}秒后清理 ${completedFiles} 个文件`
           );
 
           resolve({
@@ -926,7 +923,7 @@ export function useBatchUploader() {
         messageApi.success(message);
 
         // 设置清理定时器
-        console.log(`设置${cleanupDelay}秒后清理的定时器`);
+        console.log(`设置${uploadConfig.cleanupDelay}秒后清理的定时器`);
 
         // 创建一个简单的批次信息，显示已标记的文件数量
         if (markedCount > 0) {
@@ -939,12 +936,12 @@ export function useBatchUploader() {
             completed: markedCount,
             failed: 0,
             retried: 0,
-            countdown: cleanupDelay,
+            countdown: uploadConfig.cleanupDelay,
           });
         }
 
         // 开始倒计时
-        startCountdown(cleanupDelay);
+        startCountdown(uploadConfig.cleanupDelay);
 
         return {
           success: true,
