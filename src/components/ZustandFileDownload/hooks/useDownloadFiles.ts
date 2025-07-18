@@ -170,7 +170,6 @@ export const useDownloadFiles = () => {
         // 获取本地存储的文件状态并合并
         if (downloadedFiles && downloadedFiles.length > 0) {
           await updateLocalFileStatus(downloadedFiles);
-        } else {
         }
 
         // 在文件列表初次加载时获取一次存储使用情况

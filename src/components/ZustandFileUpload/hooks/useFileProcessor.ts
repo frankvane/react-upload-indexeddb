@@ -1,7 +1,36 @@
+import { ProcessingStats, UploadFile } from "../types/upload";
+
 import localforage from "localforage";
+import { useEffectiveUploadConfig } from "./useEffectiveConfig";
 import { useRef } from "react";
 import { useUploadStore } from "../store/upload";
-import { useEffectiveUploadConfig } from "./useEffectiveConfig";
+
+// Worker消息类型定义
+interface WorkerProgressMessage {
+  type: "progress";
+  processed: number;
+  total: number;
+  success: number;
+  failed: number;
+  oversized: number;
+  fileDetails?: {
+    fileName: string;
+    fileSize: number;
+    fileType: string;
+    index: number;
+    total: number;
+    error?: boolean;
+    errorMessage?: string;
+  };
+}
+
+interface WorkerCompleteMessage {
+  type: "complete";
+  uploadFiles: UploadFile[];
+  stats: ProcessingStats;
+}
+
+type WorkerMessage = WorkerProgressMessage | WorkerCompleteMessage;
 
 // 导入Worker
 const FilePrepareWorker = new Worker(
@@ -34,7 +63,9 @@ export function useFileProcessor() {
   const fileStartTimesRef = useRef<Record<string, number>>({});
 
   // 文件验证函数
-  const validateFiles = (files: File[]): { validFiles: File[]; errors: string[] } => {
+  const validateFiles = (
+    files: File[]
+  ): { validFiles: File[]; errors: string[] } => {
     const validFiles: File[] = [];
     const errors: string[] = [];
 
@@ -47,17 +78,21 @@ export function useFileProcessor() {
     files.forEach((file) => {
       // 检查文件大小
       if (file.size > uploadConfig.maxFileSize) {
-        errors.push(`文件 "${file.name}" 大小超过限制 (${Math.round(uploadConfig.maxFileSize / 1024 / 1024)}MB)`);
+        errors.push(
+          `文件 "${file.name}" 大小超过限制 (${Math.round(
+            uploadConfig.maxFileSize / 1024 / 1024
+          )}MB)`
+        );
         return;
       }
 
       // 检查文件类型
       if (uploadConfig.allowedFileTypes.length > 0) {
-        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+        const fileExtension = file.name.split(".").pop()?.toLowerCase();
         const mimeType = file.type.toLowerCase();
 
-        const isAllowed = uploadConfig.allowedFileTypes.some(type => {
-          if (type.startsWith('.')) {
+        const isAllowed = uploadConfig.allowedFileTypes.some((type: string) => {
+          if (type.startsWith(".")) {
             return fileExtension === type.slice(1).toLowerCase();
           }
           return mimeType.includes(type.toLowerCase());
@@ -101,7 +136,7 @@ export function useFileProcessor() {
     const { validFiles, errors } = validateFiles(files);
 
     if (errors.length > 0) {
-      errors.forEach(error => messageApi.error(error));
+      errors.forEach((error) => messageApi.error(error));
       if (validFiles.length === 0) return;
     }
 
@@ -140,32 +175,22 @@ export function useFileProcessor() {
     });
 
     // 监听Worker消息
-    const handleWorkerMessage = async (event: MessageEvent) => {
-      const {
-        type,
-        processed,
-        total,
-        success,
-        failed,
-        oversized,
-        uploadFiles,
-        stats,
-        fileDetails,
-      } = event.data;
+    const handleWorkerMessage = async (event: MessageEvent<WorkerMessage>) => {
+      const data = event.data;
 
-      if (type === "progress") {
+      if (data.type === "progress") {
         // 更新处理进度
         setProcessProgress({
-          processed,
-          total,
-          success,
-          failed,
-          oversized,
+          processed: data.processed,
+          total: data.total,
+          success: data.success,
+          failed: data.failed,
+          oversized: data.oversized,
         });
 
         // 如果有文件详情，记录处理时间
-        if (fileDetails && fileDetails.fileName) {
-          const fileName = fileDetails.fileName;
+        if (data.fileDetails && data.fileDetails.fileName) {
+          const fileName = data.fileDetails.fileName;
           const startTime = fileStartTimesRef.current[fileName] || 0;
           if (startTime > 0) {
             const processingTime = Date.now() - startTime;
@@ -177,7 +202,7 @@ export function useFileProcessor() {
             delete fileStartTimesRef.current[fileName];
           }
         }
-      } else if (type === "complete") {
+      } else if (data.type === "complete") {
         // 处理完成
         setProcessProgress(null);
         setLoading(false);
@@ -188,14 +213,14 @@ export function useFileProcessor() {
         setCost(cost);
 
         // 保存文件到IndexedDB
-        for (const file of uploadFiles) {
+        for (const file of data.uploadFiles) {
           await localforage.setItem(file.id, file);
 
           // 确保所有文件都有处理时间记录
           if (!fileStartTimesRef.current[file.fileName]) {
             setFileTimings((prev: Record<string, number>) => ({
               ...prev,
-              [file.fileName]: Math.round(cost / uploadFiles.length), // 估算时间
+              [file.fileName]: Math.round(cost / data.uploadFiles.length), // 估算时间
             }));
           }
         }
@@ -204,15 +229,21 @@ export function useFileProcessor() {
         await refreshFiles();
 
         // 显示处理结果
-        const resultMessage = `处理完成: ${stats.success}个成功, ${
-          stats.failed
+        const resultMessage = `处理完成: ${data.stats.success}个成功, ${
+          data.stats.failed
         }个失败${
-          stats.oversized > 0 ? `, ${stats.oversized}个超过大小限制` : ""
+          data.stats.oversized > 0
+            ? `, ${data.stats.oversized}个超过大小限制`
+            : ""
         }`;
         messageApi.success(resultMessage);
 
         // 如果启用了自动上传，立即开始上传
-        if (uploadConfig.autoUpload && stats.success > 0 && !isNetworkOffline) {
+        if (
+          uploadConfig.autoUpload &&
+          data.stats.success > 0 &&
+          !isNetworkOffline
+        ) {
           setTimeout(() => {
             uploadAll();
           }, 500);

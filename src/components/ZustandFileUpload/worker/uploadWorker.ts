@@ -1,5 +1,29 @@
 import SparkMD5 from "spark-md5";
 
+// Worker消息类型定义
+interface UploadWorkerMessage {
+  type: "upload";
+  fileInfo: {
+    id: string;
+    fileName: string;
+    fileSize: number;
+    hash?: string;
+    chunkSize?: number;
+  };
+  fileBuffer: ArrayBuffer;
+  networkParams?: {
+    chunkConcurrency?: number;
+    maxRetries?: number;
+    timeout?: number;
+    retryInterval?: number;
+  };
+  uploadConfig: {
+    baseURL: string;
+    uploadApi: string;
+    checkApi: string;
+  };
+}
+
 // 调试日志函数
 function debug(message: string, data?: Record<string, unknown>): void {
   console.log(`[UploadWorker] ${message}`, data || "");
@@ -151,7 +175,7 @@ async function fetchWithRetry(
   });
 }
 
-self.onmessage = async (event: MessageEvent) => {
+self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
   try {
     debug("Worker 收到消息", { type: event.data.type });
 
@@ -165,7 +189,7 @@ self.onmessage = async (event: MessageEvent) => {
 
     // 检查必要参数
     if (!fileInfo) {
-      debug("缺少文件信息", event.data);
+      debug("缺少文件信息", event.data as unknown as Record<string, unknown>);
       throw new Error("缺少必要参数：fileInfo");
     }
 
@@ -223,8 +247,8 @@ self.onmessage = async (event: MessageEvent) => {
 
       // 构建请求体
       const requestBody = {
-        file_id: fileInfo.hash,
-        md5: fileInfo.hash,
+        file_id: fileInfo.hash || "",
+        md5: fileInfo.hash || "",
         name: fileInfo.fileName,
         size: fileInfo.fileSize,
         total: chunkCount,
@@ -307,7 +331,7 @@ self.onmessage = async (event: MessageEvent) => {
             const chunkMd5 = chunk_md5s[i];
 
             const formData = new FormData();
-            formData.append("file_id", fileInfo.hash);
+            formData.append("file_id", fileInfo.hash || "");
             formData.append("index", i.toString());
             formData.append("chunk", new Blob([chunk]));
             formData.append("total", chunkCount.toString());
@@ -381,8 +405,8 @@ self.onmessage = async (event: MessageEvent) => {
       // 4. 合并
       debug("开始合并文件");
       const mergeRequestBody = {
-        file_id: fileInfo.hash,
-        md5: fileInfo.hash,
+        file_id: fileInfo.hash || "",
+        md5: fileInfo.hash || "",
         name: fileInfo.fileName,
         size: fileInfo.fileSize,
         total: chunkCount,
