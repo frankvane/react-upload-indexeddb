@@ -11,7 +11,6 @@ const FilePrepareWorker = new Worker(
 
 export function useFileProcessor() {
   const {
-    autoUpload,
     isNetworkOffline,
     networkType,
     fileConcurrency,
@@ -28,6 +27,9 @@ export function useFileProcessor() {
 
   // 获取上传配置
   const uploadConfig = useUploadContext();
+
+  // 使用 Context 中的配置值
+  const { autoUpload } = uploadConfig;
 
   const messageApi = getMessageApi();
 

@@ -4,6 +4,7 @@ import { NetworkStatusBadge, ProcessProgressDisplay } from "./";
 import { BarChartOutlined } from "@ant-design/icons";
 import React from "react";
 import { useUploadStore } from "../store/upload";
+import { useUploadContext } from "../context/UploadContext";
 
 interface FileUploadActionsProps {
   triggerFileInput: () => void;
@@ -17,13 +18,9 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
     isUploading,
     isRetryingAll,
     isNetworkOffline,
-    autoUpload,
     setAutoUpload,
-    autoCleanup,
     setAutoCleanup,
-    cleanupDelay,
     setCleanupDelay,
-    networkDisplayMode,
     setNetworkDisplayMode,
     networkType,
     chunkSize,
@@ -37,6 +34,12 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
     cost,
     processProgress,
   } = useUploadStore();
+
+  // 获取上传配置
+  const uploadConfig = useUploadContext();
+
+  // 使用 Context 中的配置值
+  const { autoUpload, autoCleanup, cleanupDelay, networkDisplayMode } = uploadConfig;
 
   // 计算错误文件数量
   const errorFilesCount = files.filter(
