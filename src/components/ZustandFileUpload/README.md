@@ -61,7 +61,76 @@ function App() {
   return (
     <div className="App">
       <h1>文件上传示例</h1>
-      <ZustandFileUpload />
+      <ZustandFileUpload
+        baseURL="http://localhost:3000"
+        uploadApi="/api/file/upload"
+        checkApi="/api/file/instant"
+      />
+    </div>
+  );
+}
+
+export default App;
+```
+
+### 完整配置示例
+
+```jsx
+import React from "react";
+import ZustandFileUpload from "./components/ZustandFileUpload";
+
+function App() {
+  return (
+    <div>
+      <h1>文件上传示例</h1>
+      <ZustandFileUpload
+        // API 配置
+        baseURL="http://localhost:3000"
+        uploadApi="/api/file/upload"
+        checkApi="/api/file/instant"
+
+        // 网络参数配置
+        chunkSize={1024 * 1024} // 1MB
+        fileConcurrency={2}
+        chunkConcurrency={2}
+        maxRetries={3}
+
+        // 文件限制配置
+        maxFileSize={100 * 1024 * 1024} // 100MB
+        allowedFileTypes={['.jpg', '.png', '.pdf']}
+        maxFiles={10}
+
+        // UI 配置
+        autoUpload={true}
+        autoCleanup={true}
+        cleanupDelay={10}
+        networkDisplayMode="tooltip"
+
+        // 回调事件
+        onUploadStart={(files) => {
+          console.log('上传开始:', files);
+        }}
+        onUploadProgress={(file, progress) => {
+          console.log(`文件 ${file.fileName} 上传进度: ${progress}%`);
+        }}
+        onUploadComplete={(file, success) => {
+          console.log(`文件 ${file.fileName} 上传${success ? '成功' : '失败'}`);
+        }}
+        onUploadError={(file, error) => {
+          console.error(`文件 ${file.fileName} 上传错误:`, error);
+        }}
+        onBatchComplete={(results) => {
+          console.log('批量上传完成:', results);
+        }}
+
+        // 自定义验证
+        customFileValidator={(file) => {
+          if (file.name.includes('test')) {
+            return { valid: false, message: '不允许包含test的文件名' };
+          }
+          return { valid: true };
+        }}
+      />
     </div>
   );
 }
