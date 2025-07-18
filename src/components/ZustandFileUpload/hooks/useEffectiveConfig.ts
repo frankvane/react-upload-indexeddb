@@ -1,6 +1,6 @@
 import { useUploadContext } from "../context/UploadContext";
 import { useUploadStore } from "../store/upload";
-import { useCallback } from "react";
+import { useMemo } from "react";
 
 /**
  * 获取有效的上传配置
@@ -9,53 +9,83 @@ import { useCallback } from "react";
 export const useEffectiveUploadConfig = () => {
   const contextConfig = useUploadContext();
 
-  // 使用 useCallback 缓存选择器函数以避免无限循环
-  const storeSelector = useCallback((state: any) => ({
-    autoUpload: state.autoUpload,
-    autoCleanup: state.autoCleanup,
-    cleanupDelay: state.cleanupDelay,
-    networkDisplayMode: state.networkDisplayMode,
-    chunkSize: state.chunkSize,
-    fileConcurrency: state.fileConcurrency,
-    chunkConcurrency: state.chunkConcurrency,
-    maxRetries: state.maxRetries,
-  }), []);
+  // 直接获取 store 中的各个值，避免选择器缓存问题
+  const autoUpload = useUploadStore((state) => state.autoUpload);
+  const autoCleanup = useUploadStore((state) => state.autoCleanup);
+  const cleanupDelay = useUploadStore((state) => state.cleanupDelay);
+  const networkDisplayMode = useUploadStore((state) => state.networkDisplayMode);
+  const chunkSize = useUploadStore((state) => state.chunkSize);
+  const fileConcurrency = useUploadStore((state) => state.fileConcurrency);
+  const chunkConcurrency = useUploadStore((state) => state.chunkConcurrency);
+  const maxRetries = useUploadStore((state) => state.maxRetries);
 
-  const storeConfig = useUploadStore(storeSelector);
+  // 使用 useMemo 缓存合并后的配置对象
+  const storeConfig = useMemo(() => ({
+    autoUpload,
+    autoCleanup,
+    cleanupDelay,
+    networkDisplayMode,
+    chunkSize,
+    fileConcurrency,
+    chunkConcurrency,
+    maxRetries,
+  }), [autoUpload, autoCleanup, cleanupDelay, networkDisplayMode, chunkSize, fileConcurrency, chunkConcurrency, maxRetries]);
 
-  // 合并配置：Store 优先，Context 作为后备
-  return {
+  // 使用 useMemo 缓存合并后的最终配置对象
+  return useMemo(() => ({
     // API 配置（通常不允许运行时修改）
     baseURL: contextConfig.baseURL,
     uploadApi: contextConfig.uploadApi,
     checkApi: contextConfig.checkApi,
-    
+
     // 文件限制配置（通常不允许运行时修改）
     maxFileSize: contextConfig.maxFileSize,
     allowedFileTypes: contextConfig.allowedFileTypes,
     maxFiles: contextConfig.maxFiles,
-    
+
     // 网络参数配置（可能允许运行时修改，但通常使用 Context 值）
     chunkSize: storeConfig.chunkSize,
     fileConcurrency: storeConfig.fileConcurrency,
     chunkConcurrency: storeConfig.chunkConcurrency,
     maxRetries: storeConfig.maxRetries,
-    
+
     // UI 配置（允许运行时修改）
     autoUpload: storeConfig.autoUpload,
     autoCleanup: storeConfig.autoCleanup,
     cleanupDelay: storeConfig.cleanupDelay,
     networkDisplayMode: storeConfig.networkDisplayMode,
-    
+
     // 回调函数（来自 Context）
     onUploadStart: contextConfig.onUploadStart,
     onUploadProgress: contextConfig.onUploadProgress,
     onUploadComplete: contextConfig.onUploadComplete,
     onUploadError: contextConfig.onUploadError,
     onBatchComplete: contextConfig.onBatchComplete,
-    
+
     // 自定义方法（来自 Context）
     customFileValidator: contextConfig.customFileValidator,
     customUploadHandler: contextConfig.customUploadHandler,
-  };
+  }), [
+    contextConfig.baseURL,
+    contextConfig.uploadApi,
+    contextConfig.checkApi,
+    contextConfig.maxFileSize,
+    contextConfig.allowedFileTypes,
+    contextConfig.maxFiles,
+    contextConfig.onUploadStart,
+    contextConfig.onUploadProgress,
+    contextConfig.onUploadComplete,
+    contextConfig.onUploadError,
+    contextConfig.onBatchComplete,
+    contextConfig.customFileValidator,
+    contextConfig.customUploadHandler,
+    storeConfig.chunkSize,
+    storeConfig.fileConcurrency,
+    storeConfig.chunkConcurrency,
+    storeConfig.maxRetries,
+    storeConfig.autoUpload,
+    storeConfig.autoCleanup,
+    storeConfig.cleanupDelay,
+    storeConfig.networkDisplayMode,
+  ]);
 };
