@@ -1,5 +1,6 @@
 import { useUploadContext } from "../context/UploadContext";
 import { useUploadStore } from "../store/upload";
+import { useCallback } from "react";
 
 /**
  * 获取有效的上传配置
@@ -7,7 +8,9 @@ import { useUploadStore } from "../store/upload";
  */
 export const useEffectiveUploadConfig = () => {
   const contextConfig = useUploadContext();
-  const storeConfig = useUploadStore((state) => ({
+
+  // 使用 useCallback 缓存选择器函数以避免无限循环
+  const storeSelector = useCallback((state: any) => ({
     autoUpload: state.autoUpload,
     autoCleanup: state.autoCleanup,
     cleanupDelay: state.cleanupDelay,
@@ -16,7 +19,9 @@ export const useEffectiveUploadConfig = () => {
     fileConcurrency: state.fileConcurrency,
     chunkConcurrency: state.chunkConcurrency,
     maxRetries: state.maxRetries,
-  }));
+  }), []);
+
+  const storeConfig = useUploadStore(storeSelector);
 
   // 合并配置：Store 优先，Context 作为后备
   return {

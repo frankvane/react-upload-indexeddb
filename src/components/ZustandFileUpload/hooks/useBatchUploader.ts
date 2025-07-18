@@ -44,7 +44,7 @@ export function useBatchUploader() {
 
   // 组件初始化时检查并清理已上传的文件
   useEffect(() => {
-    if (autoCleanup) {
+    if (uploadConfig.autoCleanup) {
       // 延迟执行，避免影响应用启动性能
       const timer = setTimeout(() => {
         cleanupUploadedFiles();
@@ -52,7 +52,7 @@ export function useBatchUploader() {
 
       return () => clearTimeout(timer);
     }
-  }, [autoCleanup]);
+  }, [uploadConfig.autoCleanup]);
 
   // 组件卸载时清除定时器
   useEffect(() => {
