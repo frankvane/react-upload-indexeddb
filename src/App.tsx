@@ -17,7 +17,7 @@ const App = () => {
         maxFiles={10}
         autoUpload={true}
         autoCleanup={true}
-        cleanupDelay={3}
+        cleanupDelay={5}
         networkDisplayMode="tooltip"
         onUploadStart={(files) => {
           console.log('上传开始:', files);

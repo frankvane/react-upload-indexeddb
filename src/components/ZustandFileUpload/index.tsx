@@ -4,7 +4,6 @@ import {
   FileUploadActions,
   StorageStatsDrawer,
 } from "./components";
-import ConfigDebugger from "./components/ConfigDebugger";
 import React, { useEffect, useRef } from "react";
 import {
   useBatchUploader,
@@ -120,7 +119,6 @@ const ZustandFileUploadCore: React.FC = () => {
         style={{ display: "none" }}
       />
 
-      <ConfigDebugger />
       <FileUploadActions triggerFileInput={triggerFileInput} />
 
       <BatchInfoDisplay />
