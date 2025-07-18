@@ -1,7 +1,7 @@
 import localforage from "localforage";
 import { useRef } from "react";
 import { useUploadStore } from "../store/upload";
-import { useUploadContext } from "../context/UploadContext";
+import { useEffectiveUploadConfig } from "./useEffectiveConfig";
 
 // 导入Worker
 const FilePrepareWorker = new Worker(
@@ -25,11 +25,8 @@ export function useFileProcessor() {
     getMessageApi,
   } = useUploadStore();
 
-  // 获取上传配置
-  const uploadConfig = useUploadContext();
-
-  // 使用 Context 中的配置值
-  const { autoUpload } = uploadConfig;
+  // 获取有效的上传配置
+  const uploadConfig = useEffectiveUploadConfig();
 
   const messageApi = getMessageApi();
 
@@ -215,7 +212,7 @@ export function useFileProcessor() {
         messageApi.success(resultMessage);
 
         // 如果启用了自动上传，立即开始上传
-        if (autoUpload && stats.success > 0 && !isNetworkOffline) {
+        if (uploadConfig.autoUpload && stats.success > 0 && !isNetworkOffline) {
           setTimeout(() => {
             uploadAll();
           }, 500);

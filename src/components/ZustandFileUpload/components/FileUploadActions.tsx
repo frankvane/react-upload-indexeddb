@@ -4,7 +4,7 @@ import { NetworkStatusBadge, ProcessProgressDisplay } from "./";
 import { BarChartOutlined } from "@ant-design/icons";
 import React from "react";
 import { useUploadStore } from "../store/upload";
-import { useUploadContext } from "../context/UploadContext";
+import { useEffectiveUploadConfig } from "../hooks/useEffectiveConfig";
 
 interface FileUploadActionsProps {
   triggerFileInput: () => void;
@@ -35,11 +35,8 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
     processProgress,
   } = useUploadStore();
 
-  // 获取上传配置
-  const uploadConfig = useUploadContext();
-
-  // 使用 Context 中的配置值
-  const { autoUpload, autoCleanup, cleanupDelay, networkDisplayMode } = uploadConfig;
+  // 获取有效的上传配置
+  const uploadConfig = useEffectiveUploadConfig();
 
   // 计算错误文件数量
   const errorFilesCount = files.filter(
@@ -145,18 +142,18 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
           fileConcurrency={fileConcurrency}
           chunkConcurrency={chunkConcurrency}
           isOffline={isNetworkOffline}
-          displayMode={networkDisplayMode}
+          displayMode={uploadConfig.networkDisplayMode}
         />
 
         <Tooltip
           title={`切换为${
-            networkDisplayMode === "direct" ? "悬停提示" : "直接显示"
+            uploadConfig.networkDisplayMode === "direct" ? "悬停提示" : "直接显示"
           }模式`}
         >
           <Switch
             checkedChildren="详细"
             unCheckedChildren="简洁"
-            checked={networkDisplayMode === "direct"}
+            checked={uploadConfig.networkDisplayMode === "direct"}
             onChange={(checked) =>
               setNetworkDisplayMode(checked ? "direct" : "tooltip")
             }
@@ -165,7 +162,7 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
           />
         </Tooltip>
 
-        <Tooltip title={`${autoUpload ? "开启" : "关闭"}自动上传`}>
+        <Tooltip title={`${uploadConfig.autoUpload ? "开启" : "关闭"}自动上传`}>
           <div
             style={{
               display: "flex",
@@ -175,14 +172,14 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
           >
             <span style={{ marginRight: 4 }}>自动上传:</span>
             <Switch
-              checked={autoUpload}
+              checked={uploadConfig.autoUpload}
               onChange={(checked) => setAutoUpload(checked)}
               size="small"
             />
           </div>
         </Tooltip>
 
-        <Tooltip title={`${autoCleanup ? "开启" : "关闭"}自动清理`}>
+        <Tooltip title={`${uploadConfig.autoCleanup ? "开启" : "关闭"}自动清理`}>
           <div
             style={{
               display: "flex",
@@ -192,7 +189,7 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
           >
             <span style={{ marginRight: 4 }}>自动清理:</span>
             <Switch
-              checked={autoCleanup}
+              checked={uploadConfig.autoCleanup}
               onChange={(checked) => setAutoCleanup(checked)}
               size="small"
             />
@@ -211,7 +208,7 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
             <InputNumber
               min={1}
               max={60}
-              value={cleanupDelay}
+              value={uploadConfig.cleanupDelay}
               onChange={handleCleanupDelayChange}
               size="small"
               style={{ width: 60 }}
