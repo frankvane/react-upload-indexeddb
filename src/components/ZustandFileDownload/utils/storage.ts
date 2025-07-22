@@ -2,7 +2,7 @@ import { DownloadFile } from "../types";
 import localforage from "localforage";
 
 // 设置统一的版本号，确保所有实例使用相同的版本
-const DB_VERSION = 10;
+const DB_VERSION = 12;
 
 // 初始化IndexedDB存储
 export const fileStore = localforage.createInstance({

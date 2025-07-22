@@ -42,6 +42,17 @@ export interface DownloadState {
   isManuallySet: boolean; // 是否手动设置网络参数
   displayMode: "tooltip" | "direct"; // 网络状态显示模式
 
+  // 下载参数配置
+  maxConcurrency: number; // 最大并发数
+  maxRetries: number; // 最大重试次数
+  retryDelay: number; // 重试延迟时间
+
+  // UI 配置
+  autoStart: boolean; // 是否自动开始下载
+  showProgress: boolean; // 是否显示进度
+  showStorageStats: boolean; // 是否显示存储统计
+  showNetworkStatus: boolean; // 是否显示网络状态
+
   // 下载控制器
   abortControllers: Record<string, AbortController>;
 
@@ -62,4 +73,13 @@ export interface DownloadState {
   ) => boolean;
   resetManualFlag: () => void;
   toggleDisplayMode: () => void;
+
+  // 配置设置方法
+  setMaxConcurrency: (maxConcurrency: number) => void;
+  setMaxRetries: (maxRetries: number) => void;
+  setRetryDelay: (retryDelay: number) => void;
+  setAutoStart: (autoStart: boolean) => void;
+  setShowProgress: (showProgress: boolean) => void;
+  setShowStorageStats: (showStorageStats: boolean) => void;
+  setShowNetworkStatus: (showNetworkStatus: boolean) => void;
 }

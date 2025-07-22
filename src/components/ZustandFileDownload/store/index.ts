@@ -30,6 +30,17 @@ export const useDownloadStore = create<DownloadState>()(
         isManuallySet: false, // 默认不是手动设置
         displayMode: "tooltip", // 默认显示模式
 
+        // 下载参数配置
+        maxConcurrency: 3, // 最大并发数
+        maxRetries: 3, // 最大重试次数
+        retryDelay: 1000, // 重试延迟时间
+
+        // UI 配置
+        autoStart: false, // 是否自动开始下载
+        showProgress: true, // 是否显示进度
+        showStorageStats: true, // 是否显示存储统计
+        showNetworkStatus: true, // 是否显示网络状态
+
         abortControllers: {},
 
         // 文件列表请求状态
@@ -217,18 +228,40 @@ export const useDownloadStore = create<DownloadState>()(
             false,
             "toggleDisplayMode"
           ),
+
+        // 配置设置方法
+        setMaxConcurrency: (maxConcurrency) =>
+          set({ maxConcurrency }, false, "setMaxConcurrency"),
+        setMaxRetries: (maxRetries) =>
+          set({ maxRetries }, false, "setMaxRetries"),
+        setRetryDelay: (retryDelay) =>
+          set({ retryDelay }, false, "setRetryDelay"),
+        setAutoStart: (autoStart) => set({ autoStart }, false, "setAutoStart"),
+        setShowProgress: (showProgress) =>
+          set({ showProgress }, false, "setShowProgress"),
+        setShowStorageStats: (showStorageStats) =>
+          set({ showStorageStats }, false, "setShowStorageStats"),
+        setShowNetworkStatus: (showNetworkStatus) =>
+          set({ showNetworkStatus }, false, "setShowNetworkStatus"),
       }),
       {
         name: "download-network-storage", // 存储的唯一名称
         storage: createJSONStorage(() => localStorage), // 使用localStorage
         partialize: (state) => ({
-          // 只持久化网络相关设置
+          // 只持久化网络相关设置和配置选项
           networkType: state.networkType,
           chunkSize: state.chunkSize,
           fileConcurrency: state.fileConcurrency,
           chunkConcurrency: state.chunkConcurrency,
           isManuallySet: state.isManuallySet,
           displayMode: state.displayMode,
+          maxConcurrency: state.maxConcurrency,
+          maxRetries: state.maxRetries,
+          retryDelay: state.retryDelay,
+          autoStart: state.autoStart,
+          showProgress: state.showProgress,
+          showStorageStats: state.showStorageStats,
+          showNetworkStatus: state.showNetworkStatus,
         }),
       }
     ),
