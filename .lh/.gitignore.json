@@ -1,0 +1,34 @@
+{
+    "sourceFile": ".gitignore",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 4,
+            "patches": [
+                {
+                    "date": 1748917653897,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748963952570,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -21,5 +21,6 @@\n *.ntvs*\n *.njsproj\n *.sln\n *.sw?\n-.VSCodeCounter\n\\ No newline at end of file\n+.VSCodeCounter\n+.lh\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1774147010745,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -22,5 +22,6 @@\n *.njsproj\r\n *.sln\r\n *.sw?\r\n .VSCodeCounter\r\n-.lh\n\\ No newline at end of file\n+.lh\r\n+.agents\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1774147026849,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -23,5 +23,5 @@\n *.sln\r\n *.sw?\r\n .VSCodeCounter\r\n .lh\r\n-.agents\n\\ No newline at end of file\n+.agents\r\n"
+                },
+                {
+                    "date": 1774147041085,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -23,5 +23,5 @@\n *.sln\r\n *.sw?\r\n .VSCodeCounter\r\n .lh\r\n-.agents\r\n+.agents\n\\ No newline at end of file\n"
+                }
+            ],
+            "date": 1748917653897,
+            "name": "Commit-0",
+            "content": "# Logs\nlogs\n*.log\nnpm-debug.log*\nyarn-debug.log*\nyarn-error.log*\npnpm-debug.log*\nlerna-debug.log*\n\nnode_modules\ndist\ndist-ssr\n*.local\n\n# Editor directories and files\n.vscode/*\n!.vscode/extensions.json\n.idea\n.DS_Store\n*.suo\n*.ntvs*\n*.njsproj\n*.sln\n*.sw?\n.VSCodeCounter"
+        }
+    ]
+}

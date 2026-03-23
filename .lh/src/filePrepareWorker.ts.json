@@ -1,0 +1,26 @@
+{
+    "sourceFile": "src/filePrepareWorker.ts",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 2,
+            "patches": [
+                {
+                    "date": 1748869597974,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748869608629,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,12 +1,14 @@\n import { UploadFile, UploadStatus } from \"./types/upload\";\r\n \r\n+declare function importScripts(...urls: string[]): void;\r\n+\r\n // @ts-expect-error: self 类型\r\n self.onmessage = async (e) => {\r\n   const files: File[] = e.data.files;\r\n   const CHUNK_SIZE = 1024 * 1024;\r\n-  const SparkMD5 = (self as any).SparkMD5 || undefined;\r\n-  if (!SparkMD5) {\r\n+  const globalSelf = self as Worker & { SparkMD5: any };\r\n+  if (!globalSelf.SparkMD5) {\r\n     importScripts(\r\n       \"https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js\"\r\n     );\r\n   }\r\n@@ -15,9 +17,9 @@\n     const file = files[i];\r\n     const chunkSize = CHUNK_SIZE;\r\n     const chunkCount = Math.ceil(file.size / chunkSize);\r\n     const arrayBuffer = await file.arrayBuffer();\r\n-    const hash = (self as any).SparkMD5.ArrayBuffer.hash(arrayBuffer);\r\n+    const hash = globalSelf.SparkMD5.ArrayBuffer.hash(arrayBuffer);\r\n     const id = hash;\r\n     const uploadFile: UploadFile = {\r\n       id,\r\n       fileName: file.name,\r\n"
+                },
+                {
+                    "date": 1748869624833,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,13 +1,12 @@\n import { UploadFile, UploadStatus } from \"./types/upload\";\r\n \r\n declare function importScripts(...urls: string[]): void;\r\n \r\n-// @ts-expect-error: self 类型\r\n self.onmessage = async (e) => {\r\n   const files: File[] = e.data.files;\r\n   const CHUNK_SIZE = 1024 * 1024;\r\n-  const globalSelf = self as Worker & { SparkMD5: any };\r\n+  const globalSelf = self as unknown as { SparkMD5: any };\r\n   if (!globalSelf.SparkMD5) {\r\n     importScripts(\r\n       \"https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js\"\r\n     );\r\n"
+                }
+            ],
+            "date": 1748869597974,
+            "name": "Commit-0",
+            "content": "import { UploadFile, UploadStatus } from './types/upload';\r\n\r\n// @ts-expect-error: self 类型\r\nself.onmessage = async (e) => {\r\n  const files: File[] = e.data.files;\r\n  const CHUNK_SIZE = 1024 * 1024;\r\n  const SparkMD5 = (self as any).SparkMD5 || undefined;\r\n  if (!SparkMD5) {\r\n    importScripts('https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js');\r\n  }\r\n  const uploadFiles: UploadFile[] = [];\r\n  for (let i = 0; i < files.length; i++) {\r\n    const file = files[i];\r\n    const chunkSize = CHUNK_SIZE;\r\n    const chunkCount = Math.ceil(file.size / chunkSize);\r\n    const arrayBuffer = await file.arrayBuffer();\r\n    const hash = (self as any).SparkMD5.ArrayBuffer.hash(arrayBuffer);\r\n    const id = hash;\r\n    const uploadFile: UploadFile = {\r\n      id,\r\n      fileName: file.name,\r\n      fileSize: file.size,\r\n      fileType: file.type,\r\n      lastModified: file.lastModified,\r\n      status: UploadStatus.QUEUED,\r\n      progress: 0,\r\n      hash,\r\n      chunkSize,\r\n      chunkCount,\r\n      uploadedChunks: 0,\r\n      pausedChunks: [],\r\n      createdAt: Date.now(),\r\n      order: 0,\r\n      buffer: arrayBuffer,\r\n    };\r\n    uploadFiles.push(uploadFile);\r\n  }\r\n  self.postMessage({ uploadFiles });\r\n};"
+        }
+    ]
+}
