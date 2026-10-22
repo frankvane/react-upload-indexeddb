@@ -1,7 +1,7 @@
 {
   "name": "react-upload-indexeddb",
   "private": false,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "基于 IndexedDB + 分片传输的大文件上传/下载 React 组件（断点续传、秒传、刷新续传），支持 Bearer Token / 同域 Cookie 鉴权注入。",
   "keywords": [
@@ -55,7 +55,7 @@
     "spark-md5": "^3.0.2"
   },
   "peerDependencies": {
-    "antd": "^5.25.0",
+    "antd": "^5.25.0 || ^6.0.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0",
     "zustand": "^5.0.0"
