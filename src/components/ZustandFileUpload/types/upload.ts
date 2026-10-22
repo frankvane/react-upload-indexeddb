@@ -1,3 +1,7 @@
+import type { UploadAuthConfig } from "../utils/auth";
+
+export type { UploadAuthConfig };
+
 export enum UploadStatus {
   // Waiting in queue.
   QUEUED = "queued",
@@ -55,7 +59,7 @@ export type UploadUIMode = "full" | "simple";
 export type UploadSettingsSource = "localStorage" | "props";
 
 // Upload component props.
-export interface ZustandFileUploadProps {
+export interface ZustandFileUploadProps extends UploadAuthConfig {
   // API config
   baseURL?: string;
   uploadApi?: string;

@@ -67,6 +67,12 @@ export const useEffectiveUploadConfig = () => {
     // 自定义方法（来自 Context）
     customFileValidator: contextConfig.customFileValidator,
     customUploadHandler: contextConfig.customUploadHandler,
+
+    // 鉴权配置（来自 Context，每次上传前再解析为请求头）
+    authToken: contextConfig.authToken,
+    getAuthToken: contextConfig.getAuthToken,
+    getAuthHeaders: contextConfig.getAuthHeaders,
+    authScheme: contextConfig.authScheme,
   }), [
     contextConfig.baseURL,
     contextConfig.uploadApi,
@@ -83,6 +89,10 @@ export const useEffectiveUploadConfig = () => {
     contextConfig.customUploadHandler,
     contextConfig.uiMode,
     contextConfig.settingsSource,
+    contextConfig.authToken,
+    contextConfig.getAuthToken,
+    contextConfig.getAuthHeaders,
+    contextConfig.authScheme,
     storeConfig.chunkSize,
     storeConfig.fileConcurrency,
     storeConfig.chunkConcurrency,

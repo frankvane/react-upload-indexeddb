@@ -16,6 +16,7 @@ interface UploadWorkerApiConfig {
   baseURL: string;
   uploadApi: string;
   checkApi: string;
+  authHeaders?: Record<string, string>;
 }
 
 interface RunUploadTaskOptions {

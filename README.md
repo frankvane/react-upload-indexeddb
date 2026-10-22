@@ -239,9 +239,69 @@ scripts/                              校验与辅助脚本（含 README 截图�
 
 ## 已知限制与边界
 
-- 当前以演示与集成为主，未接入完整鉴权/权限体系
+- 当前以演示与集成为主；客户端已支持鉴权注入（见下），服务端鉴权为可插拔参考实现
 - 生产级场景仍需补充：高并发压测、审计日志、容灾和安全加固
 - README 截图为一次性生成，UI 改动后需手动重拍
+
+## 鉴权接入（auth）
+
+组件本身不持有任何凭证，所有鉴权通过 **props 注入**，由消费方决定 Token 来源。支持两种透传方式，可单独或同时使用：
+
+1. **Bearer Token（跨域常用）**：通过 `getAuthHeaders` 返回自定义头，或 `getAuthToken` / `authToken` 自动拼成 `Authorization: Bearer <token>`。
+2. **同域 Cookie**：浏览器自动携带（上传 Worker `credentials:'include'`、下载 axios `withCredentials:true`），无需额外代码；跨域需服务端 CORS 允许 credentials。
+
+```tsx
+import { FileUpload } from "react-upload-indexeddb";
+
+// 方式 A：每次上传前从存储取最新 token（推荐，支持刷新）
+<FileUpload
+  baseURL="https://upload.example.com"
+  getAuthToken={async () => {
+    const token = await readPortalToken(); // 你的登录态
+    return token;
+  }}
+/>
+
+// 方式 B：完全自定义头（最灵活，可同时塞多个业务头）
+<FileUpload
+  baseURL="https://upload.example.com"
+  getAuthHeaders={async () => ({
+    Authorization: `Bearer ${await readPortalToken()}`,
+    "X-Tenant-Id": currentTenantId,
+  })}
+/>
+```
+
+下载侧对应设置（与上传共享同一套鉴权头语义）：
+
+```ts
+import { setDownloadAuth } from "react-upload-indexeddb";
+
+// 设置后，下载列表/下载请求自动携带
+setDownloadAuth({ Authorization: `Bearer ${token}` });
+// 清除：setDownloadAuth(undefined)
+```
+
+### 服务端对接（参考）
+
+`server/src/middleware/auth.js` 提供可插拔鉴权工厂（支持 Bearer / Cookie）。默认关闭，设环境变量开启：
+
+```bash
+REQUIRE_FILE_AUTH=true
+FILE_AUTH_TOKEN=dev-token-1,dev-token-2   # Bearer 白名单（演示）
+FILE_AUTH_COOKIE=portal_token            # 同域 Cookie 名
+```
+
+> vane-crm 接入时，应把该中间件替换为自家鉴权（如 `portal_token` 校验 + RBAC），接口形态保持一致：校验失败返回 `401 { code:401, message, data:{} }`。
+
+## 作为 npm 包使用（发布态）
+
+本仓库同时是 demo 站点与可发布组件库：
+
+- `npm run build` —— 产出库构建到 `dist/`（ESM `index.js` + CJS `index.cjs` + `index.d.ts`），`react` / `react-dom` / `antd` / `zustand` 为 peerDependencies，由消费方提供。
+- `npm run build:demo` —— 产出演示站点（原有 `tsc -b && vite build`）。
+- 消费方需自行安装 peer 依赖；在 React 19 下使用 antd 5 时，请按 antd 文档挂载 `@ant-design/v5-patch-for-react-19`。
+- `baseURL` 默认相对路径，建议始终通过 props 显式传入。
 
 ## 常见问题
 

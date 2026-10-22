@@ -65,6 +65,9 @@ const runtimeConfig: RuntimeConfig = {
 const apiClient = axios.create({
   baseURL: runtimeConfig.baseURL,
   timeout: 30000,
+  // 同域 Cookie 自动携带（与上传侧 Worker credentials:'include' 一致）；
+  // 跨域场景需服务端 CORS 允许 credentials，并使用下面 setDownloadAuth 注入 Bearer 头。
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
@@ -80,6 +83,25 @@ export const configureDownloadApi = (config: DownloadApiConfig = {}): void => {
   );
 
   apiClient.defaults.baseURL = runtimeConfig.baseURL;
+};
+
+/**
+ * 注入下载请求的鉴权头。
+ * - 传 `{ Authorization: "Bearer <token>" }` 即可对接 Bearer 鉴权；
+ * - 同域 Cookie 场景无需调用（axios withCredentials 已自动携带）；
+ * - 传 `undefined` 可清除已设置的头。
+ */
+export const setDownloadAuth = (
+  headers: Record<string, string> | undefined
+): void => {
+  const common = apiClient.defaults.headers.common;
+  if (!headers) {
+    delete common["Authorization"];
+    return;
+  }
+  Object.entries(headers).forEach(([key, value]) => {
+    common[key] = value;
+  });
 };
 
 export const getFileList = async (

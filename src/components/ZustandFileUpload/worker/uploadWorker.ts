@@ -21,6 +21,7 @@ interface UploadWorkerMessage {
     baseURL: string;
     uploadApi: string;
     checkApi: string;
+    authHeaders?: Record<string, string>;
   };
 }
 
@@ -53,13 +54,21 @@ async function fetchWithRetry(
     maxRetries = 3,
     timeout = 30000,
     retryInterval = 1000,
+    authHeaders,
   }: {
     maxRetries?: number;
     timeout?: number;
     retryInterval?: number;
+    authHeaders?: Record<string, string>;
   } = {}
 ): Promise<Response> {
   debug(`开始请求: ${url}`, { method: options.method, maxRetries });
+
+  // 合并鉴权头（authHeaders 优先级低于调用方显式 headers，避免覆盖 Content-Type 等）
+  const mergedHeaders: Record<string, string> = {
+    ...(authHeaders ?? {}),
+    ...(options.headers as Record<string, string> | undefined),
+  };
 
   return new Promise<Response>((resolve, reject) => {
     // 自定义重试逻辑，不使用async库
@@ -94,14 +103,15 @@ async function fetchWithRetry(
 
         debug(`执行请求: ${url} (尝试 ${currentAttempt}/${maxRetries})`, {
           method: options.method,
-          headers: options.headers
-            ? JSON.stringify(options.headers)
-            : undefined,
+          headers: mergedHeaders ? JSON.stringify(mergedHeaders) : undefined,
           bodyType: options.body ? typeof options.body : undefined,
         });
 
         const response = await fetch(url, {
           ...options,
+          headers: mergedHeaders,
+          // 同域 Cookie 自动携带（Bearer 头用于跨域），与下载侧 axios withCredentials 一致
+          credentials: "include",
           signal: controller.signal,
         });
 
@@ -200,6 +210,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
     }
 
     const { fileInfo, fileBuffer, networkParams, uploadConfig } = event.data;
+    const authHeaders = uploadConfig?.authHeaders;
 
     // 检查必要参数
     if (!fileInfo) {
@@ -283,7 +294,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
         },
-        retryOptions
+        { ...retryOptions, authHeaders }
       );
 
       debug("秒传确认响应", { status: instantRes.status });
@@ -369,7 +380,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
                   method: "POST",
                   body: formData,
                 },
-                retryOptions
+                { ...retryOptions, authHeaders }
               );
 
               // 更新进度
@@ -442,7 +453,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(mergeRequestBody),
         },
-        retryOptions
+        { ...retryOptions, authHeaders }
       );
       debug("文件合并成功");
 

@@ -4,6 +4,7 @@ import {
   UploadConfig,
   UploadSettingsSource,
   UploadUIMode,
+  UploadAuthConfig,
   ZustandFileUploadProps,
 } from "../types/upload";
 import { API_BASE_URL, API_PATHS } from "../../../config/api";
@@ -21,7 +22,7 @@ const DEFAULT_CONFIG: UploadConfig = {
   maxFiles: 100,
 };
 
-export interface UploadContextType extends UploadConfig {
+export interface UploadContextType extends UploadConfig, UploadAuthConfig {
   onUploadStart?: ZustandFileUploadProps["onUploadStart"];
   onUploadProgress?: ZustandFileUploadProps["onUploadProgress"];
   onUploadComplete?: ZustandFileUploadProps["onUploadComplete"];
@@ -70,6 +71,10 @@ export const UploadProvider: React.FC<UploadProviderProps> = ({
   onBatchComplete,
   customFileValidator,
   customUploadHandler,
+  authToken,
+  getAuthToken,
+  getAuthHeaders,
+  authScheme,
 }) => {
   const value: UploadContextType = {
     baseURL,
@@ -95,6 +100,10 @@ export const UploadProvider: React.FC<UploadProviderProps> = ({
     onBatchComplete,
     customFileValidator,
     customUploadHandler,
+    authToken,
+    getAuthToken,
+    getAuthHeaders,
+    authScheme,
   };
 
   return (

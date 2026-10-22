@@ -21,6 +21,8 @@
     baseURL: string;
     uploadApi: string;
     checkApi: string;
+    /** 鉴权请求头（已在主线程解析好，序列化传入 Worker） */
+    authHeaders?: Record<string, string>;
   };
 }
 

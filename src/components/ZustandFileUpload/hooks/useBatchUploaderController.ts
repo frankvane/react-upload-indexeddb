@@ -12,6 +12,7 @@ import { useUploadStore } from "../store/upload";
 import { useEffectiveUploadConfig } from "./useEffectiveConfig";
 import { useShallow } from "zustand/react/shallow";
 import { isUploadableStatus } from "../services/uploadStorage";
+import { resolveAuthHeaders } from "../utils/auth";
 
 export interface RetrySummary {
   success: boolean;
@@ -219,6 +220,7 @@ export function useBatchUploader(): BatchUploaderActions {
         baseURL: uploadConfig.baseURL,
         uploadApi: uploadConfig.uploadApi,
         checkApi: uploadConfig.checkApi,
+        authHeaders: await resolveAuthHeaders(uploadConfig),
       },
       onProgress: (progress) => {
         setProgressMap((prev) => ({
