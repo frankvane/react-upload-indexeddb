@@ -1,4 +1,4 @@
-import { Card, Col, Drawer, Progress, Row, Statistic, Typography } from "antd";
+import { Card, Col, Drawer, Progress, Row, Statistic, Typography } from "../../../ui";
 import React, { useEffect, useState } from "react";
 
 import { ByteConvert } from "../utils";

@@ -8,7 +8,7 @@ import React, { useEffect } from "react";
 import { configureDownloadApi } from "./api.client";
 
 import { DownloadProvider } from "./context/DownloadContext";
-import { Space } from "antd";
+import { Space } from "../../ui";
 import { ZustandFileDownloadProps } from "./types/download";
 import { initializeStorage } from "./utils/storage";
 import { useDownloadStore } from "./store";

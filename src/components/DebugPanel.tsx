@@ -1,4 +1,4 @@
-import { Badge, Button, Card, Collapse, Space, Tag, Typography } from "antd";
+import { Badge, Button, Card, Collapse, Space, Tag, Typography } from "../ui";
 import {
   BugOutlined,
   CheckCircleOutlined,
@@ -7,7 +7,7 @@ import {
   DownloadOutlined,
   InfoCircleOutlined,
   WarningOutlined,
-} from "@ant-design/icons";
+} from "../ui";
 import { useMemo, useState } from "react";
 
 const { Text, Paragraph } = Typography;

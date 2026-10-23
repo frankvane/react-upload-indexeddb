@@ -1,4 +1,4 @@
-import { Progress } from "antd";
+import { Progress } from "../../../ui";
 import React from "react";
 
 interface PercentDisplayProps {

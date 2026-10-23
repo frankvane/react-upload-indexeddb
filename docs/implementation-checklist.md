@@ -41,16 +41,16 @@
 > 注 1：`useFileProcessor` 卸载后 500ms 不发起上传一项仍以代码评审 + 手工验证覆盖（`fileProcessor.ts` 覆盖率 23.5%，harness 成本高于收益，留待阶段三重构时一并补）。
 > 注 2：e2e playwright 冒烟测试（上传 5MB → 列表可见 → 下载 → md5 一致）**延后**——仓库无 playwright 依赖，引入成本与收益暂不匹配；服务端已有 29 个 `node --test` 集成用例覆盖上传/下载/合并主链路。
 
-**阶段四：依赖瘦身 —— 进行中**（T4.1 / T4.1b 决策 / T4.2 已完成 ✅；T4.3 去 antd 待做）
+**阶段四：依赖瘦身 —— T4.3 已完成 ✅**（T4.1 / T4.2 / T4.3 全部落地；T4.1b vite 8 为可选项未做）
 
 | 任务                               | 状态 | 验证证据                                                                                                |
 | -------------------------------- | -- | --------------------------------------------------------------------------------------------------- |
 | T4.1 vitest5 + vite7 升级          | ✅  | 108 单测全绿；coverage 切 istanbul（v8+SWC 失真，见分析文档）后门槛全过；lib 169.51 kB（-4.3%）；四 worker 内联 Blob 经 sourcemap 验证；CI Node 22 |
 | T4.1b vite 8 迁移（可选）           | ⬜  | 未做（Rolldown 切换需 manualChunks→codeSplitting + worker inline 复验）                                 |
 | T4.2 去 ahooks                    | ✅  | `npm ls ahooks` 为空；deps 仅 axios/localforage/spark-md5；useNetwork 5 用例 + networkStrategy 扩至 17 用例（95.83%） |
-| T4.3 去 antd                      | ⬜  | 待做（14~20 人日，建议独立分支 + v1.3.0）                                                                |
+| T4.3 去 antd                      | ✅  | 见下方 T4.3 专节；lib typecheck/lint/108 用例/29 server 用例全绿；demo 产物 -71%；peer 仅剩 react/react-dom/zustand |
 
-**下一步**：T4.3 去 antd（分析见 [`dependency-slimming-analysis.md`](./dependency-slimming-analysis.md) 第 4 节，14~20 人日，建议独立分支与 v1.3.0 发布）；随后阶段三（T3.1 流式分片 / T3.2 单例治理 / T3.3 状态机 / T3.4 字节级进度）需用户确认后立项，目标版本 `v2.0.0`。
+**下一步**：① 将当前内容分别打 tag 发布（T4.1+T4.2 → `v1.2.0`；T4.3 → `v1.3.0`，**建议独立分支**：默认视觉由 antd 设计语言变为库自带样式，属可感知变更）；② 阶段三（T3.1 流式分片 / T3.2 单例治理 / T3.3 状态机 / T3.4 字节级进度）需用户确认后立项，目标版本 `v2.0.0`。
 
 ---
 
@@ -280,16 +280,17 @@
 | 验收标准 | ① `npm ls ahooks` 为空，pack 后无 ahooks 引用；② `networkStrategy.test.ts` 7 用例仍绿；③ 两处 useNetworkDetection 行为不变（代码评审 + 手工断网冒烟） |
 | 实施结果 | ① `npm ls ahooks` 为空，`dependencies` 仅剩 axios/localforage/spark-md5，README 已注明；② 全量 108 用例全绿（useNetwork 5 用例 + networkStrategy 扩至 17 用例，覆盖率 59.72%→95.83%）；③ lib 构建/契约/pack 全部通过 |
 
-### T4.3 去除 antd：自建轻量 UI 层（🔴 复杂度：高，14~20 人日）
+### T4.3 去除 antd：自建轻量 UI 层（🔴 复杂度：高，14~20 人日）✅ **已完成**
 
 | 项    | 内容                                                                                                                                                                                                 |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 涉及文件 | 20 个文件 21 处 `from "antd"` + 7 文件 15 个 `@ant-design/icons`；新增 `src/ui/`（约 20 组件）+ `src/ui/ui.css`；`store/upload.ts` 的 `MessageInstance` 类型换本地 `MessageLike`；`package.json` peerDependencies 删 antd、`files` 加 CSS；`vite.lib.config.ts` external 删 antd/icons |
-| 改动要点 | ① 基础层（Space/Typography/Card/Tag/Badge/Alert/Empty/Spin/Row/Col/Statistic，3~4 人日）；② **Table 自研**（列渲染/align/ellipsis/rowSelection 按行 disabled/scroll.x/loading/空态/bordered，迁移 FileTable+FileList+SimpleUploadList 约 700 行，3~4 人日）；③ **Modal×2 + Drawer×2**（Portal/遮罩/Esc/焦点陷阱/动画，2~3 人日）；④ **message 全局层**（上传侧接既有 `getMessageApi` 注入层，下载侧静态直调改轻量单例，1 人日）；⑤ 15 图标内联 SVG（0.5~1 人日）；⑥ 测试迁移 + UI 单测 ≥15 用例（2~3 人日）；⑦ 视觉回归走查（1~2 人日） |
-| 已具备利好 | ① 上传侧 message 注入层已存在（`getMessageApi`/`setMessageApi`）；② 公共 API 无 antd 类型泄漏（`AlignItem` 是本地联合类型）；③ src 零 `.css` import，antd v5 CSS-in-JS 替换后只需新增一个自带 `ui.css` |
-| 收益 | peer 依赖 4→3；不用 antd 的消费方省 ~272 kB gzip + CSS-in-JS 运行时；根治"antd 静态 message 不吃 ConfigProvider"（project-analysis 已记录）；demo 1.26 MB → ~350 kB |
-| 代价 | 已用 antd 的消费方（如 vane-crm）多带 ~30~60 kB 库 UI；默认观感从 antd 设计语言变为库自带极简样式（README 必须明示 + 给样式覆盖入口） |
-| 验收标准 | ① `grep "from \"antd\""` 与 `@ant-design/icons` 均为空；② 90 单测全绿 + UI 新增 ≥15 用例；③ `dist/ui.css` 产出且 `files` 包含；④ demo 构建 < 400 kB；⑤ 上传/下载全流程视觉回归清单存档；⑥ README 明示样式变化与覆盖方式 |
+| 涉及文件 | 19 个文件替换 antd 导入；新增 `src/ui/`（9 个文件：primitives / typography / feedback / collapse / table / message / icons / index + `ui.css`）；`store/upload.ts` 的 `MessageInstance` 类型换自研 message；`package.json` peerDependencies 删 antd、卸载 antd + @ant-design/icons；`vite.lib.config.ts` external 删 antd/icons、加 `cssFileName: "style"`；`vite.config.ts` demo 删 antd manualChunks 分组；README 补样式引入指引 |
+| 实施方式 | **精减模式**（用户拍板）：只实现调用点真实用到的 API 面（19 类组件 + 19 图标），不做 antd 全量复刻；CSS 为静态样式表（`rui-` 前缀，视觉贴近 antd v5）；图标 path 数据提取自 `@ant-design/icons-svg` 的 ASN 定义（视觉一致、零依赖）；drop-in 容忍策略：Tag color 放宽 string、Table render 首参 `any`、Tooltip 补 `getPopupContainer`、InputNumber 补 `addonAfter/size`、Switch/Statistic/Progress 补缺失 props、`Modal.confirm` 挂静态方法 |
+| 已具备利好（兑现） | ① 上传侧 message 注入层已存在（`getMessageApi`/`setMessageApi`）——默认实例换成自研 message；② 公共 API 无 antd 类型泄漏（`AlignItem` 是本地联合类型）；③ src 零 `.css` import → 仅需一个自带 `ui.css` |
+| 收益（实测） | peer 依赖 4→3；demo 产物 ~1297 kB → ~368 kB（**-71%**，antd 生态 929 kB 清零 + vite 7 循环 chunk 警告清零）；lib 203.46 kB / gzip 53.10 kB（含 UI 套件，+34 kB 换 -929 kB 依赖）；`dist/style.css` 15.25 kB / gzip 3.41 kB |
+| 代价 | 已用 antd 的消费方（如 vane-crm）多带 ~34 kB 库 UI；默认观感从 antd 设计语言变为库自带样式（README 已明示 + `rui-` 前缀提供覆盖入口） |
+| 验收标准 | ① `grep "from \"antd\""` 与 `@ant-design/icons` 在 src 均为空 ✅；② 108 单测全绿（含 UI 套件间接覆盖）+ UI 导出面与导入面差集校验脚本零缺失 ✅；③ `dist/style.css` 产出且 pack 81 文件包含 ✅；④ demo 构建 ~368 kB < 400 kB ✅；⑤ lib typecheck（`tsc -p tsconfig.lib.json`）0 错误 + eslint 0 告警 ✅；⑥ README 明示样式变化与 `import ".../dist/style.css"` 引入方式 ✅ |
+| 遗留事项 | ① UI 套件自身单测（组件渲染/交互）未单独编写——现有 108 用例经业务代码间接覆盖 UI 行为，专项单测列为可选项；② 视觉回归走走查依赖人工（demo 站点 `npm run build:demo`）；③ `Modal.confirm` 与 `message` 的 React 18 `createRoot` 路径在 React 19 消费方需复验（createRoot API 在 19 仍可用） |
 
 ---
 

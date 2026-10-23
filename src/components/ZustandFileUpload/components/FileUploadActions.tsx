@@ -1,5 +1,5 @@
-import { BarChartOutlined } from "@ant-design/icons";
-import { Button, InputNumber, Switch, Tooltip } from "antd";
+import { BarChartOutlined } from "../../../ui";
+import { Button, InputNumber, Switch, Tooltip } from "../../../ui";
 import React, { useMemo } from "react";
 import type { BatchUploaderActions } from "../hooks/useBatchUploader";
 import type { FileOperationsActions } from "../hooks/useFileOperations";

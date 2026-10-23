@@ -11,7 +11,7 @@
 | ---- | ---- | ---- | ---- | ---- |
 | vitest 2 → 5 升级 | ✅ **已实施**（vite 7 + istanbul provider + Node 22 CI）。v8 coverage 与 SWC 不兼容须切 istanbul | 1 人日 | 低 | v1.2.0 |
 | 去 ahooks（仅用 useNetwork） | ✅ **已实施**。自研 hook 完全替代，deps 仅剩三个 | 0.5 人日 | 低 | v1.2.0 |
-| 去 antd | **可行，但工作量最大**（14~20 人日）。真正收益不是减小自身体积，而是**解除对消费方的 antd 强制依赖** | 14~20 人日 | 中~高 | v1.3.0（独立发版） |
+| 去 antd | ✅ **已实施**（精减模式，见 §4.7）。内置 `rui-ui` 替代，peer 仅剩三个，demo 产物 -71% | ~14 人日 | 中~高 | v1.3.0（独立发版） |
 
 三条独立任务，T4.1/T4.2 可并行，T4.3 最后做。均不改变对外 API（props/事件/导出类型），**除视觉样式外无 Breaking Change**。
 
@@ -231,6 +231,36 @@ export function useNetwork(): NetworkState;
 3. 90 个既有单测全绿（迁移后）；新增 UI 层单测 ≥ 15 用例（Table 行选择、Modal 焦点陷阱、message 队列）。
 4. demo 站点构建 < 400 kB raw（对比当前 1.26 MB）。
 5. 人工走查：上传（完整/简洁双模式）+ 下载全流程视觉与交互回归，清单存档。
+
+### 4.7 实施结果（2026-10-23，T4.3 已完成）
+
+**实施模式**：用户拍板**精减模式**——不追求 antd 全量兼容，只实现调用点真实用到的 API 面，以体积最小化为第一目标。
+
+**交付形态**（`src/ui/`，9 个文件，合计 ~2,400 行 TS + 15.25 kB CSS）：
+
+| 文件 | 内容 |
+| ---- | ---- |
+| `primitives.tsx` | Button / Tag / Badge / Spin / Empty / Divider / Card / Space / Alert / Statistic / Progress / Switch / InputNumber / Slider（14 个） |
+| `typography.tsx` | Typography（Text/Paragraph/Title）+ Row/Col 24 栅格 |
+| `feedback.tsx` | Tooltip / Popconfirm / Modal（含 `Modal.confirm`）/ Drawer（portal + ESC + 焦点管理） |
+| `collapse.tsx` / `table.tsx` / `message.tsx` / `icons.tsx` | Collapse（items API）；Table（rowSelection/ellipsis/scroll.x/loading/empty/bordered）；message 单例（React 18 `createRoot`）；19 个内联 SVG 图标（path 提取自 `@ant-design/icons-svg` ASN 定义，视觉一致） |
+| `ui.css` | 静态样式表，`rui-` 前缀，视觉贴近 antd v5 色板/圆角/间距 |
+
+**Drop-in 容忍策略**（为不动业务代码，UI 侧放宽了 7 处 API）：Tag color 接受任意 string；Table render 首参 `any`（对齐 antd 的 dataIndex 推断语义）；Tooltip 补 `getPopupContainer`；InputNumber 补 `addonAfter`/`size`；Switch/Statistic/Progress 补缺失 props；`Modal.confirm` 挂静态方法。
+
+**实测数据**：
+
+| 指标 | 升级前 | 升级后 | 变化 |
+| ---- | ---- | ---- | ---- |
+| peerDependencies | 4（含 antd） | 3（react/react-dom/zustand） | -1 |
+| demo 产物（raw） | ~1,297 kB（含 antd 生态 929 kB） | ~368 kB | **-71%** |
+| lib index.js | 169.51 kB（antd external） | 203.46 kB / gzip 53.10 kB（含 UI 套件） | +34 kB 换 -929 kB 消费方依赖 |
+| 样式产物 | antd CSS-in-JS 运行时 | `dist/style.css` 15.25 kB / gzip 3.41 kB | 静态化 |
+| vite 7 循环 chunk 警告 | 2 个（T4.1 遗留给 demo） | 0 | 清零 |
+
+**验证**：`tsc -p tsconfig.lib.json` 0 错误（注：`tsconfig.json` 是 solution 引用文件，`-p` 直跑不生效，真实检查须用 lib 配置或 `tsc -b`）；eslint 0 告警；108 单测全绿 + coverage 门槛通过；server 29/29；pack 81 文件含 `dist/style.css`；UI 导出面 vs 全库导入面差集校验零缺失（曾抓出漏实现的 `Slider`）。
+
+**踩坑记录**：① 首批 19 文件批量替换时相对路径深度算错一层（`depth` 应为目录段数 -1），构建期 `Failed to resolve import` 暴露；② `@typescript/react-dom@18` 的 `createRoot` 只在 `react-dom/client` 子路径，根模块导入报 TS2339；③ `Modal.confirm` 挂载遇 `const` TDZ——`confirm` 必须先于 `Modal` 定义。
 
 ---
 

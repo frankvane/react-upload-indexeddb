@@ -6,9 +6,9 @@ import {
   UploadSettingsSource,
 } from "../types/upload";
 
-import { MessageInstance } from "antd/es/message/interface";
+import type { MessageInstance } from "../../../ui";
 import { create } from "zustand";
-import { message } from "antd";
+import { message } from "../../../ui";
 import { listUploadFiles } from "../services/uploadStorage";
 
 type ProgressMapUpdater =

@@ -1,4 +1,4 @@
-import { message } from "antd";
+import { message } from "../../../ui";
 import { DownloadFile, DownloadStatus } from "../types";
 import { completeFileStore, fileStore } from "../utils";
 import { ChunkPersistenceService } from "./chunkPersistenceService";

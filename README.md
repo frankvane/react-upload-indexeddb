@@ -322,10 +322,15 @@ FILE_AUTH_COOKIE=portal_token            # 同域 Cookie 名
 
 本仓库同时是 demo 站点与可发布组件库：
 
-- `npm run build` —— 产出库构建到 `dist/`（ESM `index.js` + CJS `index.cjs` + `index.d.ts`），`react` / `react-dom` / `antd` / `zustand` 为 peerDependencies，由消费方提供。
+- `npm run build` —— 产出库构建到 `dist/`（ESM `index.js` + CJS `index.cjs` + `index.d.ts` + `style.css`），`react` / `react-dom` / `zustand` 为 peerDependencies，由消费方提供。
+- **UI 套件已自给自足（v1.3.0 起）**：内置极简 UI 套件 `rui-ui`（`src/ui/`，19 个组件 + 19 个内联 SVG 图标 + 15 kB CSS），**不再依赖 antd / @ant-design/icons**——未使用 antd 的消费方无需再安装 antd；已在用 antd 的消费方不受影响（两者样式互不干扰，`rui-` 前缀）。
+- 样式引入（必须，否则组件无样式）：
+  ```ts
+  import "react-upload-indexeddb/dist/style.css";
+  ```
 - 运行时依赖（`dependencies`，安装本包时自动带入）：`axios`、`localforage`、`spark-md5`——仅此三个，无其他传递依赖（网络检测 hook 为自研实现，不依赖 ahooks）。
 - `npm run build:demo` —— 产出演示站点（原有 `tsc -b && vite build`）。
-- 消费方需自行安装 peer 依赖；在 React 19 下使用 antd 5 时，请按 antd 文档挂载 `@ant-design/v5-patch-for-react-19`。
+- 消费方需自行安装 peer 依赖（`react` / `react-dom` / `zustand`）。
 - `baseURL` 默认相对路径，建议始终通过 props 显式传入。
 
 ## 常见问题

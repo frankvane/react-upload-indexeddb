@@ -1,5 +1,5 @@
 import { CHUNK_SIZE, DownloadFile, DownloadStatus } from "../types";
-import { Button, Card, Empty, Progress, Space, Spin, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Button, Card, Empty, Progress, Space, Spin, Table, Tag, Tooltip, Typography, message } from "../../../ui";
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -7,7 +7,7 @@ import {
   PauseCircleOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
-} from "@ant-design/icons";
+} from "../../../ui";
 import React, { useCallback, useMemo, useState } from "react";
 
 import { formatFileSize } from "../utils";

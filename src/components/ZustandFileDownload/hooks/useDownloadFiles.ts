@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { chunkStore } from "../utils";
 import { completeFileStore } from "../utils";
 import { fileStore } from "../utils";
-import { message } from "antd";
+import { message } from "../../../ui";
 import { useDownloadStore } from "../store";
 import { useStorageManager } from "./useStorageManager";
 import { useShallow } from "zustand/react/shallow";

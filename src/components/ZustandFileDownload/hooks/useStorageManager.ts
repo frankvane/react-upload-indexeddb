@@ -1,6 +1,6 @@
 ﻿import { useCallback, useRef } from "react";
 
-import { message } from "antd";
+import { message } from "../../../ui";
 import { DownloadFile, DownloadStatus } from "../types";
 import { useDownloadStore } from "../store";
 import { clearAllStorageData, getStorageEstimate } from "../utils";

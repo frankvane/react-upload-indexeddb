@@ -8,6 +8,17 @@
 ## [Unreleased]
 
 ### Added
+- **T4.3 去除 antd 依赖（Breaking Change 预备项，建议 v1.3.0 独立发版）**：
+  - 新增内置 UI 套件 `src/ui/`（19 个组件 + 19 个内联 SVG 图标 + 15 kB CSS，视觉贴近 antd v5，全部 `rui-` 前缀）：
+    - `primitives.tsx`：Button / Tag / Badge / Spin / Empty / Divider / Card / Space / Alert / Statistic / Progress / Switch / InputNumber / Slider
+    - `typography.tsx`：Typography（Text/Paragraph/Title）+ Row/Col 24 栅格
+    - `feedback.tsx`：Tooltip / Popconfirm / Modal（含 `Modal.confirm`）/ Drawer（portal + ESC + 焦点管理）
+    - `collapse.tsx` / `table.tsx` / `message.tsx` / `icons.tsx`（path 数据提取自 @ant-design/icons，视觉一致）
+    - `ui.css`：静态样式表，`vite.config.ts` lib 模式 `cssFileName: "style"` 产出 `dist/style.css`（15.25 kB / gzip 3.41 kB）
+  - 19 个业务文件全部替换 antd 导入为 `rui-ui`，`src` 中 antd 引用清零；`package.json` peerDependencies 删除 antd（仅剩 react / react-dom / zustand）；卸载 antd 与 @ant-design/icons
+  - demo 构建删除 antd manualChunks 分组：产物体积从 ~1297 kB 降至 ~368 kB（**-71%**），vite 7 循环 chunk 警告清零
+  - 上传侧 store 的 `MessageInstance` 类型改为引用自研 message（`src/index.ts` 导出该类型供消费方注入）
+  - 兼容性说明：已在用 antd 的消费方不受影响（`rui-` 前缀样式隔离），但组件默认观感由 antd 设计语言变为库自带样式；**建议独立分支 + v1.3.0 发布**，并同步 README 的样式引入指引（`import "react-upload-indexeddb/dist/style.css"`）
 - **T4.2 去除 ahooks 依赖**：自研 `src/shared/useNetwork.ts`（对齐 ahooks `useNetwork` 实际使用的 `online`/`rtt`/`type`/`effectiveType` 四字段，事件源一致，SSR 安全），替换上传/下载两侧 `useNetworkDetection`；`dependencies` 仅剩 `axios`/`localforage`/`spark-md5`，消费方不再传递安装 ahooks；新增 `useNetwork.test.ts` 5 用例（初值/online/offline/connection change/卸载清理）
 - **T2.8 测试体系与 CI**：新增 `.github/workflows/ci.yml`（lint → 客户端 test+coverage → 契约校验 → server test → 构建 → pack dry-run）；客户端测试 **21 文件 / 108 用例**，服务端 5 文件 / 29 用例；`vite.config.ts` 启用覆盖率门槛（ratchet 策略：全库 lines 35 / funcs 30 / branch 25，`src/shared` 80（当前 96.4/94.9/100/96.7 已大幅达标）、`services` 65/70/65/60；长期目标 60% / 80% 记录在案逐步提高）
 - **T2.7 下载列表性能与安全**：`collectAllFiles` 加 5s TTL + 源目录 mtime 签名缓存（增删立即可见、内容不变零扫描）；`file_id` 格式校验（sha256 hex）后非法 id 直接 404 不扫描；`fileIdCache` 改 LRU（上限 5000）；`findFileById` 未命中不再循环全量扫描；`/list` 支持 `page`/`pageSize` 分页（默认全量兼容）

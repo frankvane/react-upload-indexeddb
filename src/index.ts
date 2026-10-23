@@ -1,4 +1,8 @@
-// 公共入口：供 npm 消费方导入。仅导出组件、类型与少量工具，不引入任何全局 CSS。
+// 公共入口：供 npm 消费方导入。
+// ui.css 经此处引入，Vite lib 构建会产出 dist/style.css（消费方按需引入）：
+//   import "react-upload-indexeddb/dist/style.css";
+import "./ui/ui.css";
+
 export { default } from "./components/ZustandFileUpload";
 export { default as FileUpload, default as ZustandFileUpload } from "./components/ZustandFileUpload";
 export { default as FileDownload, default as ZustandFileDownload } from "./components/ZustandFileDownload";
@@ -20,3 +24,6 @@ export {
 } from "./components/ZustandFileUpload/types/upload";
 
 export { resolveAuthHeaders } from "./components/ZustandFileUpload/utils/auth";
+
+// UI 套件类型：消费方实现 setMessageApi 注入时需要 MessageInstance 签名
+export type { MessageInstance } from "./ui";

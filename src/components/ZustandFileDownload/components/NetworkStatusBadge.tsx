@@ -11,13 +11,13 @@ import {
   Tooltip,
   Typography,
   message,
-} from "antd";
+} from "../../../ui";
 import {
   LockOutlined,
   SettingOutlined,
   SwapOutlined,
   UnlockOutlined,
-} from "@ant-design/icons";
+} from "../../../ui";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { formatFileSize } from "../utils";

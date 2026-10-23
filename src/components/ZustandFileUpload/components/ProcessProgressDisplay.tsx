@@ -1,6 +1,6 @@
-import { Progress, Statistic, Tag } from "antd";
+import { Progress, Statistic, Tag } from "../../../ui";
 
-import { ClockCircleOutlined } from "@ant-design/icons";
+import { ClockCircleOutlined } from "../../../ui";
 import { ProcessProgress } from "../types/upload";
 import React from "react";
 

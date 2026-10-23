@@ -1,4 +1,4 @@
-import { Badge, Tooltip } from "antd";
+import { Badge, Tooltip } from "../../../ui";
 import React, { useRef } from "react";
 
 import { ByteConvert } from "../utils";

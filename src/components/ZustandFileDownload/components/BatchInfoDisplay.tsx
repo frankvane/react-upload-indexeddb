@@ -1,4 +1,4 @@
-import { Alert, Progress, Tag } from "antd";
+import { Alert, Progress, Tag } from "../../../ui";
 import React, { useMemo } from "react";
 
 import { DownloadStatus } from "../types";

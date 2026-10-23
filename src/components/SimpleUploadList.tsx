@@ -1,5 +1,5 @@
-import { ReloadOutlined, UploadOutlined } from "@ant-design/icons";
-import { Button, Card, Modal, Space, Table, Typography, message } from "antd";
+import { ReloadOutlined, UploadOutlined } from "../ui";
+import { Button, Card, Modal, Space, Table, Typography, message } from "../ui";
 import axios from "axios";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ZustandFileUpload from "./ZustandFileUpload";

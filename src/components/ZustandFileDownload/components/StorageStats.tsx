@@ -1,5 +1,5 @@
-import { Button, Card, Modal, Space, Spin, Typography } from "antd";
-import { DeleteOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Button, Card, Modal, Space, Spin, Typography } from "../../../ui";
+import { DeleteOutlined, ReloadOutlined } from "../../../ui";
 import React, { useMemo } from "react";
 
 import { formatFileSize } from "../utils";

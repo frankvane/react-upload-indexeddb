@@ -18,17 +18,17 @@ export default defineConfig({
       entry: resolve(__dirname, "src/index.ts"),
       formats: ["es", "cjs"],
       fileName: (format) => `index.${format === "es" ? "js" : "cjs"}`,
+      // 内置 UI 套件样式输出为 dist/style.css（消费方 import 引入）
+      cssFileName: "style",
     },
     sourcemap: true,
     rollupOptions: {
       // 框架级 / 单例依赖交给消费方提供，避免重复实例与体积膨胀。
+      // antd 已于 T4.3 移除（内置 rui-ui 替代），不再 external。
       external: [
         "react",
         "react-dom",
         "react/jsx-runtime",
-        "antd",
-        "antd/es",
-        "@ant-design/icons",
         "zustand",
         "zustand/react/shallow",
         "localforage",
@@ -41,7 +41,6 @@ export default defineConfig({
         globals: {
           react: "React",
           "react-dom": "ReactDOM",
-          antd: "antd",
           zustand: "zustand",
         },
       },

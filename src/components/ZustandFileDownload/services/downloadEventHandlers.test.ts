@@ -16,7 +16,7 @@ vi.mock("../utils", () => ({
   fileStore: fileStoreMock,
 }));
 
-vi.mock("antd", () => ({
+vi.mock("../../../ui", () => ({
   message: {
     warning: vi.fn(),
     error: vi.fn(),

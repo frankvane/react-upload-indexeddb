@@ -14,7 +14,7 @@ import {
   removeProcessingFile,
   shouldEmitProgressUpdate,
 } from "../services/downloadOrchestrator";
-import { message } from "antd";
+import { message } from "../../../ui";
 import { useDownloadStore } from "../store";
 import { useDownloadContext } from "../context/useDownloadContext";
 import { useStorageManager } from "./useStorageManager";

@@ -1,4 +1,4 @@
-import { Button, Drawer, Progress, Space, Tag, Typography } from "antd";
+import { Button, Drawer, Progress, Space, Tag, Typography } from "../../../ui";
 import React, { useEffect, useState } from "react";
 import { useUploadStore } from "../store/upload";
 import type { BatchUploaderActions } from "../hooks/useBatchUploader";

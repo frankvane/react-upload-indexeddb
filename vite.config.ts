@@ -74,21 +74,6 @@ export default defineConfig(({ mode }) => {
             const normalizedId = id.replace(/\\/g, "/");
 
             if (normalizedId.includes("/node_modules/")) {
-              // 2026-10-23 随 vite 7 升级简化：原 antd 细分为 8 个 chunk 的分组在
-              // vite 7 的新 Rollup 下产生循环 chunk 警告（vendor-misc ↔ vendor-react
-              // ↔ vendor-antd-core 等），且 demo 仅为本地调试产物、无缓存粒度诉求，
-              // 故合并为单一 vendor-antd 组（antd 内部循环留在组内）。
-              // 注：T4.3 去 antd 后本分组将整体删除。
-              if (
-                normalizedId.includes("/antd/") ||
-                normalizedId.includes("/@ant-design/") ||
-                normalizedId.includes("/rc-") ||
-                normalizedId.includes("/@rc-component/") ||
-                normalizedId.includes("/dayjs/")
-              ) {
-                return "vendor-antd";
-              }
-
               if (
                 normalizedId.includes("/react/") ||
                 normalizedId.includes("/react-dom/") ||

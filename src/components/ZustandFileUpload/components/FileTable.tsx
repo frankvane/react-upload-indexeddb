@@ -1,4 +1,4 @@
-import { Button, Table, Tag, Tooltip } from "antd";
+import { Button, Table, Tag, Tooltip } from "../../../ui";
 import React, { useMemo } from "react";
 import type { FileOperationsActions } from "../hooks/useFileOperations";
 import { useEffectiveUploadConfig } from "../hooks/useEffectiveConfig";
