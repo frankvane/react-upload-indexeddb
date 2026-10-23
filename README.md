@@ -323,6 +323,7 @@ FILE_AUTH_COOKIE=portal_token            # 同域 Cookie 名
 本仓库同时是 demo 站点与可发布组件库：
 
 - `npm run build` —— 产出库构建到 `dist/`（ESM `index.js` + CJS `index.cjs` + `index.d.ts`），`react` / `react-dom` / `antd` / `zustand` 为 peerDependencies，由消费方提供。
+- 运行时依赖（`dependencies`，安装本包时自动带入）：`axios`、`localforage`、`spark-md5`——仅此三个，无其他传递依赖（网络检测 hook 为自研实现，不依赖 ahooks）。
 - `npm run build:demo` —— 产出演示站点（原有 `tsc -b && vite build`）。
 - 消费方需自行安装 peer 依赖；在 React 19 下使用 antd 5 时，请按 antd 文档挂载 `@ant-design/v5-patch-for-react-19`。
 - `baseURL` 默认相对路径，建议始终通过 props 显式传入。

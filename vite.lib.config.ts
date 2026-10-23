@@ -31,7 +31,6 @@ export default defineConfig({
         "@ant-design/icons",
         "zustand",
         "zustand/react/shallow",
-        "ahooks",
         "localforage",
         // 注意：spark-md5 不能 external —— 它被 filePrepareWorker / uploadWorker 引用，
         // 而 Worker 运行时无法解析裸模块导入；改用 Vite `?worker&inline` 把 worker

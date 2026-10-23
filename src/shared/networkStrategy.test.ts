@@ -55,4 +55,93 @@ describe("resolveNetworkStrategy", () => {
     expect(result.chunkConcurrency).toBe(1);
     expect(result.chunkSize).toBe(256 * 1024);
   });
+
+  it.each([
+    [50, 6, 4, 8 * 1024 * 1024],
+    [100, 4, 3, 4 * 1024 * 1024],
+    [200, 3, 2, 2 * 1024 * 1024],
+    [500, 2, 1, 1024 * 1024],
+    [1000, 1, 1, 512 * 1024],
+    [1001, 1, 1, 256 * 1024],
+  ])("maps rtt=%ims to chunkConc=%i fileConc=%i chunkSize=%i", (rtt, chunkConcurrency, fileConcurrency, chunkSize) => {
+    const result = resolveNetworkStrategy({ online: true, rtt });
+
+    expect(result.chunkConcurrency).toBe(chunkConcurrency);
+    expect(result.fileConcurrency).toBe(fileConcurrency);
+    expect(result.chunkSize).toBe(chunkSize);
+    expect(result.isNetworkOffline).toBe(false);
+  });
+
+  it("treats ethernet as strong connection without rtt", () => {
+    const result = resolveNetworkStrategy({
+      online: true,
+      type: "ethernet",
+    });
+
+    expect(result.networkType).toBe("ethernet");
+    expect(result.fileConcurrency).toBe(3);
+    expect(result.chunkConcurrency).toBe(4);
+    expect(result.chunkSize).toBe(4 * 1024 * 1024);
+  });
+
+  it.each([
+    ["4g", 2, 3, 2 * 1024 * 1024],
+    ["3g", 1, 2, 1024 * 1024],
+    ["slow-2g", 1, 1, 256 * 1024],
+  ])("derives profile from effectiveType=%s alone", (effectiveType, fileConcurrency, chunkConcurrency, chunkSize) => {
+    const result = resolveNetworkStrategy({ online: true, effectiveType });
+
+    expect(result.networkType).toBe(effectiveType);
+    expect(result.fileConcurrency).toBe(fileConcurrency);
+    expect(result.chunkConcurrency).toBe(chunkConcurrency);
+    expect(result.chunkSize).toBe(chunkSize);
+  });
+
+  it("falls back to conservative defaults when nothing is known", () => {
+    const result = resolveNetworkStrategy({ online: true });
+
+    expect(result.networkType).toBe("unknown");
+    expect(result.fileConcurrency).toBe(1);
+    expect(result.chunkConcurrency).toBe(2);
+    expect(result.chunkSize).toBe(1024 * 1024);
+  });
+
+  it("falls back to navigator.onLine when online is undefined", () => {
+    const original = Object.getOwnPropertyDescriptor(
+      window.navigator,
+      "onLine"
+    );
+    Object.defineProperty(window.navigator, "onLine", {
+      value: false,
+      configurable: true,
+    });
+
+    try {
+      const result = resolveNetworkStrategy({});
+
+      expect(result.isNetworkOffline).toBe(true);
+      expect(result.networkType).toBe("offline");
+      expect(result.fileConcurrency).toBe(0);
+      expect(result.chunkConcurrency).toBe(0);
+      expect(result.chunkSize).toBe(512 * 1024);
+    } finally {
+      if (original) {
+        Object.defineProperty(window.navigator, "onLine", original);
+      }
+    }
+  });
+
+  it("ignores rtt when offline", () => {
+    const result = resolveNetworkStrategy({
+      online: false,
+      rtt: 10,
+      effectiveType: "4g",
+      type: "wifi",
+    });
+
+    expect(result.isNetworkOffline).toBe(true);
+    expect(result.fileConcurrency).toBe(0);
+    expect(result.chunkConcurrency).toBe(0);
+    expect(result.chunkSize).toBe(512 * 1024);
+  });
 });

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { useNetwork } from "ahooks";
 
 import { resolveNetworkStrategy } from "../../../shared/networkStrategy";
+import { useNetwork } from "../../../shared/useNetwork";
 import { useUploadStore } from "../store/upload";
 
 /**

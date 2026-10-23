@@ -9,8 +9,8 @@
 
 | 议题 | 结论 | 工作量 | 风险 | 建议版本 |
 | ---- | ---- | ---- | ---- | ---- |
-| vitest 2 → 5 升级 | **可行且推荐**。需连带升 vite 至 7（或 8），Node ≥ 22.12 | 1 人日 | 低 | v1.2.0 |
-| 去 ahooks（仅用 useNetwork） | **可行，收益/成本比最高**。自研 ~50 行 hook 完全替代 | 0.5 人日 | 低 | v1.2.0 |
+| vitest 2 → 5 升级 | ✅ **已实施**（vite 7 + istanbul provider + Node 22 CI）。v8 coverage 与 SWC 不兼容须切 istanbul | 1 人日 | 低 | v1.2.0 |
+| 去 ahooks（仅用 useNetwork） | ✅ **已实施**。自研 hook 完全替代，deps 仅剩三个 | 0.5 人日 | 低 | v1.2.0 |
 | 去 antd | **可行，但工作量最大**（14~20 人日）。真正收益不是减小自身体积，而是**解除对消费方的 antd 强制依赖** | 14~20 人日 | 中~高 | v1.3.0（独立发版） |
 
 三条独立任务，T4.1/T4.2 可并行，T4.3 最后做。均不改变对外 API（props/事件/导出类型），**除视觉样式外无 Breaking Change**。
@@ -109,6 +109,15 @@ vitest@5.0.5 + @vitest/coverage-v8@5.0.5   （peer 对齐，原冲突自然消�
 3. `npm pack --dry-run` 71 文件不变；`verify-client-contract` 通过。
 4. CI（Node 22）全绿。
 
+### 2.6 实施结果（2026-10-23，T4.1 已完成）
+
+- 升级链落地：vitest 5.0.5 + vite 7.3.7 + plugin-react-swc 4.3.3，108 用例全绿（原 90 + 新增 18），CI Node 22。
+- **重要发现：coverage provider 必须从 v8 切 istanbul。** vitest 4+ 起 v8 provider 改用 AST 重映射（ast-v8-to-istanbul），与 `@vitejs/plugin-react-swc` 存在已知不兼容（[vitest-dev/vitest#9293](https://github.com/vitest-dev/vitest/issues/9293)：内联组件/函数报 0% 或大幅低报）；官方修复（ast-v8-to-istanbul#120）装到 1.0.7 后**本仓库实测仍复现**——`useNetworkDetection.ts` 从 91.66% 跌到 0%、PercentDisplay 从 100% 跌到 20%。istanbul provider 源码级插桩不受 SWC sourcemap 重映射影响，数字与 vitest 2 时代基线吻合（useNetworkDetection 恢复 90%），故切换并卸载 `@vitest/coverage-v8`。
+- 覆盖率门槛按 istanbul 实测值重校：全库 lines 35 / funcs 30 / branch 25（实测 38.5/33.3/30.8）；`src/shared` 保持 80（补测后实测 96.4/94.9/100/96.7，大幅超额）；services 65/70/65/60。
+- 顺带补强 `networkStrategy.test.ts`（4 → 17 用例，覆盖率 59.72% → 95.83%）——纯逻辑核心，不值得为凑门槛而降标准。
+- lib 产物 169.51 kB / gzip 43.58（升级前 177.17 / 51.08，**小 4.3%**）；四 worker 仍以 `?worker&inline` Blob 交付（sourcemap 模块清单验证）；pack 72 文件；契约校验通过。
+- **demo 构建 `manualChunks` 需简化**：vite 7 的新 Rollup 对原 antd 8 分组报循环 chunk 警告（vendor-misc ↔ vendor-react ↔ vendor-antd-core）。合并为单一 `vendor-antd` 组并把漏网的 `@rc-component/*`、`react-is`、`zustand` 归组后警告清零。T4.3 去 antd 后该分组整体删除。
+
 ---
 
 ## 3. 专题二：去 ahooks（T4.2）
@@ -152,6 +161,12 @@ export function useNetwork(): NetworkState;
 1. 两处 `useNetworkDetection` 行为不变（`networkStrategy.test.ts` 7 用例仍绿）。
 2. `useNetwork.test.ts` 4 用例通过；`npm ls ahooks` 为空。
 3. `npm pack --dry-run` 后 tarball 不含 ahooks 引用；消费方安装树无 ahooks。
+
+### 3.5 实施结果（2026-10-23，T4.2 已完成）
+
+- `src/shared/useNetwork.ts`（约 90 行含注释与 SSR 守卫）+ `useNetwork.test.ts` 5 用例落地；两处 `useNetworkDetection.ts` 仅改 import。
+- `npm ls ahooks` 为空；`dependencies` 仅剩 `axios`/`localforage`/`spark-md5`；`vite.lib.config.ts` external 移除 ahooks；README 补充运行时依赖说明。
+- 全量 108 用例全绿；lib 构建/契约/pack 全部通过。实际耗时约 0.5 人日，与预估一致。
 
 ---
 

@@ -8,7 +8,8 @@
 ## [Unreleased]
 
 ### Added
-- **T2.8 测试体系与 CI**：新增 `.github/workflows/ci.yml`（lint → 客户端 test+coverage → 契约校验 → server test → 构建 → pack dry-run）；客户端测试扩至 **20 文件 / 90 用例**（新增 `downloadEventHandlers`、`uploadWorkerBridge`、`uploadStorage`、`chunkPersistenceService` 等），服务端 5 文件 / 29 用例；`vite.config.ts` 启用覆盖率门槛（ratchet 策略：全库 lines 35 / funcs 40 / branch 40，`src/shared` 80、`services` 70 单独门槛，长期目标 60% / 80%）
+- **T4.2 去除 ahooks 依赖**：自研 `src/shared/useNetwork.ts`（对齐 ahooks `useNetwork` 实际使用的 `online`/`rtt`/`type`/`effectiveType` 四字段，事件源一致，SSR 安全），替换上传/下载两侧 `useNetworkDetection`；`dependencies` 仅剩 `axios`/`localforage`/`spark-md5`，消费方不再传递安装 ahooks；新增 `useNetwork.test.ts` 5 用例（初值/online/offline/connection change/卸载清理）
+- **T2.8 测试体系与 CI**：新增 `.github/workflows/ci.yml`（lint → 客户端 test+coverage → 契约校验 → server test → 构建 → pack dry-run）；客户端测试 **21 文件 / 108 用例**，服务端 5 文件 / 29 用例；`vite.config.ts` 启用覆盖率门槛（ratchet 策略：全库 lines 35 / funcs 30 / branch 25，`src/shared` 80（当前 96.4/94.9/100/96.7 已大幅达标）、`services` 65/70/65/60；长期目标 60% / 80% 记录在案逐步提高）
 - **T2.7 下载列表性能与安全**：`collectAllFiles` 加 5s TTL + 源目录 mtime 签名缓存（增删立即可见、内容不变零扫描）；`file_id` 格式校验（sha256 hex）后非法 id 直接 404 不扫描；`fileIdCache` 改 LRU（上限 5000）；`findFileById` 未命中不再循环全量扫描；`/list` 支持 `page`/`pageSize` 分页（默认全量兼容）
 - **T2.6 服务端健壮性**：
   - 合并流程重 IO（readFile/appendFile/md5File/缩略图）移出长事务，改为事务外合并 + 短事务写库，根治大文件合并期间 SQLITE_BUSY
@@ -34,6 +35,9 @@
 - **P1-9 定时器/资源清理**：上传 Worker `fetchWithRetry` 超时定时器收敛到 `finally`（覆盖 5xx 重试与网络异常分支）；`useFileProcessor` 自动上传定时器 ref 化并在卸载时清理；清理策略删除 `setTimeout` 兜底，仅保留 `setInterval` 单触发源
 
 ### Changed
+- **T4.1 测试工具链升级**：vitest 2.1.8 → 5.0.5 + vite 5.4 → 7.3.7 + `@vitejs/plugin-react-swc` 3.10 → 4.3.3（vitest 5 硬性要求 Node ≥ 22.12 且 vite ≥ 6.4 为 peer）；coverage provider 由 v8 切 **istanbul**——v8 与 SWC 的 AST 重映射存在已知兼容问题（vitest-dev/vitest#9293，内联组件 0%/大幅低报，ast-v8-to-istanbul 修复后于本仓库实测仍复现），istanbul 源码级插桩数字准确（networkStrategy 补测后 `src/shared` 达 96.4%）；覆盖率门槛按 istanbul 实测值重校；CI Node 20 → 22
+- demo 构建 `manualChunks` 简化：antd 8 个细分 chunk 合并为单一 `vendor-antd`（vite 7 新 Rollup 对原分组报循环 chunk 警告），`@rc-component/*`/`react-is`/`zustand` 归入正确分组，循环警告清零（T4.3 去 antd 后该分组将删除）
+- `networkStrategy.test.ts` 4 → 17 用例：补 rtt 梯度（50/100/200/500/1000/1001ms）、ethernet、effectiveType 单因素、全缺省回退、`navigator.onLine` 回退、离线忽略 rtt 等分支
 - 新增 `prepack` / `prepublishOnly` 脚本：发布前强制构建，避免空包发布
 - `server/package.json` 删除未使用的自引用依赖 `react-upload-indexeddb: file:..`
 - `.lh/` 编辑器缓存目录出库（`.gitignore` 已包含）

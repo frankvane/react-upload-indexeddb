@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 
 import { resolveNetworkStrategy } from "../../../shared/networkStrategy";
+import { useNetwork } from "../../../shared/useNetwork";
 import { useDownloadStore } from "../store";
-import { useNetwork } from "ahooks";
 
 /**
  * 网络状态检测钩子

@@ -41,7 +41,16 @@
 > 注 1：`useFileProcessor` 卸载后 500ms 不发起上传一项仍以代码评审 + 手工验证覆盖（`fileProcessor.ts` 覆盖率 23.5%，harness 成本高于收益，留待阶段三重构时一并补）。
 > 注 2：e2e playwright 冒烟测试（上传 5MB → 列表可见 → 下载 → md5 一致）**延后**——仓库无 playwright 依赖，引入成本与收益暂不匹配；服务端已有 29 个 `node --test` 集成用例覆盖上传/下载/合并主链路。
 
-**下一步**：阶段四（依赖瘦身，分析见 [`dependency-slimming-analysis.md`](./dependency-slimming-analysis.md)）：T4.1 vitest5+vite7 升级与 T4.2 去 ahooks 可并行（合计 1.5 人日，低风险，合入 v1.2.0）；T4.3 去 antd（14~20 人日）建议独立分支与 v1.3.0 发布。阶段三（架构升级）需用户确认后立项（T3.1 流式分片 / T3.2 全局单例治理 / T3.3 状态机收敛 / T3.4 字节级进度），目标版本 `v2.0.0`。
+**阶段四：依赖瘦身 —— 进行中**（T4.1 / T4.1b 决策 / T4.2 已完成 ✅；T4.3 去 antd 待做）
+
+| 任务                               | 状态 | 验证证据                                                                                                |
+| -------------------------------- | -- | --------------------------------------------------------------------------------------------------- |
+| T4.1 vitest5 + vite7 升级          | ✅  | 108 单测全绿；coverage 切 istanbul（v8+SWC 失真，见分析文档）后门槛全过；lib 169.51 kB（-4.3%）；四 worker 内联 Blob 经 sourcemap 验证；CI Node 22 |
+| T4.1b vite 8 迁移（可选）           | ⬜  | 未做（Rolldown 切换需 manualChunks→codeSplitting + worker inline 复验）                                 |
+| T4.2 去 ahooks                    | ✅  | `npm ls ahooks` 为空；deps 仅 axios/localforage/spark-md5；useNetwork 5 用例 + networkStrategy 扩至 17 用例（95.83%） |
+| T4.3 去 antd                      | ⬜  | 待做（14~20 人日，建议独立分支 + v1.3.0）                                                                |
+
+**下一步**：T4.3 去 antd（分析见 [`dependency-slimming-analysis.md`](./dependency-slimming-analysis.md) 第 4 节，14~20 人日，建议独立分支与 v1.3.0 发布）；随后阶段三（T3.1 流式分片 / T3.2 单例治理 / T3.3 状态机 / T3.4 字节级进度）需用户确认后立项，目标版本 `v2.0.0`。
 
 ---
 
@@ -243,31 +252,33 @@
 > 阶段四全部任务**不改变对外 API**（props / 事件 / 导出类型），除默认视觉样式外无 Breaking Change。
 > 版本规划：T4.1+T4.2 → `v1.2.0`；T4.3 → `v1.3.0`（建议独立 minor 发版，与阶段三 `v2.0.0` 解耦）。
 
-### T4.1 测试工具链升级：vitest 2 → 5 + vite 5 → 7（🟢 复杂度：低，1 人日）
+### T4.1 测试工具链升级：vitest 2 → 5 + vite 5 → 7（🟢 复杂度：低，1 人日）✅ 已完成
 
 | 项    | 内容                                                                                                                                                                                                 |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 涉及文件 | `package.json`（devDeps）、`.github/workflows/ci.yml`（Node 20 → 22）、`vite.config.ts`（coverage glob 门槛复验）                                                                                                    |
-| 改动要点 | ① vitest 2.1.8 → 5.0.5 + `@vitest/coverage-v8` 5.0.5（peer 对齐，消解当年降级安装的冲突）；② 连带 vite 5.4.19 → 7.x + `@vitejs/plugin-react-swc` 3.10 → 4.x（vitest 5 要求 vite ≥6.4 且 vite 改为 peer）；③ Node ≥22.12，CI setup-node 改 22 |
-| 风险核对 | `clearMocks` 已显式 true（v5 默认变更无影响）；`vi.mock`/`vi.hoisted` 均在顶层（v5 强制要求，已合规）；`-t`/`sequential` 未用；coverage `thresholds` glob 键需升级后复验 |
+| 涉及文件 | `package.json`（devDeps）、`.github/workflows/ci.yml`（Node 20 → 22）、`vite.config.ts`（coverage provider + 门槛重校）                                                                                                    |
+| 改动要点 | ① vitest 2.1.8 → 5.0.5 + `@vitest/coverage-v8` 5.0.5（peer 对齐，消解当年降级安装的冲突）；② 连带 vite 5.4.19 → 7.3.7 + `@vitejs/plugin-react-swc` 3.10 → 4.x（vitest 5 要求 vite ≥6.4 且 vite 改为 peer）；③ Node ≥22.12，CI setup-node 改 22 |
+| 风险核对 | `clearMocks` 已显式 true（v5 默认变更无影响）；`vi.mock`/`vi.hoisted` 均在顶层（v5 强制要求，已合规）；`-t`/`sequential` 未用；coverage `thresholds` glob 键复验可用 |
 | 为什么不上 vite 8 | vite 8 换 Rolldown+Oxc：`manualChunks` 函数形式 deprecated（须迁 `codeSplitting.groups`）、压缩器变更需复测体积、4 个 `?worker&inline` 需重点复验（1.0.4/1.0.5 踩坑区）。收益（构建速度）对本库有限，拆为 T4.1b 可选 |
 | 验收标准 | ① 90 单测全绿 + coverage 门槛通过（含 glob）；② lib 产物体积偏差 <5%；③ pack dry-run 71 文件不变；④ CI（Node 22）全绿 |
+| 实施结果 | ① 108 单测全绿（含新增 useNetwork 5 + networkStrategy 补强 13）；② **coverage provider 实际切 istanbul**：v8 + SWC AST 重映射数字失真（#9293 复现：内联组件 0%/低报，useNetworkDetection 91.66%→0%），istanbul 源码级插桩准确（恢复 90%，与旧基线吻合）；门槛按 istanbul 实测重校（全库 35/30/25，shared 80 已达 96.4/94.9/100/96.7，services 65/70/65/60）；③ lib 产物 169.51 kB（gzip 43.58，较升级前 177.17/51.08 **小 4.3%**），四 worker 仍以内联 Blob 交付（sourcemap 验证），pack 72 文件；④ CI 已改 Node 22；⑤ 卸载不再使用的 `@vitest/coverage-v8` |
 
-### T4.1b vite 7 → 8 迁移（🟡 复杂度：中，1~2 人日，**可选**）
+### T4.1b vite 7 → 8 迁移（🟡 复杂度：中，1~2 人日，**可选，未做**）
 
 | 项    | 内容                                                                                                                                                                                                 |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 涉及文件 | `vite.config.ts`（`build.rollupOptions.output.manualChunks` → `build.rolldownOptions.output.codeSplitting.groups`）、`vite.lib.config.ts`（复验 lib 模式 + worker inline）                                                              |
 | 改动要点 | ① demo 配置迁 `codeSplitting.groups`；② Oxc minifier 上线后对比产物体积；③ **四个 Worker `?worker&inline` 冒烟复验**（filePrepare/upload/merger/downloader）；④ 无回退问题后删除 rollupOptions 旧键 |
-| 验收标准 | ① lib 与 demo 构建均成功，worker 内联行为不变（demo 上传 5MB 文件冒烟）；② 体积对比报告存档；③ 90 单测 + server 29 用例全绿 |
+| 验收标准 | ① lib 与 demo 构建均成功，worker 内联行为不变（demo 上传 5MB 文件冒烟）；② 体积对比报告存档；③ 单测 + server 用例全绿 |
 
-### T4.2 去除 ahooks：自研 useNetwork（🟢 复杂度：低，0.5 人日）
+### T4.2 去除 ahooks：自研 useNetwork（🟢 复杂度：低，0.5 人日）✅ 已完成
 
 | 项    | 内容                                                                                                                                                                                                 |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 涉及文件 | 新增 `src/shared/useNetwork.ts` + `src/shared/useNetwork.test.ts`；改 `ZustandFileUpload/hooks/useNetworkDetection.ts`、`ZustandFileDownload/hooks/useNetworkDetection.ts`（仅改 import）；`package.json` 删 `ahooks`；`vite.lib.config.ts` external 删 `ahooks` |
-| 改动要点 | ① 自研 hook 对齐 ahooks 实现的 4 个字段（`online`/`rtt`/`type`/`effectiveType`），事件监听一致（online/offline/connection change），SSR 安全；② 不加 `since` 等死字段；③ 单测 4 用例（初值/online/offline/connection change/卸载清理） |
+| 涉及文件 | 新增 `src/shared/useNetwork.ts` + `src/shared/useNetwork.test.ts`；改 `ZustandFileUpload/hooks/useNetworkDetection.ts`、`ZustandFileDownload/hooks/useNetworkDetection.ts`（仅改 import）；`package.json` 删 `ahooks`；`vite.lib.config.ts` external 删 `ahooks`；README 依赖说明 |
+| 改动要点 | ① 自研 hook 对齐 ahooks 实现的 4 个字段（`online`/`rtt`/`type`/`effectiveType`），事件监听一致（online/offline/connection change），SSR 安全；② 不加 `since` 等死字段；③ 单测 5 用例（初值/online/offline/connection change/卸载清理） |
 | 验收标准 | ① `npm ls ahooks` 为空，pack 后无 ahooks 引用；② `networkStrategy.test.ts` 7 用例仍绿；③ 两处 useNetworkDetection 行为不变（代码评审 + 手工断网冒烟） |
+| 实施结果 | ① `npm ls ahooks` 为空，`dependencies` 仅剩 axios/localforage/spark-md5，README 已注明；② 全量 108 用例全绿（useNetwork 5 用例 + networkStrategy 扩至 17 用例，覆盖率 59.72%→95.83%）；③ lib 构建/契约/pack 全部通过 |
 
 ### T4.3 去除 antd：自建轻量 UI 层（🔴 复杂度：高，14~20 人日）
 
