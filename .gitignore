@@ -29,6 +29,8 @@ dist-ssr
 .workbuddy
 server/data/*.sqlite
 server/data/*.sqlite-*
+server/tests/tmp-test-*.sqlite
+server/tests/tmp-test-*.sqlite-*
 server/tmp/upload/*
 !server/tmp/upload/.gitkeep
 server/uploads/*

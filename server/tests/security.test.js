@@ -1,3 +1,4 @@
+const fs = require("fs");
 const path = require("path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -8,7 +9,8 @@ process.env.NODE_ENV = "production";
 process.env.RATE_LIMIT_ENABLED = "true";
 process.env.RATE_LIMIT_MAX = "3";
 process.env.CORS_ORIGIN = "https://allowed.com";
-process.env.DB_STORAGE = path.join(__dirname, "tmp-test-security.sqlite");
+const testDbStorage = path.join(__dirname, "tmp-test-security.sqlite");
+process.env.DB_STORAGE = testDbStorage;
 process.env.CHUNK_STATE_FLUSH_INTERVAL_MS = "60000";
 process.env.CHUNK_STATE_MAX_PENDING = "99999";
 
@@ -24,6 +26,7 @@ test.before(async () => {
 
 test.after(async () => {
   await sequelize.close();
+  if (fs.existsSync(testDbStorage)) fs.unlinkSync(testDbStorage);
 });
 
 test("CORS 白名单：允许的 origin 返回 Access-Control-Allow-Origin", async () => {
