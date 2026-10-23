@@ -191,4 +191,59 @@ describe("SimpleUploadList", () => {
       expect(screen.queryByTestId("upload-core-mock")).toBeNull();
     });
   });
+
+  it("batch complete keeps failed uploads and only removes succeeded files", async () => {
+    mockGet.mockResolvedValue(createEnvelope([]));
+
+    render(<SimpleUploadList />);
+
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /上传文件|upload/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("upload-core-mock")).toBeInTheDocument();
+    });
+
+    const uploadProps = getUploadProps();
+    expect(uploadProps).not.toBeNull();
+
+    act(() => {
+      (
+        uploadProps?.onUploadStart as
+          | ((files: Array<{ id: string }>) => void)
+          | undefined
+      )?.([{ id: "ok-file" }, { id: "bad-file" }]);
+      (
+        uploadProps?.onUploadComplete as
+          | ((file: unknown, success: boolean) => void)
+          | undefined
+      )?.({ id: "ok-file" }, true);
+      (
+        uploadProps?.onUploadComplete as
+          | ((file: unknown, success: boolean) => void)
+          | undefined
+      )?.({ id: "bad-file" }, false);
+    });
+
+    // 成功文件触发一次清单刷新；失败文件不触发额外刷新
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledTimes(2);
+    });
+
+    act(() => {
+      (uploadProps?.onBatchComplete as (() => void) | undefined)?.();
+    });
+
+    // 仅清理成功文件，失败文件保留
+    await waitFor(() => {
+      expect(mockRemoveUploadFilesByIds).toHaveBeenCalledWith(["ok-file"]);
+    });
+    expect(mockRemoveUploadFilesByIds).toHaveBeenCalledTimes(1);
+    expect(mockRemoveUploadFilesByIds).not.toHaveBeenCalledWith(
+      expect.arrayContaining(["bad-file"])
+    );
+  });
 });

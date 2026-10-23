@@ -103,6 +103,8 @@ const SimpleUploadList: React.FC<SimpleUploadListProps> = ({
   const isRefreshingRef = useRef(false);
   const queuedRefreshRef = useRef(false);
   const currentBatchFileIdsRef = useRef<Set<string>>(new Set());
+  // 本批次上传成功的文件 id：批次结束时仅清理这些，失败文件保留供重试
+  const successIdsRef = useRef<Set<string>>(new Set());
 
   const fetchServerFiles = useCallback(async () => {
     setLoading(true);
@@ -145,10 +147,12 @@ const SimpleUploadList: React.FC<SimpleUploadListProps> = ({
   }, [refreshServerFiles]);
 
   const handleUploadComplete = useCallback(
-    (_file: UploadFile, success: boolean) => {
+    (file: UploadFile, success: boolean) => {
       if (!success) {
+        // 失败文件不清理、不刷新清单，保留在列表中供用户重试
         return;
       }
+      successIdsRef.current.add(file.id);
       void refreshServerFiles();
     },
     [refreshServerFiles]
@@ -156,15 +160,28 @@ const SimpleUploadList: React.FC<SimpleUploadListProps> = ({
 
   const handleUploadStart = useCallback((uploadFiles: UploadFile[]) => {
     currentBatchFileIdsRef.current = new Set(uploadFiles.map((file) => file.id));
+    successIdsRef.current = new Set();
   }, []);
 
   const handleBatchComplete = useCallback(() => {
     const batchIds = Array.from(currentBatchFileIdsRef.current);
-    currentBatchFileIdsRef.current.clear();
+    const successIds = Array.from(successIdsRef.current);
+    currentBatchFileIdsRef.current = new Set();
+    successIdsRef.current = new Set();
+
+    const failedCount = batchIds.length - successIds.length;
 
     void (async () => {
-      await removeUploadFilesByIds(batchIds);
+      // 仅清理上传成功的文件；失败文件保留并提示用户
+      if (successIds.length > 0) {
+        await removeUploadFilesByIds(successIds);
+      }
       setModalOpen(false);
+      if (failedCount > 0) {
+        message.warning(
+          `有 ${failedCount} 个文件上传失败，已保留在列表中，请重试`
+        );
+      }
     })();
   }, []);
 

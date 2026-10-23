@@ -76,9 +76,15 @@ export function useFileProcessor({ uploadAll }: UseFileProcessorOptions) {
 
   const fileStartTimesRef = useRef<Record<string, number>>({});
   const prepareWorkerRef = useRef<Worker | null>(null);
+  // 预处理完成后的自动上传定时器：ref 持有，卸载时清理，避免离心上传
+  const autoUploadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
+      if (autoUploadTimerRef.current !== null) {
+        clearTimeout(autoUploadTimerRef.current);
+        autoUploadTimerRef.current = null;
+      }
       const worker = prepareWorkerRef.current;
       if (worker) {
         worker.terminate();
@@ -247,7 +253,12 @@ export function useFileProcessor({ uploadAll }: UseFileProcessorOptions) {
             messageApi.success(resultMessage);
 
             if (uploadConfig.autoUpload && data.stats.success > 0 && !isNetworkOffline) {
-              setTimeout(() => {
+              // 同一时间只保留一个待执行自动上传；卸载时由 cleanup 统一清理
+              if (autoUploadTimerRef.current !== null) {
+                clearTimeout(autoUploadTimerRef.current);
+              }
+              autoUploadTimerRef.current = setTimeout(() => {
+                autoUploadTimerRef.current = null;
                 void uploadAll();
               }, 500);
             }

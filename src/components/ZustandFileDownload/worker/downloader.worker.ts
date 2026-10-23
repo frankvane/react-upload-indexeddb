@@ -1,3 +1,5 @@
+import type { StartDownloadPayload } from "../types/download";
+
 const ctx: Worker = self as unknown as Worker;
 type WorkerEnvelope = { type: string; payload: unknown };
 
@@ -16,24 +18,18 @@ const DEFAULT_CHUNK_CONCURRENCY = 3;
 
 const fileConcurrencySettings: Record<string, number> = {};
 const chunkConcurrencySettings: Record<string, number> = {};
+// 每个文件的鉴权设置（随 START_DOWNLOAD 下发，取消/完成后清理，避免 token 残留）
+const downloadAuthSettings: Record<
+  string,
+  { authHeaders?: Record<string, string>; withCredentials?: boolean }
+> = {};
 
 ctx.addEventListener("message", async (event: MessageEvent<WorkerEnvelope>) => {
   const { type, payload } = event.data;
 
   switch (type) {
     case "START_DOWNLOAD":
-      handleDownload(
-        payload as {
-          fileId: string;
-          url: string;
-          fileSize: number;
-          chunkSize: number;
-          totalChunks: number;
-          pendingChunks: number[];
-          fileConcurrency?: number;
-          chunkConcurrency?: number;
-        }
-      );
+      handleDownload(payload as StartDownloadPayload);
       break;
     case "PAUSE_DOWNLOAD":
       handlePause(payload as { fileId: string });
@@ -79,16 +75,7 @@ function getChunkConcurrency(fileId: string): number {
   return chunkConcurrencySettings[fileId] || DEFAULT_CHUNK_CONCURRENCY;
 }
 
-async function handleDownload(payload: {
-  fileId: string;
-  url: string;
-  fileSize: number;
-  chunkSize: number;
-  totalChunks: number;
-  pendingChunks: number[];
-  fileConcurrency?: number;
-  chunkConcurrency?: number;
-}) {
+async function handleDownload(payload: StartDownloadPayload) {
   const {
     fileId,
     url,
@@ -98,6 +85,8 @@ async function handleDownload(payload: {
     pendingChunks,
     fileConcurrency,
     chunkConcurrency,
+    authHeaders,
+    withCredentials,
   } = payload;
 
   if (fileConcurrency !== undefined) {
@@ -106,6 +95,8 @@ async function handleDownload(payload: {
   if (chunkConcurrency !== undefined) {
     chunkConcurrencySettings[fileId] = chunkConcurrency;
   }
+  // 记录该文件的鉴权设置，供分片请求合并（取消/下次启动时覆盖或清理）
+  downloadAuthSettings[fileId] = { authHeaders, withCredentials };
 
   const isFirstDownload = !processedFiles.has(fileId);
 
@@ -208,6 +199,8 @@ async function handleDownload(payload: {
 
     if (remainingChunks.length === 0) {
       sendProgressUpdate(fileId, totalChunks, totalChunks, true);
+      // 下载完成，清理该文件的鉴权设置
+      delete downloadAuthSettings[fileId];
 
       ctx.postMessage({
         type: "COMPLETE",
@@ -292,14 +285,20 @@ async function downloadChunk(
       return { success: false, chunkIndex, paused: true };
     }
 
+    // 合并鉴权设置：Bearer/自定义头 + credentials（默认 same-origin，
+    // 仅 withCredentials:true 时 include，与上传侧语义一致）
+    const { authHeaders, withCredentials } = downloadAuthSettings[fileId] ?? {};
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
       const response = await fetch(url, {
         headers: {
+          ...(authHeaders ?? {}),
           Range: `bytes=${start}-${end}`,
         },
+        credentials: withCredentials === true ? "include" : "same-origin",
         signal: controller.signal,
       });
 
@@ -392,6 +391,8 @@ function handleResume(payload: { fileId: string }) {
 function handleCancel(payload: { fileId: string }) {
   const { fileId } = payload;
   activeDownloads[fileId] = false;
+  // 清理该文件的鉴权设置，避免 token 在 Worker 内残留
+  delete downloadAuthSettings[fileId];
 
   ctx.postMessage({
     type: "CANCELLED",

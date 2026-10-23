@@ -23,6 +23,11 @@
     checkApi: string;
     /** 鉴权请求头（已在主线程解析好，序列化传入 Worker） */
     authHeaders?: Record<string, string>;
+    /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin）：
+     *  跨域 Bearer 头鉴权不触发 CORS credentials 强校验；仅同域/跨域
+     *  Cookie 鉴权时显式开启，且服务端需返回
+     *  Access-Control-Allow-Credentials:true。 */
+    withCredentials?: boolean;
   };
 }
 

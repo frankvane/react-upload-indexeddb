@@ -54,7 +54,8 @@ const ZustandFileDownload: React.FC<ZustandFileDownloadProps> = (props) => {
 
   useEffect(() => {
     configureDownloadApi({
-      baseURL: props.baseURL ?? "",
+      // 缺省 / 空字符串均视为"不修改"，保留消费方此前的配置
+      baseURL: props.baseURL,
       listApi: props.listApi,
       downloadApi: props.downloadApi,
     });

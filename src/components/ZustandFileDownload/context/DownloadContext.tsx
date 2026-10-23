@@ -12,6 +12,12 @@ export interface DownloadContextType {
   baseURL: string;
   listApi: string;
   downloadApi: string;
+  // 鉴权配置（与上传侧同一套语义，见 src/shared/authHeaders.ts）
+  authToken?: string;
+  getAuthToken?: () => string | undefined | Promise<string | undefined>;
+  getAuthHeaders?: () => Record<string, string> | Promise<Record<string, string>>;
+  authScheme?: string;
+  withCredentials: boolean;
   chunkSize: number;
   maxConcurrency: number;
   maxRetries: number;
@@ -50,6 +56,11 @@ export const DownloadProvider: React.FC<DownloadProviderProps> = ({
   baseURL = API_BASE_URL,
   listApi = API_PATHS.file.list,
   downloadApi = API_PATHS.file.download,
+  authToken,
+  getAuthToken,
+  getAuthHeaders,
+  authScheme,
+  withCredentials = false,
   chunkSize = 5 * 1024 * 1024,
   maxConcurrency = 3,
   maxRetries = 3,
@@ -71,6 +82,11 @@ export const DownloadProvider: React.FC<DownloadProviderProps> = ({
     baseURL,
     listApi,
     downloadApi,
+    authToken,
+    getAuthToken,
+    getAuthHeaders,
+    authScheme,
+    withCredentials,
     chunkSize,
     maxConcurrency,
     maxRetries,

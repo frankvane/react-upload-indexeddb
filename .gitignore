@@ -26,6 +26,7 @@ dist-ssr
 .VSCodeCounter
 .lh
 .agents
+.workbuddy
 server/data/*.sqlite
 server/data/*.sqlite-*
 server/tmp/upload/*

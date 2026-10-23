@@ -85,6 +85,14 @@ export interface ZustandFileDownloadProps {
   listApi?: string;
   downloadApi?: string;
 
+  // 鉴权配置（与上传侧同一套语义，见 src/shared/authHeaders.ts）。
+  // 解析后的请求头会随 START_DOWNLOAD 下发到 Worker，用于分片 Range 请求。
+  authToken?: string;
+  getAuthToken?: () => string | undefined | Promise<string | undefined>;
+  getAuthHeaders?: () => Record<string, string> | Promise<Record<string, string>>;
+  authScheme?: string;
+  withCredentials?: boolean;
+
   // 下载参数配置
   chunkSize?: number; // 分片大小
   maxConcurrency?: number; // 最大并发数
@@ -126,4 +134,20 @@ export interface DownloadConfig {
   maxConcurrency: number;
   maxRetries: number;
   retryDelay: number;
+}
+
+// START_DOWNLOAD 消息 payload（主线程 → 下载 Worker）
+export interface StartDownloadPayload {
+  fileId: string;
+  url: string;
+  fileSize: number;
+  chunkSize: number;
+  totalChunks: number;
+  pendingChunks: number[];
+  fileConcurrency?: number;
+  chunkConcurrency?: number;
+  /** 已在主线程解析好的鉴权请求头（Bearer / 自定义头） */
+  authHeaders?: Record<string, string>;
+  /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin） */
+  withCredentials?: boolean;
 }

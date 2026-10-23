@@ -75,6 +75,7 @@ export const UploadProvider: React.FC<UploadProviderProps> = ({
   getAuthToken,
   getAuthHeaders,
   authScheme,
+  withCredentials = false,
 }) => {
   const value: UploadContextType = {
     baseURL,
@@ -104,6 +105,7 @@ export const UploadProvider: React.FC<UploadProviderProps> = ({
     getAuthToken,
     getAuthHeaders,
     authScheme,
+    withCredentials,
   };
 
   return (

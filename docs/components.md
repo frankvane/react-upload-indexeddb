@@ -64,6 +64,11 @@ import { API_BASE_URL, API_PATHS } from "./config/api";
 | `networkDisplayMode` | `"tooltip" \| "direct"` | `"tooltip"` | 网络与策略信息展示方式 |
 | `uiMode` | `"full" \| "simple"` | `"full"` | `simple` 时只保留选择文件 + 进度列表 |
 | `settingsSource` | `"localStorage" \| "props"` | `"localStorage"` | 设置来源；`props` 可忽略历史本地设置污染 |
+| `authToken` | `string` | `undefined` | 静态 Bearer Token（适合演示，不建议硬编码） |
+| `getAuthToken` | `() => string \| undefined \| Promise<string \| undefined>` | `undefined` | 每次上传前动态取 Token（支持刷新） |
+| `getAuthHeaders` | `() => Record<string, string> \| Promise<Record<string, string>>` | `undefined` | 完全自定义请求头（最高优先级） |
+| `authScheme` | `string` | `"Bearer"` | Token scheme |
+| `withCredentials` | `boolean` | `false` | 是否以 `credentials:'include'` 发送（携带 Cookie）。默认 `same-origin`；仅跨域 Cookie 鉴权时开启 |
 | `customFileValidator` | `(file: File) => { valid: boolean; message?: string }` | `undefined` | 自定义文件校验 |
 | `customUploadHandler` | `(file, config) => Promise<boolean>` | `undefined` | 自定义上传处理器（当前版本为预留） |
 
@@ -186,6 +191,11 @@ import { API_BASE_URL, API_PATHS } from "./config/api";
 | `maxConcurrency` | `number` | `3` | 最大下载并发 |
 | `maxRetries` | `number` | `3` | 下载重试次数 |
 | `retryDelay` | `number` | `1000` | 重试间隔（毫秒） |
+| `authToken` | `string` | `undefined` | 静态 Bearer Token（适合演示，不建议硬编码） |
+| `getAuthToken` | `() => string \| undefined \| Promise<string \| undefined>` | `undefined` | 每次开始下载前动态取 Token（支持刷新） |
+| `getAuthHeaders` | `() => Record<string, string> \| Promise<Record<string, string>>` | `undefined` | 完全自定义请求头（最高优先级） |
+| `authScheme` | `string` | `"Bearer"` | Token scheme |
+| `withCredentials` | `boolean` | `false` | 分片请求是否以 `credentials:'include'` 发送（携带 Cookie）。默认 `same-origin`；仅跨域 Cookie 鉴权时开启 |
 | `autoStart` | `boolean` | `false` | 是否自动开始下载 |
 | `showProgress` | `boolean` | `true` | 是否显示进度 |
 | `showStorageStats` | `boolean` | `true` | 是否显示存储统计 |
@@ -239,3 +249,40 @@ import { API_BASE_URL, API_PATHS } from "./config/api";
 1. 业务集成简化上传时，优先使用 `SimpleUploadList`，并监听 `onServerListChange` 驱动外层列表刷新。
 2. 若需“始终自动模式”，上传组件请固定 `settingsSource="props"`，避免本地历史开关影响。
 3. 若希望以组件回调联动埋点/通知，上传组件可以直接使用；下载组件建议先补齐回调触发点再依赖。
+
+## 7. 鉴权接入
+
+组件不持有任何凭证，鉴权全部通过 props 注入，由消费方决定 Token 来源。上传侧与下载侧共用同一套语义（解析实现在 `src/shared/authHeaders.ts`）。
+
+### 7.1 credentials 默认语义
+
+- 上传 Worker（`fetch`）与下载分片请求**默认 `same-origin`**：同域场景浏览器自动携带 Cookie；跨域 Bearer 头鉴权不会触发 CORS preflight 对 `Access-Control-Allow-Credentials:true` 的强校验。
+- 仅当需要**跨域 Cookie** 鉴权时才显式 `withCredentials: true`，此时服务端必须返回 `Access-Control-Allow-Credentials:true` 且 `Access-Control-Allow-Origin` 为具体 Origin（不能是 `*`）。
+- 下载侧列表请求走 axios，默认 `withCredentials: false`，语义同上。
+
+### 7.2 组合矩阵
+
+| 场景 | 上传侧（FileUpload） | 下载侧（FileDownload） | 服务端要求 |
+| --- | --- | --- | --- |
+| 跨域 Bearer（推荐） | `getAuthToken` / `authToken` / `getAuthHeaders`，`withCredentials` 保持默认 | 同名 props（分片请求，v1.1.0 起）+ `setDownloadAuth`（列表请求） | 校验 `Authorization` 头；CORS 暴露该头 |
+| 同域 Cookie | 无需额外代码（默认 `same-origin` 自动携带） | 无需额外代码 | 校验 Cookie |
+| 跨域 Cookie | `withCredentials: true` | `withCredentials: true` | `Access-Control-Allow-Credentials:true` + 具体 Origin |
+
+### 7.3 代码示例
+
+```tsx
+import { FileUpload, FileDownload, setDownloadAuth } from "react-upload-indexeddb";
+
+// Bearer（跨域，推荐）：每次请求前取最新 token
+<FileUpload baseURL="https://upload.example.com" getAuthToken={async () => readPortalToken()} />
+<FileDownload baseURL="https://upload.example.com" getAuthToken={async () => readPortalToken()} />
+
+// 列表请求（axios）的鉴权头需单独注入；传 undefined 清除
+setDownloadAuth({ Authorization: `Bearer ${token}` });
+
+// 跨域 Cookie 鉴权时才需要显式开启
+<FileUpload baseURL="https://upload.example.com" withCredentials={true} />
+<FileDownload baseURL="https://upload.example.com" withCredentials={true} />
+```
+
+> 优先级：`getAuthHeaders` > `getAuthToken` > `authToken`；均无时发送无鉴权头的请求。

@@ -66,7 +66,7 @@ const runtimeConfig: RuntimeConfig = {
   downloadApi: API_PATHS.file.download,
 };
 
-const apiClient = axios.create({
+export const apiClient = axios.create({
   baseURL: runtimeConfig.baseURL,
   timeout: 30000,
   // 默认不携带 Cookie（same-origin 语义）：跨域 Bearer 头鉴权时不触发 CORS 对
@@ -79,8 +79,11 @@ const apiClient = axios.create({
 });
 
 export const configureDownloadApi = (config: DownloadApiConfig = {}): void => {
-  runtimeConfig.baseURL =
-    typeof config.baseURL === "string" ? config.baseURL : runtimeConfig.baseURL;
+  // baseURL 仅在显式传入非空字符串时覆盖：空字符串/缺省视为"不修改"，
+  // 避免组件重复 mount（props.baseURL ?? ""）清空消费方先前的配置
+  if (typeof config.baseURL === "string" && config.baseURL !== "") {
+    runtimeConfig.baseURL = config.baseURL;
+  }
   runtimeConfig.listApi = normalizePath(config.listApi, runtimeConfig.listApi);
   runtimeConfig.downloadApi = normalizePath(
     config.downloadApi,
@@ -88,8 +91,10 @@ export const configureDownloadApi = (config: DownloadApiConfig = {}): void => {
   );
 
   apiClient.defaults.baseURL = runtimeConfig.baseURL;
-  // 是否携带 Cookie：默认 false（same-origin），仅跨域 Cookie 鉴权时显式开启
-  apiClient.defaults.withCredentials = config.withCredentials ?? false;
+  // 是否携带 Cookie：缺省保留现值（避免组件重复 mount 重置先前配置）；
+  // 默认 false（same-origin），仅跨域 Cookie 鉴权时显式开启
+  apiClient.defaults.withCredentials =
+    config.withCredentials ?? apiClient.defaults.withCredentials;
 };
 
 /**

@@ -4,6 +4,7 @@ import { DownloadFile, DownloadStatus } from "../types";
 import { completeFileStore, exportFileToLocal, fileStore } from "../utils";
 import { createDownloadWorker, createMergeWorker } from "../worker";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { resolveAuthHeaders } from "../../../shared/authHeaders";
 
 import { ChunkPersistenceService } from "../services/chunkPersistenceService";
 import { createDownloadEventHandlers } from "../services/downloadEventHandlers";
@@ -15,6 +16,7 @@ import {
 } from "../services/downloadOrchestrator";
 import { message } from "antd";
 import { useDownloadStore } from "../store";
+import { useDownloadContext } from "../context/useDownloadContext";
 import { useStorageManager } from "./useStorageManager";
 import { useShallow } from "zustand/react/shallow";
 
@@ -32,6 +34,16 @@ export const useFileDownloader = () => {
       abortControllers: state.abortControllers,
     }))
   );
+
+  // 鉴权配置来自 DownloadProvider props（与上传侧同一套语义）。
+  // 逐项解构而非整个 context 对象，避免 useCallback 依赖随 context value 抖动。
+  const {
+    authToken,
+    getAuthToken,
+    getAuthHeaders,
+    authScheme,
+    withCredentials,
+  } = useDownloadContext();
 
   const { getStorageUsage } = useStorageManager();
 
@@ -230,6 +242,14 @@ export const useFileDownloader = () => {
           throw new Error("下载 Worker 未初始化");
         }
 
+        // 每次开始下载前解析最新鉴权头（支持 token 刷新），随消息下发 Worker
+        const authHeaders = await resolveAuthHeaders({
+          authToken,
+          getAuthToken,
+          getAuthHeaders,
+          authScheme,
+        });
+
         downloadWorkerRef.current.postMessage({
           type: "START_DOWNLOAD",
           payload: {
@@ -241,6 +261,8 @@ export const useFileDownloader = () => {
             pendingChunks,
             fileConcurrency,
             chunkConcurrency,
+            authHeaders,
+            withCredentials,
           },
         });
 
@@ -260,7 +282,7 @@ export const useFileDownloader = () => {
         message.error(`开始下载失败: ${err instanceof Error ? err.message : "未知错误"}`);
       }
     },
-    [addAbortController, addProcessing, chunkService, mergeFile, removeProcessing, updateFile]
+    [addAbortController, addProcessing, authScheme, authToken, chunkService, getAuthHeaders, getAuthToken, mergeFile, removeProcessing, updateFile, withCredentials]
   );
 
   const pauseDownload = useCallback(

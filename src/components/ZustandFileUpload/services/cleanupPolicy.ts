@@ -32,18 +32,12 @@ const canCleanup = (status: UploadStatus) =>
 
 export class UploadCleanupPolicy {
   private readonly completedFileIds = new Set<string>();
-  private cleanupTimer: number | null = null;
   private countdownTimer: number | null = null;
   private countdownValue = 0;
 
   constructor(private readonly options: CleanupPolicyOptions) {}
 
   dispose() {
-    if (this.cleanupTimer !== null) {
-      clearTimeout(this.cleanupTimer);
-      this.cleanupTimer = null;
-    }
-
     if (this.countdownTimer !== null) {
       clearInterval(this.countdownTimer);
       this.countdownTimer = null;
@@ -167,11 +161,6 @@ export class UploadCleanupPolicy {
   }
 
   async forceCleanupUI() {
-    if (this.cleanupTimer !== null) {
-      clearTimeout(this.cleanupTimer);
-      this.cleanupTimer = null;
-    }
-
     if (this.countdownTimer !== null) {
       clearInterval(this.countdownTimer);
       this.countdownTimer = null;
@@ -197,6 +186,8 @@ export class UploadCleanupPolicy {
       };
     });
 
+    // 单一触发源：仅由 setInterval 倒计时驱动清理，
+    // 不再附加 setTimeout 兜底（避免双触发与后台标签页定时器不失效）
     this.countdownTimer = window.setInterval(() => {
       this.countdownValue -= 1;
 
@@ -215,10 +206,6 @@ export class UploadCleanupPolicy {
         void this.executeCleanup();
       }
     }, 1000);
-
-    this.cleanupTimer = window.setTimeout(() => {
-      void this.executeCleanup();
-    }, seconds * 1000);
   }
 
   private async executeCleanup() {

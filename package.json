@@ -34,6 +34,8 @@
     "build:demo": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build",
     "test": "npm run test:unit && node scripts/verify-client-contract.mjs",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",

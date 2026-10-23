@@ -245,10 +245,21 @@ scripts/                              校验与辅助脚本（含 README 截图�
 
 ## 鉴权接入（auth）
 
-组件本身不持有任何凭证，所有鉴权通过 **props 注入**，由消费方决定 Token 来源。支持两种透传方式，可单独或同时使用：
+组件本身不持有任何凭证，所有鉴权通过 **props 注入**，由消费方决定 Token 来源。
 
-1. **Bearer Token（跨域常用）**：通过 `getAuthHeaders` 返回自定义头，或 `getAuthToken` / `authToken` 自动拼成 `Authorization: Bearer <token>`。
-2. **同域 Cookie**：浏览器自动携带（上传 Worker `credentials:'include'`、下载 axios `withCredentials:true`），无需额外代码；跨域需服务端 CORS 允许 credentials。
+### credentials 默认语义（重要）
+
+- 上传 Worker（`fetch`）与下载分片请求**默认 `same-origin`**：同域场景浏览器自动携带 Cookie；跨域 Bearer 头鉴权不会触发 CORS preflight 对 `Access-Control-Allow-Credentials:true` 的强校验。
+- 仅当需要**跨域 Cookie** 鉴权时才显式设置 `withCredentials: true`（此时服务端必须返回 `Access-Control-Allow-Credentials:true`，且 `Access-Control-Allow-Origin` 不能为 `*`）。
+- 下载侧列表请求走 axios，默认 `withCredentials: false`，语义同上。
+
+### 三种接入组合
+
+| 场景 | 上传侧 | 下载侧 | 服务端要求 |
+| --- | --- | --- | --- |
+| 跨域 Bearer（推荐） | `getAuthToken` / `authToken` / `getAuthHeaders`，`withCredentials` 保持默认 `false` | 同名 props（分片请求，v1.1.0 起） + `setDownloadAuth`（列表请求） | 校验 `Authorization` 头；CORS 暴露该头 |
+| 同域 Cookie | 无需额外代码（默认 `same-origin` 自动携带） | 无需额外代码 | 校验 Cookie |
+| 跨域 Cookie | `withCredentials: true` | `withCredentials: true` | `Access-Control-Allow-Credentials:true` + 具体 Origin |
 
 ```tsx
 import { FileUpload } from "react-upload-indexeddb";
@@ -270,17 +281,30 @@ import { FileUpload } from "react-upload-indexeddb";
     "X-Tenant-Id": currentTenantId,
   })}
 />
+
+// 方式 C：仅跨域 Cookie 鉴权时才需要显式开启
+<FileUpload baseURL="https://upload.example.com" withCredentials={true} />
 ```
 
-下载侧对应设置（与上传共享同一套鉴权头语义）：
+下载侧对应设置（与上传共享同一套鉴权头语义，v1.1.0 起分片请求同样生效）：
+
+```tsx
+import { FileDownload } from "react-upload-indexeddb";
+
+<FileDownload
+  baseURL="https://upload.example.com"
+  getAuthToken={async () => await readPortalToken()}
+/>
+```
 
 ```ts
 import { setDownloadAuth } from "react-upload-indexeddb";
 
-// 设置后，下载列表/下载请求自动携带
+// 下载列表请求（axios）的鉴权头注入；传 undefined 清除
 setDownloadAuth({ Authorization: `Bearer ${token}` });
-// 清除：setDownloadAuth(undefined)
 ```
+
+> 兼容说明：`setDownloadAuth` 写入 axios 实例，**v1.0.5 仅作用于文件列表请求**；分片 Range 请求的鉴权请使用 `FileDownload` 的 props 注入（v1.1.0）。
 
 ### 服务端对接（参考）
 

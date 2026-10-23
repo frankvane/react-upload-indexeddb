@@ -22,6 +22,8 @@ interface UploadWorkerMessage {
     uploadApi: string;
     checkApi: string;
     authHeaders?: Record<string, string>;
+    /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin） */
+    withCredentials?: boolean;
   };
 }
 
@@ -98,10 +100,13 @@ async function fetchWithRetry(
       attempts++;
       const currentAttempt = attempts;
 
+      // 超时定时器句柄提升到 try 外：确保 5xx 重试 / 网络异常分支
+      // 也能在 finally 中收敛，避免定时器残留
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       try {
         // 创建 AbortController 用于超时控制
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
+        timeoutId = setTimeout(() => {
           debug(`请求超时: ${url}`, { timeout, attempt: currentAttempt });
           controller.abort();
         }, timeout);
@@ -198,6 +203,11 @@ async function fetchWithRetry(
         }
 
         reject(wrappedError);
+      } finally {
+        // 收敛定时器：无论成功、5xx 重试还是网络异常，都不残留未清理的 timeout
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
       }
     };
 
