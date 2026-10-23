@@ -12,20 +12,15 @@ import {
   useNetworkDetection,
 } from "./hooks";
 
-import localforage from "localforage";
 import {
   recoverInterruptedUploadFiles,
 } from "./services/uploadStorage";
 import { useUploadStore } from "./store/upload";
+import { useUploadEngine } from "./context/UploadEngineContext";
 import { UploadProvider } from "./context/UploadContext";
 import { useUploadContext } from "./context/useUploadContext";
 import { ZustandFileUploadProps } from "./types/upload";
 import { useShallow } from "zustand/react/shallow";
-
-localforage.config({
-  name: "upload-indexeddb",
-  storeName: "upload_files",
-});
 
 const ZustandFileUploadCore: React.FC = () => {
   const { refreshFiles, initSettings, setConfig } = useUploadStore(
@@ -35,6 +30,7 @@ const ZustandFileUploadCore: React.FC = () => {
       setConfig: state.setConfig,
     }))
   );
+  const engine = useUploadEngine();
   const batchUploader = useBatchUploader();
   const uploadAllRef = useRef(batchUploader.uploadAll);
   const fileOperations = useFileOperations(batchUploader);
@@ -107,14 +103,14 @@ const ZustandFileUploadCore: React.FC = () => {
     let disposed = false;
 
     const recoverInterruptedUploads = async () => {
-      const recovery = await recoverInterruptedUploadFiles();
+      const recovery = await recoverInterruptedUploadFiles(engine.storage);
       await refreshFiles();
 
       if (disposed || recovery.totalInterrupted === 0) {
         return;
       }
 
-      const messageApi = useUploadStore.getState().getMessageApi();
+      const messageApi = engine.store.getState().getMessageApi();
 
       if (recovery.recoveredCount > 0) {
         messageApi.info(
@@ -130,7 +126,7 @@ const ZustandFileUploadCore: React.FC = () => {
 
       const shouldAutoResume =
         uploadConfig.autoUpload &&
-        !useUploadStore.getState().isNetworkOffline &&
+        !engine.store.getState().isNetworkOffline &&
         recovery.recoveredCount > 0;
 
       if (shouldAutoResume) {
@@ -145,6 +141,7 @@ const ZustandFileUploadCore: React.FC = () => {
       disposed = true;
     };
   }, [
+    engine,
     initSettings,
     refreshFiles,
     uploadConfig.autoUpload,

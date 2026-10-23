@@ -5,10 +5,11 @@ import {
   UploadFile,
   UploadSettingsSource,
 } from "../types/upload";
-
-import type { MessageInstance } from "../../../ui";
-import { create } from "zustand";
+import { createContext, useContext } from "react";
+import { useStore } from "zustand";
+import { create, type StoreApi } from "zustand";
 import { message } from "../../../ui";
+import type { MessageInstance } from "../../../ui";
 import { listUploadFiles } from "../services/uploadStorage";
 
 type ProgressMapUpdater =
@@ -28,7 +29,7 @@ type RetryingFilesUpdater =
   | Record<string, boolean>
   | ((prev: Record<string, boolean>) => Record<string, boolean>);
 
-interface UploadState {
+export interface UploadState {
   files: UploadFile[];
   progressMap: Record<string, number>;
   retryingFiles: Record<string, boolean>;
@@ -85,121 +86,164 @@ interface UploadState {
   }) => void;
 }
 
-export const useUploadStore = create<UploadState>((set) => ({
-  files: [],
-  progressMap: {},
-  retryingFiles: {},
-  batchInfo: null,
-  processProgress: null,
-  fileTimings: {},
-  isUploading: false,
-  isRetryingAll: false,
-  loading: false,
-  cost: null,
-  networkType: "unknown",
-  fileConcurrency: 2,
-  chunkConcurrency: 2,
-  chunkSize: 1024 * 1024,
-  maxRetries: 3,
-  isNetworkOffline: false,
-  autoUpload: true,
-  autoCleanup: true,
-  cleanupDelay: 10,
-  networkDisplayMode: "tooltip",
-  storageStatsVisible: false,
-  config: null,
+export type UploadStore = StoreApi<UploadState>;
 
-  setFiles: (files) => set({ files }),
-  refreshFiles: async () => {
-    const files = await listUploadFiles();
-    set({ files });
-  },
-  setProgressMap: (progressMap) =>
-    set((state) => ({
-      progressMap:
-        typeof progressMap === "function"
-          ? progressMap(state.progressMap)
-          : progressMap,
-    })),
-  setBatchInfo: (batchInfo) =>
-    set((state) => ({
-      batchInfo:
-        typeof batchInfo === "function" ? batchInfo(state.batchInfo) : batchInfo,
-    })),
-  setProcessProgress: (processProgress) => set({ processProgress }),
-  setFileTimings: (fileTimings) =>
-    set((state) => ({
-      fileTimings:
-        typeof fileTimings === "function"
-          ? fileTimings(state.fileTimings)
-          : fileTimings,
-    })),
-  setIsUploading: (isUploading) => set({ isUploading }),
-  setIsRetryingAll: (isRetryingAll) => set({ isRetryingAll }),
-  setLoading: (loading) => set({ loading }),
-  setCost: (cost) => set({ cost }),
-  setAutoUpload: (autoUpload) => {
-    localStorage.setItem("autoUpload", JSON.stringify(autoUpload));
-    set({ autoUpload });
-  },
-  setAutoCleanup: (autoCleanup) => {
-    localStorage.setItem("autoCleanup", JSON.stringify(autoCleanup));
-    set({ autoCleanup });
-  },
-  setCleanupDelay: (delay) => {
-    localStorage.setItem("cleanupDelay", JSON.stringify(delay));
-    set({ cleanupDelay: delay });
-  },
-  setNetworkDisplayMode: (networkDisplayMode) => {
-    localStorage.setItem("networkDisplayMode", networkDisplayMode);
-    set({ networkDisplayMode });
-  },
-  setStorageStatsVisible: (storageStatsVisible) => set({ storageStatsVisible }),
-  setRetryingFiles: (retryingFiles) =>
-    set((state) => ({
-      retryingFiles:
-        typeof retryingFiles === "function"
-          ? retryingFiles(state.retryingFiles)
-          : retryingFiles,
-    })),
-  setConfig: (config) => {
-    set({
-      config,
-      chunkSize: config.chunkSize,
-      fileConcurrency: config.fileConcurrency,
-      chunkConcurrency: config.chunkConcurrency,
-      maxRetries: config.maxRetries,
-    });
-  },
+/**
+ * 创建每实例上传状态仓库（T3.2 单例治理）。
+ *
+ * 原 `useUploadStore` 是模块级 zustand `create()` 单例，导致同页多个
+ * <FileUpload> 实例共享同一份状态（文件列表、进度、config 互相串）。
+ * 现改为工厂：每个组件实例持有独立仓库，经 UploadStoreContext 下发。
+ *
+ * @param storage 该实例对应的 IndexedDB 存储（由 createUploadStorage 创建），
+ *                供 refreshFiles 读取持久化元数据。
+ */
+export const createUploadStore = (storage: LocalForage): UploadStore =>
+  create<UploadState>((set) => ({
+    files: [],
+    progressMap: {},
+    retryingFiles: {},
+    batchInfo: null,
+    processProgress: null,
+    fileTimings: {},
+    isUploading: false,
+    isRetryingAll: false,
+    loading: false,
+    cost: null,
+    networkType: "unknown",
+    fileConcurrency: 2,
+    chunkConcurrency: 2,
+    chunkSize: 1024 * 1024,
+    maxRetries: 3,
+    isNetworkOffline: false,
+    autoUpload: true,
+    autoCleanup: true,
+    cleanupDelay: 10,
+    networkDisplayMode: "tooltip",
+    storageStatsVisible: false,
+    config: null,
 
-  initSettings: (defaults) => {
-    const settingsSource = defaults?.settingsSource ?? "localStorage";
+    setFiles: (files) => set({ files }),
+    refreshFiles: async () => {
+      const files = await listUploadFiles(storage);
+      set({ files });
+    },
+    setProgressMap: (progressMap) =>
+      set((state) => ({
+        progressMap:
+          typeof progressMap === "function"
+            ? progressMap(state.progressMap)
+            : progressMap,
+      })),
+    setBatchInfo: (batchInfo) =>
+      set((state) => ({
+        batchInfo:
+          typeof batchInfo === "function"
+            ? batchInfo(state.batchInfo)
+            : batchInfo,
+      })),
+    setProcessProgress: (processProgress) => set({ processProgress }),
+    setFileTimings: (fileTimings) =>
+      set((state) => ({
+        fileTimings:
+          typeof fileTimings === "function"
+            ? fileTimings(state.fileTimings)
+            : fileTimings,
+      })),
+    setIsUploading: (isUploading) => set({ isUploading }),
+    setIsRetryingAll: (isRetryingAll) => set({ isRetryingAll }),
+    setLoading: (loading) => set({ loading }),
+    setCost: (cost) => set({ cost }),
+    setAutoUpload: (autoUpload) => {
+      localStorage.setItem("autoUpload", JSON.stringify(autoUpload));
+      set({ autoUpload });
+    },
+    setAutoCleanup: (autoCleanup) => {
+      localStorage.setItem("autoCleanup", JSON.stringify(autoCleanup));
+      set({ autoCleanup });
+    },
+    setCleanupDelay: (delay) => {
+      localStorage.setItem("cleanupDelay", JSON.stringify(delay));
+      set({ cleanupDelay: delay });
+    },
+    setNetworkDisplayMode: (networkDisplayMode) => {
+      localStorage.setItem("networkDisplayMode", networkDisplayMode);
+      set({ networkDisplayMode });
+    },
+    setStorageStatsVisible: (storageStatsVisible) =>
+      set({ storageStatsVisible }),
+    setRetryingFiles: (retryingFiles) =>
+      set((state) => ({
+        retryingFiles:
+          typeof retryingFiles === "function"
+            ? retryingFiles(state.retryingFiles)
+            : retryingFiles,
+      })),
+    setConfig: (config) => {
+      set({
+        config,
+        chunkSize: config.chunkSize,
+        fileConcurrency: config.fileConcurrency,
+        chunkConcurrency: config.chunkConcurrency,
+        maxRetries: config.maxRetries,
+      });
+    },
 
-    const autoUpload =
-      settingsSource === "localStorage" && localStorage.getItem("autoUpload") !== null
-        ? JSON.parse(localStorage.getItem("autoUpload") || "true")
-        : defaults?.autoUpload ?? true;
-    const autoCleanup =
-      settingsSource === "localStorage" &&
-      localStorage.getItem("autoCleanup") !== null
-        ? JSON.parse(localStorage.getItem("autoCleanup") || "true")
-        : defaults?.autoCleanup ?? true;
-    const cleanupDelay =
-      settingsSource === "localStorage" &&
-      localStorage.getItem("cleanupDelay") !== null
-        ? JSON.parse(localStorage.getItem("cleanupDelay") || "10")
-        : defaults?.cleanupDelay ?? 10;
-    const networkDisplayMode =
-      settingsSource === "localStorage"
-        ? ((localStorage.getItem("networkDisplayMode") as
-            | "tooltip"
-            | "direct") ||
-          defaults?.networkDisplayMode ||
-          "tooltip")
-        : defaults?.networkDisplayMode || "tooltip";
+    initSettings: (defaults) => {
+      const settingsSource = defaults?.settingsSource ?? "localStorage";
 
-    set({ autoUpload, autoCleanup, cleanupDelay, networkDisplayMode });
-  },
+      const autoUpload =
+        settingsSource === "localStorage" &&
+        localStorage.getItem("autoUpload") !== null
+          ? JSON.parse(localStorage.getItem("autoUpload") || "true")
+          : defaults?.autoUpload ?? true;
+      const autoCleanup =
+        settingsSource === "localStorage" &&
+        localStorage.getItem("autoCleanup") !== null
+          ? JSON.parse(localStorage.getItem("autoCleanup") || "true")
+          : defaults?.autoCleanup ?? true;
+      const cleanupDelay =
+        settingsSource === "localStorage" &&
+        localStorage.getItem("cleanupDelay") !== null
+          ? JSON.parse(localStorage.getItem("cleanupDelay") || "10")
+          : defaults?.cleanupDelay ?? 10;
+      const networkDisplayMode =
+        settingsSource === "localStorage"
+          ? ((localStorage.getItem("networkDisplayMode") as
+              | "tooltip"
+              | "direct") ||
+            defaults?.networkDisplayMode ||
+            "tooltip")
+          : defaults?.networkDisplayMode || "tooltip";
 
-  getMessageApi: () => message,
-}));
+      set({ autoUpload, autoCleanup, cleanupDelay, networkDisplayMode });
+    },
+
+    getMessageApi: () => message,
+  }));
+
+export const UploadStoreContext = createContext<UploadStore | null>(null);
+
+/**
+ * 组件内读取上传状态（T3.2：从 UploadStoreContext 取每实例仓库）。
+ * 等价于原 `useUploadStore(selector)`，调用方无需改动。
+ */
+export function useUploadStore<T>(selector: (state: UploadState) => T): T {
+  const store = useContext(UploadStoreContext);
+  if (store === null) {
+    throw new Error("useUploadStore 必须在 UploadProvider 内使用");
+  }
+  return useStore(store, selector);
+}
+
+/**
+ * 逃生舱：获取当前实例的仓库 API，供非 hook 上下文（如命令式回调、
+ * 定时器闭包）调用 getState()/setState()。须在 UploadProvider 内调用。
+ */
+export function useUploadStoreApi(): UploadStore {
+  const store = useContext(UploadStoreContext);
+  if (store === null) {
+    throw new Error("useUploadStoreApi 必须在 UploadProvider 内使用");
+  }
+  return store;
+}

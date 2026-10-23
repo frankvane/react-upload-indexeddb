@@ -2,19 +2,25 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { UploadCleanupPolicy } from "../services/cleanupPolicy";
-import localforage from "localforage";
 import { loadAllUploadFiles, runConcurrentQueue } from "../services/uploadOrchestrator";
-import {
-  cancelUploadTask,
-  disposeUploadWorkerPool,
-  runUploadTask,
-} from "../services/uploadWorkerBridge";
 import { useUploadStore } from "../store/upload";
+import { useUploadEngine, type UploadEngine } from "../context/UploadEngineContext";
 import { useEffectiveUploadConfig } from "./useEffectiveConfig";
 import { useShallow } from "zustand/react/shallow";
 import { isUploadableStatus } from "../services/uploadStorage";
-import { getFileRef, releaseFileRef } from "../services/fileRegistry";
 import { resolveAuthHeaders } from "../utils/auth";
+
+const createCleanupPolicy = (engine: UploadEngine) =>
+  new UploadCleanupPolicy({
+    getFiles: () => engine.store.getState().files,
+    setFiles: (files) => engine.store.getState().setFiles(files),
+    refreshFiles: () => engine.store.getState().refreshFiles(),
+    setBatchInfo: (updater) => engine.store.getState().setBatchInfo(updater),
+    clearBatchInfo: () => engine.store.getState().setBatchInfo(null),
+    getCleanupDelay: () => engine.store.getState().cleanupDelay,
+    storage: engine.storage,
+    fileRegistry: engine.fileRegistry,
+  });
 
 export interface RetrySummary {
   success: boolean;
@@ -33,16 +39,6 @@ export interface BatchUploaderActions {
   forceCleanupUI: () => Promise<void>;
   pendingCleanupCount: () => number;
 }
-
-const createCleanupPolicy = () =>
-  new UploadCleanupPolicy({
-    getFiles: () => useUploadStore.getState().files,
-    setFiles: (files) => useUploadStore.getState().setFiles(files),
-    refreshFiles: () => useUploadStore.getState().refreshFiles(),
-    setBatchInfo: (updater) => useUploadStore.getState().setBatchInfo(updater),
-    clearBatchInfo: () => useUploadStore.getState().setBatchInfo(null),
-    getCleanupDelay: () => useUploadStore.getState().cleanupDelay,
-  });
 
 export function useBatchUploader(): BatchUploaderActions {
   const {
@@ -75,8 +71,9 @@ export function useBatchUploader(): BatchUploaderActions {
 
   const uploadConfig = useEffectiveUploadConfig();
   const messageApi = getMessageApi();
+  const engine = useUploadEngine();
 
-  const cleanupPolicy = useMemo(() => createCleanupPolicy(), []);
+  const cleanupPolicy = useMemo(() => createCleanupPolicy(engine), [engine]);
   const activeUploadAbortRef = useRef<AbortController | null>(null);
   const bootstrapAutoCleanupTimerRef = useRef<number | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
@@ -152,7 +149,6 @@ export function useBatchUploader(): BatchUploaderActions {
 
       queuedRefreshRef.current = false;
       cleanupPolicy.dispose();
-      disposeUploadWorkerPool();
     };
   }, [cleanupPolicy]);
 
@@ -195,22 +191,22 @@ export function useBatchUploader(): BatchUploaderActions {
 
     // T3.1：文件字节不再驻留 IndexedDB，改由主线程 fileRegistry 持有运行时引用。
     // 页面刷新后注册表清空 → 需用户重新选择同一文件方可续传（服务端分片检查决定跳过范围）。
-    const fileRef = getFileRef(file.id);
+    const fileRef = engine.fileRegistry.getFileRef(file.id);
     if (!fileRef) {
       file.status = UploadStatus.ERROR;
       file.progress = 0;
       file.errorMessage = "文件引用已失效，请重新选择该文件以继续上传";
       file.awaitingReselect = true;
-      await localforage.setItem(file.id, file);
+      await engine.storage.setItem(file.id, file);
       scheduleRefresh();
       return false;
     }
 
     file.status = UploadStatus.UPLOADING;
-    await localforage.setItem(file.id, file);
+    await engine.storage.setItem(file.id, file);
     scheduleRefresh();
 
-    const result = await runUploadTask({
+    const result = await engine.workerPool.runUploadTask({
       file,
       fileRef,
       signal,
@@ -241,14 +237,14 @@ export function useBatchUploader(): BatchUploaderActions {
       },
     });
 
-    const latest = (await localforage.getItem<UploadFile>(file.id)) ?? file;
+    const latest = (await engine.storage.getItem<UploadFile>(file.id)) ?? file;
 
     if (result.cancelled || signal?.aborted) {
       // 取消语义：状态回 QUEUED 可重新入队（保留 fileRef 以便后续重传/续传）
       latest.status = UploadStatus.QUEUED;
       latest.errorMessage = undefined;
       latest.awaitingReselect = false;
-      await localforage.setItem(file.id, latest);
+      await engine.storage.setItem(file.id, latest);
       scheduleRefresh();
       return false;
     }
@@ -258,9 +254,9 @@ export function useBatchUploader(): BatchUploaderActions {
       latest.progress = 100;
       latest.errorMessage = undefined;
       // 上传完成：释放文件引用，避免 File 句柄长期驻留
-      releaseFileRef(file.id);
+      engine.fileRegistry.releaseFileRef(file.id);
 
-      await localforage.setItem(file.id, latest);
+      await engine.storage.setItem(file.id, latest);
       scheduleRefresh();
 
       uploadConfig.onUploadComplete?.(latest, true);
@@ -270,7 +266,7 @@ export function useBatchUploader(): BatchUploaderActions {
 
     latest.status = UploadStatus.ERROR;
     latest.errorMessage = result.errorMessage ?? "上传失败";
-    await localforage.setItem(file.id, latest);
+    await engine.storage.setItem(file.id, latest);
     scheduleRefresh();
 
     uploadConfig.onUploadError?.(latest, latest.errorMessage);
@@ -331,7 +327,7 @@ export function useBatchUploader(): BatchUploaderActions {
       return false;
     }
 
-    const allFiles = await loadAllUploadFiles();
+    const allFiles = await loadAllUploadFiles(engine.storage);
     const uploadableFiles = allFiles.filter((file) => isUploadableStatus(file.status));
 
     if (uploadableFiles.length === 0) {
@@ -367,7 +363,7 @@ export function useBatchUploader(): BatchUploaderActions {
 
           file.status = UploadStatus.PREPARING_UPLOAD;
           file.progress = 0;
-          await localforage.setItem(file.id, file);
+          await engine.storage.setItem(file.id, file);
           scheduleRefresh();
 
           setBatchInfo((prev) => {
@@ -426,11 +422,11 @@ export function useBatchUploader(): BatchUploaderActions {
 
     // P1-8：abort 只会让主线程 Promise 落败，Worker 内在途 fetch 需显式
     // CANCEL 才会中断（bridge 收到 signal 后会 terminate 兜底）
-    const uploadingFiles = useUploadStore
+    const uploadingFiles = engine.store
       .getState()
       .files.filter((file) => file.status === UploadStatus.UPLOADING);
     for (const file of uploadingFiles) {
-      cancelUploadTask(file.id);
+      engine.workerPool.cancelUploadTask(file.id);
     }
 
     setIsUploading(false);
@@ -454,7 +450,7 @@ export function useBatchUploader(): BatchUploaderActions {
     file.status = UploadStatus.PREPARING_UPLOAD;
     file.progress = 0;
     file.errorMessage = undefined;
-    await localforage.setItem(file.id, file);
+    await engine.storage.setItem(file.id, file);
 
     try {
       const success = await processFileUpload(file);
@@ -485,7 +481,7 @@ export function useBatchUploader(): BatchUploaderActions {
       };
     }
 
-    const allFiles = await loadAllUploadFiles();
+    const allFiles = await loadAllUploadFiles(engine.storage);
     const failedFiles = allFiles.filter((file) => file.status === UploadStatus.ERROR);
 
     if (failedFiles.length === 0) {
@@ -521,7 +517,7 @@ export function useBatchUploader(): BatchUploaderActions {
           file.status = UploadStatus.PREPARING_UPLOAD;
           file.progress = 0;
           file.errorMessage = undefined;
-          await localforage.setItem(file.id, file);
+          await engine.storage.setItem(file.id, file);
 
           setBatchInfo((prev) => {
             if (!prev) {

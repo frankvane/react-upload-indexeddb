@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext } from "react";
+import React, { createContext, useEffect, useRef } from "react";
 import {
   UploadConfig,
   UploadSettingsSource,
@@ -8,6 +8,11 @@ import {
   ZustandFileUploadProps,
 } from "../types/upload";
 import { API_BASE_URL, API_PATHS } from "../../../config/api";
+import { createUploadStorage } from "../services/uploadStorageInstance";
+import { createFileRegistry } from "../services/fileRegistry";
+import { createUploadWorkerPool } from "../services/uploadWorkerBridge";
+import { createUploadStore, UploadStoreContext } from "../store/upload";
+import { UploadEngine, UploadEngineContext } from "./UploadEngineContext";
 
 const DEFAULT_CONFIG: UploadConfig = {
   baseURL: API_BASE_URL,
@@ -81,7 +86,34 @@ export const UploadProvider: React.FC<UploadProviderProps> = ({
   getAuthHeaders,
   authScheme,
   withCredentials = false,
+  instanceId,
 }) => {
+  // T3.2 单例治理：每个 <FileUpload> 实例持有一套独立的引擎资源
+  // （store / storage / fileRegistry / workerPool），经 context 下发，
+  // 实现多实例互不串数据；卸载时仅释放自身资源。
+  const engineRef = useRef<UploadEngine | null>(null);
+  if (engineRef.current === null) {
+    const storage = createUploadStorage(instanceId);
+    const fileRegistry = createFileRegistry();
+    const workerPool = createUploadWorkerPool();
+    const store = createUploadStore(storage);
+    engineRef.current = {
+      instanceId: instanceId ?? "default",
+      storage,
+      fileRegistry,
+      workerPool,
+      store,
+    };
+  }
+  const engine = engineRef.current;
+
+  useEffect(() => {
+    return () => {
+      engine.workerPool.dispose();
+      engine.fileRegistry.releaseAllFileRefs();
+    };
+  }, [engine]);
+
   const value: UploadContextType = {
     baseURL,
     uploadApi,
@@ -117,6 +149,10 @@ export const UploadProvider: React.FC<UploadProviderProps> = ({
   };
 
   return (
-    <UploadContext.Provider value={value}>{children}</UploadContext.Provider>
+    <UploadStoreContext.Provider value={engine.store}>
+      <UploadEngineContext.Provider value={engine}>
+        <UploadContext.Provider value={value}>{children}</UploadContext.Provider>
+      </UploadEngineContext.Provider>
+    </UploadStoreContext.Provider>
   );
 };

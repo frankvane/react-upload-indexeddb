@@ -1,6 +1,6 @@
 import { UploadFile } from "../types/upload";
-import localforage from "localforage";
 import { useUploadStore } from "../store/upload";
+import { useUploadEngine } from "../context/UploadEngineContext";
 import type { BatchUploaderActions } from "./useBatchUploader";
 import { useShallow } from "zustand/react/shallow";
 
@@ -45,10 +45,11 @@ export function useFileOperations(
   const { retryUploadFile, retryAllFailedFiles } = batchUploader;
 
   const messageApi = getMessageApi();
+  const engine = useUploadEngine();
 
   const handleDeleteFile = async (id: string): Promise<void> => {
     try {
-      await localforage.removeItem(id);
+      await engine.storage.removeItem(id);
       await refreshFiles();
       messageApi.success("文件已删除");
     } catch {
@@ -77,7 +78,7 @@ export function useFileOperations(
 
   const handleClearList = async (): Promise<boolean> => {
     try {
-      await localforage.clear();
+      await engine.storage.clear();
       await refreshFiles();
       messageApi.success("文件列表已清空");
       return true;

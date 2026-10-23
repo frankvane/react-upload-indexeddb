@@ -44,6 +44,22 @@ const createFile = (
 
 const createOptions = () => {
   const files = new Map<string, UploadFile>();
+  // T3.2：cleanupPolicy 改为接收显式 storage / fileRegistry（不再依赖
+  // localforage 默认实例）。这里用被 mock 的函数桥接出 storage 接口。
+  const storage = {
+    getItem: mockGetItem,
+    setItem: mockSetItem,
+    removeItem: mockRemoveItem,
+  } as unknown as import("localforage").LocalForage;
+
+  const fileRegistry = {
+    registerFileRef: vi.fn(),
+    getFileRef: vi.fn(),
+    releaseFileRef: vi.fn(),
+    releaseAllFileRefs: vi.fn(),
+    fileRefCount: vi.fn(() => 0),
+  };
+
   const options = {
     getFiles: () => Array.from(files.values()),
     setFiles: vi.fn((next: UploadFile[]) => {
@@ -54,6 +70,8 @@ const createOptions = () => {
     setBatchInfo: vi.fn(),
     clearBatchInfo: vi.fn(),
     getCleanupDelay: () => 2,
+    storage,
+    fileRegistry,
   };
   return { options, files };
 };

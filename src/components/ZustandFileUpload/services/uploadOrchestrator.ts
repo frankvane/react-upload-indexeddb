@@ -21,8 +21,10 @@ interface QueueSummary {
   failedCount: number;
 }
 
-export const loadAllUploadFiles = async (): Promise<UploadFile[]> => {
-  return listUploadFiles();
+export const loadAllUploadFiles = async (
+  storage: LocalForage
+): Promise<UploadFile[]> => {
+  return listUploadFiles(storage);
 };
 
 export const runConcurrentQueue = async <T>(

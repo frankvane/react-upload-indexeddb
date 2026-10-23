@@ -1,7 +1,6 @@
 ﻿import { UploadFile, UploadStatus } from "../types/upload";
-import localforage from "localforage";
+import type { FileRegistry } from "./fileRegistry";
 import { listUploadFiles } from "./uploadStorage";
-import { releaseFileRef } from "./fileRegistry";
 
 interface BatchInfo {
   current: number;
@@ -26,6 +25,10 @@ interface CleanupPolicyOptions {
   ) => void;
   clearBatchInfo: () => void;
   getCleanupDelay: () => number;
+  /** 该实例的 IndexedDB 存储（T3.2：替换全局 localforage 默认实例） */
+  storage: LocalForage;
+  /** 该实例的 File 引用注册表（T3.2：替换模块级单例） */
+  fileRegistry: FileRegistry;
 }
 
 const canCleanup = (status: UploadStatus) =>
@@ -59,7 +62,7 @@ export class UploadCleanupPolicy {
   }
 
   async addCompletedFile(fileId: string) {
-    const file = await localforage.getItem<UploadFile>(fileId);
+    const file = await this.options.storage.getItem<UploadFile>(fileId);
     if (!file) {
       return;
     }
@@ -72,7 +75,7 @@ export class UploadCleanupPolicy {
   }
 
   async cleanupUploadedFiles() {
-    const files = await listUploadFiles();
+    const files = await listUploadFiles(this.options.storage);
     let markedCount = 0;
 
     for (const file of files) {
@@ -108,7 +111,7 @@ export class UploadCleanupPolicy {
     const keepIds: string[] = [];
 
     for (const id of ids) {
-      const file = await localforage.getItem<UploadFile>(id);
+      const file = await this.options.storage.getItem<UploadFile>(id);
       if (!file) {
         this.completedFileIds.delete(id);
         continue;
@@ -120,8 +123,8 @@ export class UploadCleanupPolicy {
       }
 
       if (canCleanup(file.status)) {
-        await localforage.removeItem(id);
-        releaseFileRef(id);
+        await this.options.storage.removeItem(id);
+        this.options.fileRegistry.releaseFileRef(id);
         this.completedFileIds.delete(id);
       }
     }
@@ -210,7 +213,7 @@ export class UploadCleanupPolicy {
 
     const ids = Array.from(this.completedFileIds);
     for (const id of ids) {
-      const file = await localforage.getItem<UploadFile>(id);
+      const file = await this.options.storage.getItem<UploadFile>(id);
       if (file?.status === UploadStatus.ERROR) {
         this.completedFileIds.delete(id);
       }

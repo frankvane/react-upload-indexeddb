@@ -128,6 +128,13 @@ export interface ZustandFileUploadProps extends UploadAuthConfig {
     file: UploadFile,
     config: UploadConfig
   ) => Promise<boolean>;
+
+  /**
+   * 实例标识（T3.2 单例治理）。用于隔离同页多个 <FileUpload> 的 IndexedDB
+   * 存储（storeName 后缀）。不传时回落到默认 storeName，保持单实例刷新续传行为。
+   * 多实例场景传入不同 id 即可互不串数据。
+   */
+  instanceId?: string;
 }
 
 // Internal upload config.

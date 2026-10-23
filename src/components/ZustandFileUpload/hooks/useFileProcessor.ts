@@ -1,11 +1,10 @@
 import type { ChangeEvent } from "react";
 import { useEffect, useRef } from "react";
-import localforage from "localforage";
 
 import { useEffectiveUploadConfig } from "./useEffectiveConfig";
 import { useUploadStore } from "../store/upload";
 import { ProcessingStats, UploadFile } from "../types/upload";
-import { registerFileRef } from "../services/fileRegistry";
+import { useUploadEngine } from "../context/UploadEngineContext";
 import { useShallow } from "zustand/react/shallow";
 // 用 Vite `?worker&inline` 把 worker 源码内联为 Blob，消费方无需再解析外部 worker 资产
 // （否则发布后 dev 下 `new URL('...', import.meta.url)` 指向的 .pnpm 深层路径会被 dev server
@@ -75,6 +74,7 @@ export function useFileProcessor({ uploadAll }: UseFileProcessorOptions) {
   );
   const uploadConfig = useEffectiveUploadConfig();
   const messageApi = getMessageApi();
+  const engine = useUploadEngine();
 
   const fileStartTimesRef = useRef<Record<string, number>>({});
   const prepareWorkerRef = useRef<Worker | null>(null);
@@ -239,9 +239,9 @@ export function useFileProcessor({ uploadAll }: UseFileProcessorOptions) {
               // IndexedDB 中不再存放整文件数据（原 buffer 字段已移除）
               const { fileRef, ...persistable } = file;
               if (fileRef) {
-                registerFileRef(file.id, fileRef);
+                engine.fileRegistry.registerFileRef(file.id, fileRef);
               }
-              await localforage.setItem(file.id, persistable);
+              await engine.storage.setItem(file.id, persistable);
 
               if (!fileStartTimesRef.current[file.fileName] && data.uploadFiles.length > 0) {
                 setFileTimings((prev: Record<string, number>) => ({

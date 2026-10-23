@@ -20,6 +20,23 @@ const {
   recoverInterruptedUploadFiles,
 } = await import("./uploadStorage");
 
+// T3.2：uploadStorage 服务改为接收显式 storage / fileRegistry 参数，
+// 不再依赖 localforage 默认实例。这里用一个最小桩把 mock 桥接到 storage 接口。
+const fakeStorage = {
+  iterate: (callback: (value: unknown, key: string) => void) =>
+    iterateMock(callback),
+  removeItem: (key: string) => removeItemMock(key),
+  setItem: (key: string, value: unknown) => setItemMock(key, value),
+} as unknown as import("localforage").LocalForage;
+
+const fakeRegistry = {
+  registerFileRef: vi.fn(),
+  getFileRef: vi.fn(),
+  releaseFileRef: vi.fn(),
+  releaseAllFileRefs: vi.fn(),
+  fileRefCount: vi.fn(() => 0),
+};
+
 const createFile = (
   id: string,
   status: UploadStatus,
@@ -64,22 +81,23 @@ describe("uploadStorage（T2.8 补齐）", () => {
       callback(createFile("a", UploadStatus.QUEUED, { createdAt: 1 }), "a");
     });
 
-    const files = await listUploadFiles();
+    const files = await listUploadFiles(fakeStorage);
 
     expect(files.map((f) => f.id)).toEqual(["a", "b"]);
     expect(iterateMock).toHaveBeenCalledTimes(1);
   });
 
   it("removeUploadFilesByIds 空数组直接返回不触存储", async () => {
-    await removeUploadFilesByIds([]);
+    await removeUploadFilesByIds([], fakeStorage, fakeRegistry);
     expect(removeItemMock).not.toHaveBeenCalled();
   });
 
   it("removeUploadFilesByIds 批量删除", async () => {
-    await removeUploadFilesByIds(["a", "b", "c"]);
+    await removeUploadFilesByIds(["a", "b", "c"], fakeStorage, fakeRegistry);
     expect(removeItemMock).toHaveBeenCalledTimes(3);
     expect(removeItemMock).toHaveBeenCalledWith("a");
     expect(removeItemMock).toHaveBeenCalledWith("c");
+    expect(fakeRegistry.releaseFileRef).toHaveBeenCalledTimes(3);
   });
 
   it("recoverInterruptedUploadFiles：有 buffer 的中断任务恢复到 QUEUED", async () => {
@@ -93,7 +111,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
       callback(createFile("done", UploadStatus.DONE), "done");
     });
 
-    const summary = await recoverInterruptedUploadFiles();
+    const summary = await recoverInterruptedUploadFiles(fakeStorage);
 
     expect(summary).toEqual({
       totalInterrupted: 1,
@@ -114,7 +132,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
       );
     });
 
-    const summary = await recoverInterruptedUploadFiles();
+    const summary = await recoverInterruptedUploadFiles(fakeStorage);
 
     expect(summary).toEqual({
       totalInterrupted: 1,
@@ -133,7 +151,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
       callback(createFile("instant-1", UploadStatus.INSTANT), "instant-1");
     });
 
-    const summary = await recoverInterruptedUploadFiles();
+    const summary = await recoverInterruptedUploadFiles(fakeStorage);
 
     expect(summary).toEqual({
       totalInterrupted: 0,

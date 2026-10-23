@@ -38,9 +38,11 @@ vi.mock("../worker/uploadWorker.ts?worker&inline", () => ({
   default: FakeUploadWorker,
 }));
 
-const { runUploadTask, disposeUploadWorkerPool, cancelUploadTask } = await import(
-  "./uploadWorkerBridge"
-);
+const { createUploadWorkerPool } = await import("./uploadWorkerBridge");
+
+// T3.2：runUploadTask / cancelUploadTask / dispose 不再是模块级单例导出，
+// 而是每个实例持有独立池。这里每个用例创建独立池，避免 worker 互相干扰。
+let pool: ReturnType<typeof createUploadWorkerPool>;
 
 const apiConfig = {
   baseURL: "",
@@ -72,13 +74,13 @@ const baseOptions = () => ({
 
 describe("runUploadTask uploadConfig 贯通（T2.1 mergeApi）", () => {
   beforeEach(() => {
-    // 清空全局 worker 池，保证每个测试从干净状态开始
-    disposeUploadWorkerPool();
+    // 创建独立 worker 池，保证每个测试从干净状态开始
+    pool = createUploadWorkerPool();
     FakeUploadWorker.instances = [];
   });
 
   it("mergeApi 随 uploadConfig 下发到 Worker", async () => {
-    await runUploadTask({
+    await pool.runUploadTask({
       ...baseOptions(),
       uploadConfig: {
         baseURL: "https://upload.example.com",
@@ -100,7 +102,7 @@ describe("runUploadTask uploadConfig 贯通（T2.1 mergeApi）", () => {
   });
 
   it("自定义 mergeApi 原样透传（消费方可改合并路径）", async () => {
-    await runUploadTask({
+    await pool.runUploadTask({
       ...baseOptions(),
       uploadConfig: {
         baseURL: "https://upload.example.com/",
@@ -115,26 +117,26 @@ describe("runUploadTask uploadConfig 贯通（T2.1 mergeApi）", () => {
   });
 
   it("完成后的 Worker 被回收进空闲池（不泄漏）", async () => {
-    await runUploadTask({
+    await pool.runUploadTask({
       ...baseOptions(),
       uploadConfig: apiConfig,
     });
 
-    await runUploadTask({
+    await pool.runUploadTask({
       ...baseOptions(),
       uploadConfig: apiConfig,
     });
 
     // 第二个任务复用空闲 Worker，不新建实例
     expect(FakeUploadWorker.instances).toHaveLength(1);
-    disposeUploadWorkerPool();
+    pool.dispose();
     expect(FakeUploadWorker.instances[0].terminated).toBe(true);
   });
 });
 
 describe("cancelUploadTask（T2.3 Worker CANCEL 协议）", () => {
   beforeEach(() => {
-    disposeUploadWorkerPool();
+    pool = createUploadWorkerPool();
     FakeUploadWorker.instances = [];
     FakeUploadWorker.autoRespond = true;
   });
@@ -146,7 +148,7 @@ describe("cancelUploadTask（T2.3 Worker CANCEL 协议）", () => {
   it("取消时向对应 Worker 发送 CANCEL，收到 cancelled 后任务以 cancelled 收场", async () => {
     FakeUploadWorker.autoRespond = false; // 挂起任务
 
-    const taskPromise = runUploadTask({
+    const taskPromise = pool.runUploadTask({
       ...baseOptions(),
       uploadConfig: apiConfig,
     });
@@ -154,7 +156,7 @@ describe("cancelUploadTask（T2.3 Worker CANCEL 协议）", () => {
     const worker = FakeUploadWorker.instances[0];
     expect(worker).toBeTruthy();
 
-    cancelUploadTask("file-1");
+    pool.cancelUploadTask("file-1");
 
     // Worker 收到 CANCEL 指令
     const cancelMessage = worker.posted.find((m) => m.type === "cancel");
@@ -175,13 +177,13 @@ describe("cancelUploadTask（T2.3 Worker CANCEL 协议）", () => {
     try {
       FakeUploadWorker.autoRespond = false;
 
-      const taskPromise = runUploadTask({
+      const taskPromise = pool.runUploadTask({
         ...baseOptions(),
         uploadConfig: apiConfig,
       });
 
       const worker = FakeUploadWorker.instances[0];
-      cancelUploadTask("file-1");
+      pool.cancelUploadTask("file-1");
       expect(worker.terminated).toBe(false);
 
       await vi.advanceTimersByTimeAsync(799);
@@ -200,13 +202,13 @@ describe("cancelUploadTask（T2.3 Worker CANCEL 协议）", () => {
   });
 
   it("对不在执行中的 fileId 调用是安全的 no-op", () => {
-    expect(() => cancelUploadTask("not-running")).not.toThrow();
+    expect(() => pool.cancelUploadTask("not-running")).not.toThrow();
   });
 });
 
 describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
   beforeEach(() => {
-    disposeUploadWorkerPool();
+    pool = createUploadWorkerPool();
     FakeUploadWorker.instances = [];
     FakeUploadWorker.autoRespond = true;
   });
@@ -230,7 +232,7 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
       }
     };
     try {
-      return await runUploadTask({
+      return await pool.runUploadTask({
         ...baseOptions(),
         uploadConfig: apiConfig,
         ...hooks,
@@ -273,7 +275,7 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
 
   it("worker onerror 以错误原因收场且不回收 worker", async () => {
     FakeUploadWorker.autoRespond = false;
-    const taskPromise = runUploadTask({
+    const taskPromise = pool.runUploadTask({
       ...baseOptions(),
       uploadConfig: apiConfig,
     });
@@ -291,7 +293,7 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const result = await runUploadTask({
+    const result = await pool.runUploadTask({
       ...baseOptions(),
       uploadConfig: apiConfig,
       signal: controller.signal,
@@ -304,7 +306,7 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
   it("上传中外部 signal abort：任务 cancelled 且 worker 被销毁", async () => {
     FakeUploadWorker.autoRespond = false;
     const controller = new AbortController();
-    const taskPromise = runUploadTask({
+    const taskPromise = pool.runUploadTask({
       ...baseOptions(),
       uploadConfig: apiConfig,
       signal: controller.signal,
