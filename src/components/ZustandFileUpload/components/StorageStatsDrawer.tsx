@@ -82,11 +82,9 @@ const StorageStatsDrawer: React.FC = () => {
             color = "#52c41a"; // 绿色
             break;
           case UploadStatus.ERROR:
-          case UploadStatus.MERGE_ERROR:
             color = "#f5222d"; // 红色
             break;
           case UploadStatus.UPLOADING:
-          case UploadStatus.CALCULATING:
           case UploadStatus.PREPARING_UPLOAD:
             color = "#1890ff"; // 蓝色
             break;

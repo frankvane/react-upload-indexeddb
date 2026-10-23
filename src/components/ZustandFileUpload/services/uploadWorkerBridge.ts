@@ -1,4 +1,4 @@
-import { UploadFile, type UploadHashMode } from "../types/upload";
+import { UploadFile, type UploadHashMode, type UploadProgressDetail } from "../types/upload";
 import {
   UploadWorkerRequest,
   UploadWorkerResponse,
@@ -35,7 +35,8 @@ interface RunUploadTaskOptions {
   networkParams: UploadWorkerNetworkParams;
   uploadConfig: UploadWorkerApiConfig;
   signal?: AbortSignal;
-  onProgress?: (progress: number) => void;
+  /** T3.4：进度载荷升级为字节级详情（progress/speed/eta） */
+  onProgress?: (detail: UploadProgressDetail) => void;
   onRetry?: (message: string) => void;
   onDebug?: (message: string, data?: Record<string, unknown>) => void;
 }
@@ -44,12 +45,25 @@ interface UploadTaskResult {
   success: boolean;
   skipped: boolean;
   cancelled?: boolean;
+  /** T3.3：任务被暂停（分片边界挂起），等待 resume */
+  paused?: boolean;
+  /** T3.3：暂停时已上传分片数（用于 pausedChunks 记录） */
+  pausedChunks?: number;
+  /** T3.3：总分片数 */
+  totalChunks?: number;
   errorMessage?: string;
 }
 
 export interface UploadWorkerPool {
   runUploadTask: (options: RunUploadTaskOptions) => Promise<UploadTaskResult>;
   cancelUploadTask: (fileId: string) => void;
+  /** T3.3：向处理该文件的 Worker 发送暂停指令（分片边界安全暂停） */
+  pauseUploadTask: (fileId: string) => void;
+  /**
+   * T3.3：向处理该文件的 Worker 发送继续指令。
+   * @returns 是否存在存活的 Worker 任务；false 表示任务已结束/释放，需主线程重新发起上传
+   */
+  resumeUploadTask: (fileId: string) => boolean;
   /** 释放本实例持有的全部 worker（组件卸载时调用） */
   dispose: () => void;
 }
@@ -122,6 +136,24 @@ export const createUploadWorkerPool = (): UploadWorkerPool => {
         disposeUploadWorker(worker);
       }
     }, CANCEL_FALLBACK_MS);
+  };
+
+  const pauseUploadTask = (fileId: string): void => {
+    const worker = taskWorkerMap.get(fileId);
+    if (!worker) {
+      return;
+    }
+    worker.postMessage({ type: "pause", fileId });
+  };
+
+  const resumeUploadTask = (fileId: string): boolean => {
+    const worker = taskWorkerMap.get(fileId);
+    if (!worker) {
+      // 任务已结束或 Worker 已释放（如刷新/卸载）：主线程应重新发起上传续传
+      return false;
+    }
+    worker.postMessage({ type: "resume", fileId });
+    return true;
   };
 
   const runUploadTask = (
@@ -209,7 +241,14 @@ export const createUploadWorkerPool = (): UploadWorkerPool => {
         }
 
         if (payload.type === "progress") {
-          options.onProgress?.(payload.progress);
+          // T3.4：进度载荷升级为字节级详情（progress/speed/eta）
+          options.onProgress?.({
+            progress: payload.progress,
+            uploadedBytes: payload.uploadedBytes,
+            totalBytes: payload.totalBytes,
+            speed: payload.speed,
+            eta: payload.eta,
+          });
           return;
         }
 
@@ -232,6 +271,27 @@ export const createUploadWorkerPool = (): UploadWorkerPool => {
             skipped: false,
             errorMessage: payload.message ?? "Upload failed",
           });
+          return;
+        }
+
+        if (payload.type === "paused") {
+          // T3.3：Worker 已在分片边界挂起。本实例的 runUploadTask 收尾，并把该
+          // Worker 直接销毁（不回空闲池）：当前暂停态下 Worker 内部仍挂起于
+          // waitWhilePaused，回池会留下永不被唤醒的挂起闭包与残留 Map 条目；
+          // 续传由主线程重新发起（服务端分片校验保证字节级续传），无需复用该 Worker。
+          shouldRecycleWorker = false;
+          finish({
+            success: false,
+            skipped: false,
+            paused: true,
+            pausedChunks: payload.uploadedChunks,
+            totalChunks: payload.totalChunks,
+          });
+          return;
+        }
+
+        if (payload.type === "resumed") {
+          // T3.3：Worker 已解除挂起并从断点续传，不在此结束任务
           return;
         }
 
@@ -284,6 +344,8 @@ export const createUploadWorkerPool = (): UploadWorkerPool => {
   return {
     runUploadTask,
     cancelUploadTask,
+    pauseUploadTask,
+    resumeUploadTask,
     dispose,
   };
 };

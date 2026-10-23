@@ -32,6 +32,7 @@ const DEFAULT_CONFIG: UploadConfig = {
 export interface UploadContextType extends UploadConfig, UploadAuthConfig {
   onUploadStart?: ZustandFileUploadProps["onUploadStart"];
   onUploadProgress?: ZustandFileUploadProps["onUploadProgress"];
+  onUploadProgressDetail?: ZustandFileUploadProps["onUploadProgressDetail"];
   onUploadComplete?: ZustandFileUploadProps["onUploadComplete"];
   onUploadError?: ZustandFileUploadProps["onUploadError"];
   onBatchComplete?: ZustandFileUploadProps["onBatchComplete"];
@@ -76,6 +77,7 @@ export const UploadProvider: React.FC<UploadProviderProps> = ({
   debug = false,
   onUploadStart,
   onUploadProgress,
+  onUploadProgressDetail,
   onUploadComplete,
   onUploadError,
   onBatchComplete,
@@ -136,6 +138,7 @@ export const UploadProvider: React.FC<UploadProviderProps> = ({
     debug,
     onUploadStart,
     onUploadProgress,
+    onUploadProgressDetail,
     onUploadComplete,
     onUploadError,
     onBatchComplete,

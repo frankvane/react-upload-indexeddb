@@ -173,7 +173,11 @@ const ZustandFileUploadCore: React.FC = () => {
       {uploadConfig.uiMode !== "simple" && (
         <BatchInfoDisplay batchUploader={batchUploader} />
       )}
-      <FileTable fileOperations={fileOperations} />
+      <FileTable
+        fileOperations={fileOperations}
+        pauseUploadFile={batchUploader.pauseUploadFile}
+        resumeUploadFile={batchUploader.resumeUploadFile}
+      />
       {uploadConfig.uiMode !== "simple" && <StorageStatsDrawer />}
     </div>
   );

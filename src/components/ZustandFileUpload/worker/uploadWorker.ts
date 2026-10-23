@@ -1,6 +1,7 @@
 import SparkMD5 from "spark-md5";
 import { joinUrl } from "../../../shared/url";
 import type { UploadHashMode } from "../types/upload";
+import { computeUploadProgress } from "../services/uploadProgress";
 
 // Worker消息类型定义
 type UploadWorkerMessage =
@@ -43,10 +44,60 @@ type UploadWorkerMessage =
   | {
       type: "cancel";
       fileId: string;
+    }
+  | {
+      /** 暂停指定文件的上传任务（T3.3）：分片边界安全暂停，Worker 挂起等待 resume */
+      type: "pause";
+      fileId: string;
+    }
+  | {
+      /** 继续指定文件的上传任务（T3.3）：解除 Worker 挂起，从断点续传 */
+      type: "resume";
+      fileId: string;
     };
 
 // 每个上传任务的 AbortController（按 fileId 索引），收到 CANCEL 时中断在途请求
 const taskAbortControllers = new Map<string, AbortController>();
+// 每个上传任务的暂停状态（T3.3）：pause 置 paused=true，分片循环在边界 await 挂起，
+// resume 触发 resumeResolver 解除挂起；taskStats 记录续传所需的已传分片数/总分片数。
+const taskPauseState = new Map<
+  string,
+  { paused: boolean; resumeResolver: (() => void) | null }
+>();
+const taskStats = new Map<string, { uploadedChunks: number; totalChunks: number }>();
+
+/**
+ * 分片边界安全暂停的挂起原语（T3.3）：在分片任务开始处 await 本函数，
+ * pause 消息抵达后本调用将挂起，直到 resume 消息触发 resumeResolver 解除；
+ * 暂停期间若收到 cancel（taskSignal abort），同样解除挂起，交由上层以取消收场。
+ */
+function waitWhilePaused(
+  fileId: string,
+  signal?: AbortSignal
+): Promise<void> {
+  const st = taskPauseState.get(fileId);
+  if (!st || !st.paused) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    st.resumeResolver = () => {
+      st.resumeResolver = null;
+      resolve();
+    };
+    if (signal) {
+      signal.addEventListener(
+        "abort",
+        () => {
+          if (st.resumeResolver) {
+            st.resumeResolver = null;
+            resolve();
+          }
+        },
+        { once: true }
+      );
+    }
+  });
+}
 
 // 调试日志函数
 let DEBUG_ENABLED = false;
@@ -283,18 +334,59 @@ async function fetchWithRetry(
 }
 
 self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
+  let fileId: string | undefined;
   try {
     debug("Worker 收到消息", { type: event.data.type });
 
     // 取消任务：中断该文件在途请求并退出循环（P1-8）
     if (event.data.type === "cancel") {
-      const { fileId } = event.data;
-      const controller = taskAbortControllers.get(fileId);
+      const { fileId: fid } = event.data;
+      const controller = taskAbortControllers.get(fid);
       if (controller && !controller.signal.aborted) {
         controller.abort();
-        debug("收到取消指令，已中断上传", { fileId }, true);
+        debug("收到取消指令，已中断上传", { fid }, true);
       }
-      self.postMessage({ type: "cancelled", fileId });
+      // 若正处于暂停挂起，解除等待避免 resume 永不触发
+      const pauseSt = taskPauseState.get(fid);
+      if (pauseSt && pauseSt.resumeResolver) {
+        const resolver = pauseSt.resumeResolver;
+        pauseSt.resumeResolver = null;
+        resolver();
+      }
+      taskPauseState.delete(fid);
+      taskStats.delete(fid);
+      self.postMessage({ type: "cancelled", fileId: fid });
+      return;
+    }
+
+    // 暂停：仅置标志并确认；分片循环在边界 await 挂起，等待 resume（T3.3）
+    if (event.data.type === "pause") {
+      const { fileId: fid } = event.data;
+      const st = taskPauseState.get(fid);
+      if (st) {
+        st.paused = true;
+        const stats = taskStats.get(fid);
+        self.postMessage({
+          type: "paused",
+          fileId: fid,
+          uploadedChunks: stats?.uploadedChunks ?? 0,
+          totalChunks: stats?.totalChunks ?? 0,
+        });
+      }
+      return;
+    }
+
+    // 继续：解除挂起，分片循环从断点续传（T3.3）
+    if (event.data.type === "resume") {
+      const { fileId: fid } = event.data;
+      const st = taskPauseState.get(fid);
+      if (st && st.paused) {
+        st.paused = false;
+        const resolver = st.resumeResolver;
+        st.resumeResolver = null;
+        resolver?.();
+        self.postMessage({ type: "resumed", fileId: fid });
+      }
       return;
     }
 
@@ -305,6 +397,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
     }
 
     const { fileInfo, fileRef, networkParams, uploadConfig } = event.data;
+    fileId = fileInfo.id;
     const authHeaders = uploadConfig?.authHeaders;
     // 调试日志开关由每次上传任务的配置注入（默认关闭）
     DEBUG_ENABLED = uploadConfig?.debug === true;
@@ -329,6 +422,8 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
     // 任务级取消信号：CANCEL 消息或主线程 terminate 均可中断全部在途请求（P1-8）
     const taskController = new AbortController();
     taskAbortControllers.set(fileInfo.id, taskController);
+    // 初始化暂停状态与续传统计（T3.3）
+    taskPauseState.set(fileInfo.id, { paused: false, resumeResolver: null });
     const taskSignal = taskController.signal;
 
     debug("文件信息", {
@@ -339,6 +434,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
 
     const chunkSize = fileInfo.chunkSize || 1024 * 1024;
     const chunkCount = Math.ceil(fileRef.size / chunkSize);
+    taskStats.set(fileInfo.id, { uploadedChunks: 0, totalChunks: chunkCount });
     debug("分片信息", {
       chunkSize,
       chunkCount,
@@ -359,6 +455,15 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
     debug("开始计算所有分片MD5");
     for (let i = 0; i < chunkCount; i++) {
       if (taskSignal.aborted) {
+        if (taskPauseState.get(fileInfo.id)?.paused) {
+          const stats = taskStats.get(fileInfo.id);
+          self.postMessage({
+            type: "paused",
+            fileId: fileInfo.id,
+            uploadedChunks: stats?.uploadedChunks ?? 0,
+            totalChunks: stats?.totalChunks ?? 0,
+          });
+        }
         debug("分片MD5计算被取消中断", { fileId: fileInfo.id, at: i }, true);
         return;
       }
@@ -466,8 +571,16 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
       // 3. 分片上传 - 使用并发控制
       if (needUploadChunks.length > 0) {
         debug("开始分片上传");
+        // 上传阶段计时起点，用于推导速率/剩余时间（T3.4）
+        const uploadStartTime = Date.now();
         const uploadTasks = needUploadChunks.map((i) => {
           return async () => {
+            // 分片边界安全暂停（T3.3）：开始下一个分片前检查，暂停则挂起等待 resume
+            await waitWhilePaused(fileInfo.id, taskSignal);
+            if (taskSignal.aborted) {
+              throw new Error("上传已取消");
+            }
+
             const start = i * chunkSize;
             const end = Math.min(fileRef.size, start + chunkSize);
             const chunkBuf = await fileRef.slice(start, end).arrayBuffer();
@@ -506,14 +619,29 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
 
               // 更新进度
               totalUploadedChunks++;
-              const progress = Math.round(
-                (totalUploadedChunks / chunkCount) * 100
+              const stats = taskStats.get(fileInfo.id);
+              if (stats) {
+                stats.uploadedChunks = totalUploadedChunks;
+              }
+              const uploadedBytes = Math.min(
+                totalUploadedChunks * chunkSize,
+                fileRef.size
               );
-              debug(`分片 ${i + 1} 上传成功，总进度: ${progress}%`);
+              const elapsedMs = Math.max(1, Date.now() - uploadStartTime);
+              const detail = computeUploadProgress({
+                uploadedBytes,
+                totalBytes: fileRef.size,
+                elapsedMs,
+              });
+              debug(`分片 ${i + 1} 上传成功，总进度: ${detail.progress}%`);
 
               self.postMessage({
                 type: "progress",
-                progress: progress,
+                progress: detail.progress,
+                uploadedBytes: detail.uploadedBytes,
+                totalBytes: detail.totalBytes,
+                speed: detail.speed,
+                eta: detail.eta,
                 chunkIndex: i,
               });
             } catch (error) {
@@ -535,6 +663,19 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         });
         await runWithConcurrency(uploadTasks, chunkConcurrency);
         debug("并发上传任务完成", { failedChunks: failedChunks.length });
+
+        // 暂停边界：若暂停到达时所有在途分片已结束（极端时序），在此确认 paused，
+        // 并结束本次上传任务（Worker 回到空闲，等待主线程 resume 重新发起或取消）
+        if (taskPauseState.get(fileInfo.id)?.paused) {
+          const stats = taskStats.get(fileInfo.id);
+          self.postMessage({
+            type: "paused",
+            fileId: fileInfo.id,
+            uploadedChunks: stats?.uploadedChunks ?? totalUploadedChunks,
+            totalChunks: stats?.totalChunks ?? chunkCount,
+          });
+          return;
+        }
 
         // 如果有失败的分片，报告错误
         if (failedChunks.length > 0) {
@@ -597,10 +738,14 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         type: "error",
         message: errorMessage,
       });
-    } finally {
-      // 任务结束（成功/失败/取消）后释放 AbortController，避免 Map 残留
-      taskAbortControllers.delete(fileInfo.id);
+  } finally {
+    // 任务结束（成功/失败/取消）后释放 AbortController 与暂停状态，避免 Map 残留
+    if (fileId) {
+      taskAbortControllers.delete(fileId);
+      taskPauseState.delete(fileId);
+      taskStats.delete(fileId);
     }
+  }
   } catch (error) {
     // Worker 执行过程中的全局错误处理
     const errorMessage = error instanceof Error ? error.message : String(error);

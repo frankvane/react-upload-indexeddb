@@ -63,6 +63,7 @@ export const useEffectiveUploadConfig = () => {
     // 回调函数（来自 Context）
     onUploadStart: contextConfig.onUploadStart,
     onUploadProgress: contextConfig.onUploadProgress,
+    onUploadProgressDetail: contextConfig.onUploadProgressDetail,
     onUploadComplete: contextConfig.onUploadComplete,
     onUploadError: contextConfig.onUploadError,
     onBatchComplete: contextConfig.onBatchComplete,
@@ -87,6 +88,7 @@ export const useEffectiveUploadConfig = () => {
     contextConfig.maxFiles,
     contextConfig.onUploadStart,
     contextConfig.onUploadProgress,
+    contextConfig.onUploadProgressDetail,
     contextConfig.onUploadComplete,
     contextConfig.onUploadError,
     contextConfig.onBatchComplete,

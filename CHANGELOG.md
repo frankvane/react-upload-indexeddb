@@ -8,6 +8,20 @@
 ## [Unreleased]
 
 ### Added
+- **T3.3 状态机收敛 + 暂停/恢复（目标 v2.0.0）**：
+  - 收敛共享上传状态机：删除从未被赋值的死状态 `CALCULATING` / `MERGE_ERROR`（共享 `UploadStatus` 枚举、`statusMap`、`StorageStatsDrawer` 渲染、预处理 Worker 内部枚举同步清理），保留 `PAUSED`
+  - `isUploadableStatus` 收敛为 `QUEUED | QUEUED_FOR_UPLOAD | PREPARING_UPLOAD | UPLOADING | ERROR`——**`PAUSED` 不再自动续传**，必须由用户点击「继续」显式触发 `resumeUploadFile`，避免与暂停中的 Worker 重复运行
+  - 上传 Worker 新增 `pause` / `resume` 消息：`pause` 置分片边界挂起标志并立即回 `paused{uploadedChunks,totalChunks}`；`resume` 解除挂起从断点续传；Bridge 新增 `pauseUploadTask(fileId)` / `resumeUploadTask(fileId): boolean`，`paused` 以销毁该 Worker（不回空闲池）收尾，消除挂起闭包与 `taskPauseState`/`taskStats`/`taskAbortControllers` 残留
+  - Controller 新增 `pauseUploadFile` / `resumeUploadFile`：暂停即乐观置 `PAUSED` 并通知 Worker 边界暂停；继续时若 Worker 已释放（刷新/卸载）则复用 `processFileUpload` 重新发起，服务端 `chunkCheckResult` 保证字节级续传（与下载侧 `handlePause`→重跑 `startDownload` 一致的 fallback 语义）
+  - UI 在上传中行显示「暂停」、已暂停行显示「继续」（`FileTable` 接线 + `index.tsx` 透传 handler）
+- **T3.4 字节级进度与速率（目标 v2.0.0）**：
+  - 新增纯函数 `computeUploadProgress({uploadedBytes,totalBytes,elapsedMs})` 产出 `UploadProgressDetail{progress,uploadedBytes,totalBytes,speed,eta}`，含 0 除/越界/完成态保护
+  - 上传 Worker 进度消息升级为 `{progress,uploadedBytes,totalBytes,speed,eta,chunkIndex?}`，Bridge 原样透传 detail 对象
+  - `onUploadProgress(file, progress:number)` 旧签名保留并标记 `@deprecated`，新增 `onUploadProgressDetail(file, detail)` 携带字节级速率与预计剩余时间
+  - store 新增 `speedMap` / `etaMap`，`PercentDisplay` 在 `UPLOADING` 行展示 MB/s 与剩余时间副行
+  - 新增 `uploadProgress.test.ts`（8 用例）、`worker/uploadWorker.pause.test.ts`（2 用例）、`uploadWorkerBridge.test.ts` 扩展（5 用例）覆盖上述行为
+
+### Changed
 - **T3.1 流式分片 + 采样哈希（Breaking Change，目标 v2.0.0）**：
   - `UploadFile.buffer` 字段移除，新增**运行时** `fileRef: File`（仅当前会话内存，不序列化进 IndexedDB）；文件字节改为上传时由 Worker 经 `fileRef.slice(start,end).arrayBuffer()` 逐分片惰性读取，内存峰值 = `chunkSize × chunkConcurrency`，与文件大小解耦（彻底消除整文件驻留）
   - 新增 `src/components/ZustandFileUpload/services/fileRegistry.ts`：主线程文件引用注册表，上传成功 / 删除 / 清理时联动释放，避免 File 句柄长期驻留

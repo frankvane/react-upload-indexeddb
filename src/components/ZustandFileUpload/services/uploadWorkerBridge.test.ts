@@ -242,14 +242,22 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
     }
   };
 
-  it("progress / retry / debug 消息转发到对应回调", async () => {
+  it("progress / retry / debug 消息转发到对应回调（T3.4 进度升级为字节级详情）", async () => {
     const onProgress = vi.fn();
     const onRetry = vi.fn();
     const onDebug = vi.fn();
 
+    const progressDetail = {
+      progress: 42,
+      uploadedBytes: 43008,
+      totalBytes: 1048576,
+      speed: 1024,
+      eta: 980,
+    };
+
     const result = await runWithResponses(
       [
-        { type: "progress", progress: 42, chunkIndex: 3 },
+        { type: "progress", ...progressDetail, chunkIndex: 3 },
         { type: "retry", message: "network blip" },
         { type: "debug", message: "chunk md5 done", data: { count: 4 } },
         { type: "done", skipped: false },
@@ -258,7 +266,9 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(onProgress).toHaveBeenCalledWith(42);
+    expect(onProgress).toHaveBeenCalledTimes(1);
+    // 桥接层应原样透传字节级详情（不含 chunkIndex 等桥接无关字段）
+    expect(onProgress).toHaveBeenCalledWith(progressDetail);
     expect(onRetry).toHaveBeenCalledWith("network blip");
     expect(onDebug).toHaveBeenCalledWith("chunk md5 done", { count: 4 });
   });
@@ -318,5 +328,100 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
     const result = await taskPromise;
     expect(result.cancelled).toBe(true);
     expect(worker.terminated).toBe(true);
+  });
+});
+
+describe("pauseUploadTask / resumeUploadTask（T3.3）", () => {
+  beforeEach(() => {
+    pool = createUploadWorkerPool();
+    FakeUploadWorker.instances = [];
+    FakeUploadWorker.autoRespond = true;
+  });
+
+  afterEach(() => {
+    FakeUploadWorker.autoRespond = true;
+  });
+
+  it("pauseUploadTask 向运行中的 Worker 发送 pause 指令（T3.3 分片边界暂停）", async () => {
+    FakeUploadWorker.autoRespond = false; // 挂起任务，保持 Worker 存活
+    const taskPromise = pool.runUploadTask({
+      ...baseOptions(),
+      uploadConfig: apiConfig,
+    });
+
+    const worker = FakeUploadWorker.instances[0];
+    expect(worker).toBeTruthy();
+
+    pool.pauseUploadTask("file-1");
+    const pauseMessage = worker.posted.find((m) => m.type === "pause");
+    expect(pauseMessage).toBeTruthy();
+    expect(pauseMessage?.fileId).toBe("file-1");
+
+    // Worker 回 paused：桥接层以 paused 收尾，并把 Worker 销毁（不回空闲池）
+    worker.onmessage?.({
+      data: {
+        type: "paused",
+        fileId: "file-1",
+        uploadedChunks: 2,
+        totalChunks: 5,
+      },
+    } as MessageEvent);
+
+    const result = await taskPromise;
+    expect(result.paused).toBe(true);
+    expect(result.pausedChunks).toBe(2);
+    expect(result.totalChunks).toBe(5);
+    // 暂停态不回空闲池：该 Worker 被 terminate，避免挂起闭包泄漏
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("resumeUploadTask 对运行中的任务返回 true 并发送 resume（T3.3 解除挂起）", async () => {
+    FakeUploadWorker.autoRespond = false;
+    const taskPromise = pool.runUploadTask({
+      ...baseOptions(),
+      uploadConfig: apiConfig,
+    });
+
+    const worker = FakeUploadWorker.instances[0];
+
+    const alive = pool.resumeUploadTask("file-1");
+    expect(alive).toBe(true);
+    const resumeMessage = worker.posted.find((m) => m.type === "resume");
+    expect(resumeMessage).toBeTruthy();
+    expect(resumeMessage?.fileId).toBe("file-1");
+
+    // resume 不结束任务：用 done 收尾
+    worker.onmessage?.({ data: { type: "done", skipped: false } } as MessageEvent);
+    const result = await taskPromise;
+    expect(result.success).toBe(true);
+  });
+
+  it("resumeUploadTask 对不存在/已暂停释放的任务返回 false（触发主线程重跑）", () => {
+    // 任务未启动或已 paused 收尾（fileId 从 taskWorkerMap 移除）→ 返回 false
+    const alive = pool.resumeUploadTask("ghost-file");
+    expect(alive).toBe(false);
+  });
+
+  it("pauseUploadTask 对不存在的任务调用安全 no-op", () => {
+    expect(() => pool.pauseUploadTask("ghost-file")).not.toThrow();
+  });
+
+  it("paused 后再 resume 同一 fileId：因 Worker 已销毁，resumeUploadTask 返回 false", async () => {
+    FakeUploadWorker.autoRespond = false;
+    const taskPromise = pool.runUploadTask({
+      ...baseOptions(),
+      uploadConfig: apiConfig,
+    });
+
+    const worker = FakeUploadWorker.instances[0];
+    pool.pauseUploadTask("file-1");
+    worker.onmessage?.({
+      data: { type: "paused", fileId: "file-1", uploadedChunks: 1, totalChunks: 3 },
+    } as MessageEvent);
+    await taskPromise;
+
+    // Worker 已销毁且 fileId 已从 taskWorkerMap 移除
+    expect(worker.terminated).toBe(true);
+    expect(pool.resumeUploadTask("file-1")).toBe(false);
   });
 });

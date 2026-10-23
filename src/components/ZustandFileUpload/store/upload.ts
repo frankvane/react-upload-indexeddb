@@ -32,6 +32,10 @@ type RetryingFilesUpdater =
 export interface UploadState {
   files: UploadFile[];
   progressMap: Record<string, number>;
+  /** T3.4：字节级速率（字节/秒）按 fileId 索引，供 UI 展示 */
+  speedMap: Record<string, number>;
+  /** T3.4：预计剩余时间（秒）按 fileId 索引，供 UI 展示 */
+  etaMap: Record<string, number>;
   retryingFiles: Record<string, boolean>;
 
   batchInfo: BatchInfo | null;
@@ -59,8 +63,20 @@ export interface UploadState {
   config: UploadConfig | null;
 
   setFiles: (files: UploadFile[]) => void;
+  /** 局部更新某文件的部分字段（T3.3：暂停/继续即时反馈） */
+  patchFile: (id: string, patch: Partial<UploadFile>) => void;
   refreshFiles: () => Promise<void>;
   setProgressMap: (progressMap: ProgressMapUpdater) => void;
+  setSpeedMap: (
+    speedMap:
+      | Record<string, number>
+      | ((prev: Record<string, number>) => Record<string, number>)
+  ) => void;
+  setEtaMap: (
+    etaMap:
+      | Record<string, number>
+      | ((prev: Record<string, number>) => Record<string, number>)
+  ) => void;
   setBatchInfo: (batchInfo: BatchInfoUpdater) => void;
   setProcessProgress: (progress: ProcessProgress | null) => void;
   setFileTimings: (timings: FileTimingsUpdater) => void;
@@ -102,6 +118,8 @@ export const createUploadStore = (storage: LocalForage): UploadStore =>
   create<UploadState>((set) => ({
     files: [],
     progressMap: {},
+    speedMap: {},
+    etaMap: {},
     retryingFiles: {},
     batchInfo: null,
     processProgress: null,
@@ -124,6 +142,12 @@ export const createUploadStore = (storage: LocalForage): UploadStore =>
     config: null,
 
     setFiles: (files) => set({ files }),
+    patchFile: (id, patch) =>
+      set((state) => ({
+        files: state.files.map((f) =>
+          f.id === id ? { ...f, ...patch } : f
+        ),
+      })),
     refreshFiles: async () => {
       const files = await listUploadFiles(storage);
       set({ files });
@@ -134,6 +158,15 @@ export const createUploadStore = (storage: LocalForage): UploadStore =>
           typeof progressMap === "function"
             ? progressMap(state.progressMap)
             : progressMap,
+      })),
+    setSpeedMap: (speedMap) =>
+      set((state) => ({
+        speedMap:
+          typeof speedMap === "function" ? speedMap(state.speedMap) : speedMap,
+      })),
+    setEtaMap: (etaMap) =>
+      set((state) => ({
+        etaMap: typeof etaMap === "function" ? etaMap(state.etaMap) : etaMap,
       })),
     setBatchInfo: (batchInfo) =>
       set((state) => ({

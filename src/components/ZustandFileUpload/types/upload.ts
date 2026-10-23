@@ -7,13 +7,11 @@ export enum UploadStatus {
   QUEUED = "queued",
   // Queued and waiting for actual upload.
   QUEUED_FOR_UPLOAD = "queued-for-upload",
-  // Hashing/calculation stage.
-  CALCULATING = "calculating",
   // Preparing upload request and chunks.
   PREPARING_UPLOAD = "preparing-upload",
   // Uploading chunks.
   UPLOADING = "uploading",
-  // Paused by user or runtime condition.
+  // Paused by user or runtime condition (T3.3：分片边界安全暂停，可继续续传).
   PAUSED = "paused",
   // Upload completed.
   DONE = "done",
@@ -21,8 +19,6 @@ export enum UploadStatus {
   INSTANT = "instant",
   // Upload failed.
   ERROR = "error",
-  // Failed during merge stage.
-  MERGE_ERROR = "merge-error",
 }
 
 export interface UploadFile {
@@ -51,6 +47,13 @@ export interface UploadFile {
   hashMode?: UploadHashMode;
   /** 刷新后等待用户重新选择文件：为 true 时 uploadAll 跳过并提示 */
   awaitingReselect?: boolean;
+  /**
+   * T3.4：UI 派生即时字段（不持久化）。当前瞬时速率（字节/秒）与预计剩余时间
+   * （秒），由 store 的 speedMap/etaMap 经 dataSource 注入表格行，供进度列展示。
+   */
+  speed?: number;
+  /** T3.4：UI 派生即时字段（不持久化）。预计剩余时间（秒） */
+  eta?: number;
 }
 
 export interface ProcessingStats {
@@ -113,7 +116,14 @@ export interface ZustandFileUploadProps extends UploadAuthConfig {
 
   // Callbacks
   onUploadStart?: (files: UploadFile[]) => void;
+  /**
+   * 上传进度回调（兼容旧签名：仅百分比）。
+   * @deprecated 自 v2.0.0 起建议使用 {@link onUploadProgressDetail} 获取字节级速率/剩余时间；
+   * 旧签名仍保留，回调参数为 `detail.progress`（0-100）。
+   */
   onUploadProgress?: (file: UploadFile, progress: number) => void;
+  /** 上传进度回调（v2.0.0 新增）：携带字节级进度、速率与预计剩余时间 */
+  onUploadProgressDetail?: (file: UploadFile, detail: UploadProgressDetail) => void;
   onUploadComplete?: (file: UploadFile, success: boolean) => void;
   onUploadError?: (file: UploadFile, error: string) => void;
   onBatchComplete?: (results: {
@@ -161,15 +171,27 @@ export interface UploadConfig {
 export const statusMap: Record<string, { text: string; color: string }> = {
   queued: { text: "排队中", color: "default" },
   "queued-for-upload": { text: "待上传", color: "default" },
-  calculating: { text: "计算中", color: "processing" },
   "preparing-upload": { text: "准备上传", color: "processing" },
   uploading: { text: "上传中", color: "processing" },
   paused: { text: "已暂停", color: "orange" },
   done: { text: "已完成", color: "green" },
   instant: { text: "秒传成功", color: "cyan" },
   error: { text: "上传失败", color: "red" },
-  "merge-error": { text: "合并失败", color: "red" },
 };
+
+/** 字节级上传进度详情（T3.4）：供 onUploadProgressDetail 回调与 UI 速率展示 */
+export interface UploadProgressDetail {
+  /** 整体百分比 [0-100] */
+  progress: number;
+  /** 已上传字节数 */
+  uploadedBytes: number;
+  /** 文件总字节数 */
+  totalBytes: number;
+  /** 瞬时速率（字节/秒），已做 0 除与极值保护 */
+  speed: number;
+  /** 预计剩余时间（秒），无法估算时为 0 */
+  eta: number;
+}
 
 export type AlignItem = "left" | "center" | "right";
 

@@ -235,21 +235,25 @@
 | 实施结果 | ① 全库 `grep "localforage.config\|localforage.clear()\|useUploadStore.setState" ` 仅剩本说明与测试桩，无业务单例残留；② `eslint .` 0 告警、`tsc -p tsconfig.lib.json` 0 错误、`vitest run` **22 文件 / 113 用例全绿**（含 5 个新增隔离用例）；③ `vite build` 成功，`dist/index.js` 207.34 kB / `index.cjs` 145.27 kB / `style.css` 15.25 kB；④ 修复了 T3.1 遗留的「fileRegistry 模块级单例」问题，并顺带修正 `useNetworkDetection` 误用 `useUploadStore.setState` 的隐患 |
 | 遗留事项 | ① 版本号建议随 T3.3/T3.4 一并发 `v2.0.0`（Breaking Change：单实例刷新续传语义已在 T3.1 变更），或用户确认先行 `v2.0.0-alpha.1`；② 下载侧 `createDownloadApiClient` 暂未被 `<FileDownload>` 组件按 instanceId 消费，仍为默认单例（能力已具备，按需再接线）；③ 发布走 Clash 代理 `127.0.0.1:7890`（直连 registry.npmjs.org 超时） |
 
-### T3.3 状态机收敛 + 暂停/恢复（对应 P2-15）🟡 复杂度：中
+### T3.3 状态机收敛 + 暂停/恢复（对应 P2-15）🟡 复杂度：中 ✅ 已完成
 
 | 项    | 内容                                                                                                                                                            |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 涉及文件 | `types/upload.ts:5-26`、`worker/uploadWorker.ts`、`types/workerProtocol.ts`、`components/FileUploadActions.tsx`、`components/FileTable.tsx`                       |
-| 设计要点 | ① 删除未使用状态 `CALCULATING` / `MERGE_ERROR`（或真正写入）；② Worker 新增 `PAUSE` / `RESUME` 消息，上传循环内检查暂停标志（分片边界安全暂停，参考下载侧 `handlePause`）；③ UI 暴露暂停/继续按钮，`pausedChunks` 字段启用 |
-| 验收标准 | ① 状态迁移表写入 `docs/architecture.md` 并有单测覆盖；② e2e：暂停 → 无 in-flight 请求 → 继续 → 从断点续传                                                                                |
+| 涉及文件 | `types/upload.ts`、`worker/uploadWorker.ts`、`worker/filePrepareWorker.ts`、`types/workerProtocol.ts`、`services/uploadWorkerBridge.ts`、`services/uploadStorage.ts`、`hooks/useBatchUploaderController.ts`、`components/FileTable.tsx`、`components/StorageStatsDrawer.tsx`、`components/PercentDisplay.tsx`、`index.tsx` |
+| 设计要点 | ① 收敛共享状态机：删除从未被赋值的死状态 `CALCULATING` / `MERGE_ERROR`（`UploadStatus` 枚举、`statusMap`、`StorageStatsDrawer` 渲染、预处理 Worker 内部枚举同步清理），保留 `PAUSED`；② `isUploadableStatus` 收敛为 `QUEUED \| QUEUED_FOR_UPLOAD \| PREPARING_UPLOAD \| UPLOADING \| ERROR`——**`PAUSED` 不再是可上传态**，必须由用户点击「继续」显式触发 `resumeUploadFile`，避免与暂停中的 Worker 重复运行；③ Worker 新增 `pause` / `resume` 消息：`pause` 置 `taskPauseState.paused=true` 并立即回 `paused`（携带 `uploadedChunks`/`totalChunks`），分片循环在每个分片起始 `await waitWhilePaused()` 于边界安全挂起；`resume` 触发 `resumeResolver` 解除挂起并从断点续传；④ Bridge 新增 `pauseUploadTask(fileId)` / `resumeUploadTask(fileId): boolean`，`paused` 响应以 `paused:true` 收尾并**销毁该 Worker（不回空闲池）**——避免挂起闭包与 `taskPauseState`/`taskStats`/`taskAbortControllers` 残留；⑤ Controller 新增 `pauseUploadFile`/`resumeUploadFile`：暂停即乐观置 `PAUSED` + 通知 Worker 边界暂停；继续时若 `resumeUploadTask` 返回 `false`（Worker 已释放/刷新卸载）则复用 `processFileUpload` 重新发起，服务端 `chunkCheckResult` 保证字节级续传（与下载侧 `handlePause` → 重跑 `startDownload` 一致的 fallback 语义）；⑥ UI 在上传中行显示「暂停」、已暂停行显示「继续」 |
+| 验收标准 | ① 状态迁移表写入 `docs/architecture.md`（§6）并有单测覆盖；② `uploadStorage.test.ts` 断言 `isUploadableStatus(PAUSED)===false`；③ `uploadWorkerBridge.test.ts` 覆盖 pause 发指令 / resume 返回 true 发指令 / 未知任务 resume 返回 false / paused 后 resume 返回 false；④ `uploadWorker.pause.test.ts` 覆盖暂停回 `paused` 并停止新分片请求、暂停后 resume 续传至 `done` 并回传字节级详情 |
+| 实施结果 | ① `grep CALCULATING\|MERGE_ERROR` 在业务链路（共享 `UploadStatus`/`statusMap`/store/UI）清零，仅预处理 Worker 内部独立枚举残留亦已清理；② `eslint .` 0 告警、`tsc -p tsconfig.lib.json` 0 错误、`vitest run` 全绿（新增 `uploadWorker.pause.test.ts` 2 用例 + bridge 5 用例 + storage 1 用例）；③ 暂停/继续按钮在 `FileTable` 接线，`index.tsx` 透传 handler |
+| 遗留事项 | ① 续传 fallback 走「重跑 `processFileUpload`」而非严格复用暂停中的 Worker（因 Bridge 销毁了暂停态 Worker）；如需零重算（跳过 MD5/秒传校验）的纯 Worker 内续传，需改造 Bridge 让 `paused` 不解析 `runUploadTask` 而是挂起监听直到 `done`，超出本次范围；② 版本号随 T3.4 一并发 `v2.0.0` |
 
-### T3.4 字节级进度与速率（对应 P2-26）🟢 复杂度：低
+### T3.4 字节级进度与速率（对应 P2-26）🟢 复杂度：低 ✅ 已完成
 
 | 项    | 内容                                                                                                                                                                         |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 涉及文件 | `worker/uploadWorker.ts:396-407`、`types/workerProtocol.ts`、`services/uploadWorkerBridge.ts`、`hooks/useBatchUploaderController.ts:226-233`、`components/PercentDisplay.tsx`  |
-| 改动要点 | ① 进度消息改为 `{ progress, uploadedBytes, totalBytes, speed, eta }`；② `onUploadProgress` 回调签名升级为 `(file, { progress, speed, eta })`（保留旧签名兼容一版，Deprecated 标记）；③ UI 显示 MB/s 与剩余时间 |
-| 验收标准 | 单测：按字节累加计算 speed/eta；UI 冒烟显示速率                                                                                                                                             |
+| 涉及文件 | `types/upload.ts`（新增 `UploadProgressDetail`）、`worker/uploadWorker.ts`（分片成功后 `computeUploadProgress` 计算并回传）、`services/uploadProgress.ts`（新增纯函数 + 单测）、`types/workerProtocol.ts`、`services/uploadWorkerBridge.ts`、`store/upload.ts`（`speedMap`/`etaMap`/`patchFile`）、`hooks/useBatchUploaderController.ts`（写入 speed/eta + 旧/新双回调）、`components/PercentDisplay.tsx`（速率/剩余时间副行）、`components/FileTable.tsx` |
+| 改动要点 | ① 新增纯函数 `computeUploadProgress({uploadedBytes,totalBytes,elapsedMs})` 产出 `UploadProgressDetail{progress,uploadedBytes,totalBytes,speed,eta}`，含 0 除/越界/完成态保护；② Worker 进度消息升级为 `{progress,uploadedBytes,totalBytes,speed,eta,chunkIndex?}`，Bridge 原样透传 detail 对象；③ `onUploadProgress` 旧签名 `(file, progress:number)` 保留并标记 `@deprecated`，新增 `onUploadProgressDetail(file, detail)`；④ store 新增 `speedMap`/`etaMap`，UI 在 `UPLOADING` 行展示 MB/s 与剩余时间（`PercentDisplay` 副行） |
+| 验收标准 | ① `uploadProgress.test.ts` 8 用例覆盖 50% / speed / eta / 完成态 / elapsed=0 / speed≈0 / 越界 / totalBytes=0；② `uploadWorkerBridge.test.ts` 断言 progress 透传完整 detail；③ `uploadWorker.pause.test.ts` 断言 progress 携带 `uploadedBytes>0`、`totalBytes===fileSize`、`speed`/`eta` 为数值 |
+| 实施结果 | ① 字节级速率/剩余时间随每个分片成功回传，UI 实时显示；② 旧签名消费方（`App.tsx`）无破坏；③ 全链路 `tsc`/`eslint`/`vitest` 全绿 |
+| 遗留事项 | 版本号随 T3.3 一并发 `v2.0.0` |
 
 ---
 

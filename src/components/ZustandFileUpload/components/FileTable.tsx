@@ -18,13 +18,29 @@ interface FileTableProps {
     FileOperationsActions,
     "retryingFiles" | "handleDeleteFile" | "handleRetryUpload"
   >;
+  /** T3.3：暂停/继续单个上传任务 */
+  pauseUploadFile: (file: UploadFile) => void;
+  resumeUploadFile: (file: UploadFile) => void;
 }
 
-const FileTable: React.FC<FileTableProps> = ({ fileOperations }) => {
-  const { files, progressMap, isUploading, isNetworkOffline } = useUploadStore(
+const FileTable: React.FC<FileTableProps> = ({
+  fileOperations,
+  pauseUploadFile,
+  resumeUploadFile,
+}) => {
+  const {
+    files,
+    progressMap,
+    speedMap,
+    etaMap,
+    isUploading,
+    isNetworkOffline,
+  } = useUploadStore(
     useShallow((state) => ({
       files: state.files,
       progressMap: state.progressMap,
+      speedMap: state.speedMap,
+      etaMap: state.etaMap,
       isUploading: state.isUploading,
       isNetworkOffline: state.isNetworkOffline,
     }))
@@ -44,8 +60,10 @@ const FileTable: React.FC<FileTableProps> = ({ fileOperations }) => {
         ...file,
         key: file.id,
         progress: progressMap[file.id] ?? file.progress ?? 0,
+        speed: speedMap[file.id] ?? 0,
+        eta: etaMap[file.id] ?? 0,
       })),
-    [files, progressMap]
+    [files, progressMap, speedMap, etaMap]
   );
 
   const columns = useMemo(() => {
@@ -96,21 +114,25 @@ const FileTable: React.FC<FileTableProps> = ({ fileOperations }) => {
           ) {
             return <PercentDisplay percent={100} status="success" />;
           }
-          if (
-            record.status === UploadStatus.ERROR ||
-            record.status === UploadStatus.MERGE_ERROR
-          ) {
+          if (record.status === UploadStatus.ERROR) {
             return <PercentDisplay percent={record.progress} status="error" />;
           }
-          if (record.status === UploadStatus.CALCULATING) {
+          if (record.status === UploadStatus.PAUSED) {
             return (
-              <Tooltip title={`MD5计算进度: ${record.progress}%`}>
-                <PercentDisplay percent={record.progress} status="active" />
+              <Tooltip title="已暂停，可点击「继续」从断点续传">
+                <PercentDisplay percent={record.progress} status="normal" />
               </Tooltip>
             );
           }
           if (record.status === UploadStatus.UPLOADING) {
-            return <PercentDisplay percent={record.progress} status="active" />;
+            return (
+              <PercentDisplay
+                percent={record.progress}
+                status="active"
+                speed={record.speed}
+                eta={record.eta}
+              />
+            );
           }
           return <PercentDisplay percent={record.progress} status="normal" />;
         },
@@ -136,6 +158,29 @@ const FileTable: React.FC<FileTableProps> = ({ fileOperations }) => {
 
           return (
             <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              {status === UploadStatus.UPLOADING && (
+                <Button
+                  size="small"
+                  onClick={() => pauseUploadFile(record)}
+                  disabled={isRetrying || isNetworkOffline}
+                  title={isNetworkOffline ? "网络已断开，无法暂停" : "暂停上传"}
+                >
+                  暂停
+                </Button>
+              )}
+              {status === UploadStatus.PAUSED && (
+                <Button
+                  size="small"
+                  type="primary"
+                  onClick={() => resumeUploadFile(record)}
+                  disabled={isRetrying || isNetworkOffline}
+                  title={
+                    isNetworkOffline ? "网络已断开，无法继续" : "从断点继续上传"
+                  }
+                >
+                  继续
+                </Button>
+              )}
               {status === UploadStatus.ERROR && (
                 <Button
                   size="small"
@@ -169,6 +214,8 @@ const FileTable: React.FC<FileTableProps> = ({ fileOperations }) => {
     retryingFiles,
     isUploading,
     isNetworkOffline,
+    pauseUploadFile,
+    resumeUploadFile,
     handleRetryUpload,
     handleDeleteFile,
   ]);

@@ -8,14 +8,12 @@ import type { UploadHashMode, UploadFile } from "../types/upload";
 const UploadStatus = {
   QUEUED: "queued",
   QUEUED_FOR_UPLOAD: "queued-for-upload",
-  CALCULATING: "calculating",
   PREPARING_UPLOAD: "preparing-upload",
   UPLOADING: "uploading",
   PAUSED: "paused",
   DONE: "done",
   INSTANT: "instant",
   ERROR: "error",
-  MERGE_ERROR: "merge-error",
 };
 
 /** 全量流式哈希的读取块大小：内存驻留上限，与文件大小无关 */

@@ -49,6 +49,16 @@ export type UploadWorkerRequest =
       /** 取消指定文件的上传任务：Worker 内 AbortController.abort() 中断在途请求 */
       type: "cancel";
       fileId: string;
+    }
+  | {
+      /** 暂停指定文件的上传任务（T3.3）：分片边界安全暂停，Worker 挂起等待 resume */
+      type: "pause";
+      fileId: string;
+    }
+  | {
+      /** 继续指定文件的上传任务（T3.3）：解除 Worker 挂起，从断点续传 */
+      type: "resume";
+      fileId: string;
     };
 
 export type UploadWorkerResponse =
@@ -59,7 +69,16 @@ export type UploadWorkerResponse =
     }
   | {
       type: "progress";
+      /** 整体百分比 [0-100] */
       progress: number;
+      /** 已上传字节数（T3.4 字节级进度） */
+      uploadedBytes: number;
+      /** 文件总字节数 */
+      totalBytes: number;
+      /** 瞬时速率（字节/秒，T3.4） */
+      speed: number;
+      /** 预计剩余时间（秒，T3.4） */
+      eta: number;
       chunkIndex?: number;
     }
   | {
@@ -81,6 +100,20 @@ export type UploadWorkerResponse =
   | {
       /** 取消完成确认：Worker 已中断该文件的在途请求 */
       type: "cancelled";
+      fileId: string;
+    }
+  | {
+      /** 暂停确认（T3.3）：Worker 已在分片边界挂起，等待 resume */
+      type: "paused";
+      fileId: string;
+      /** 已上传分片数（用于 pausedChunks 记录与展示） */
+      uploadedChunks: number;
+      /** 总分片数 */
+      totalChunks: number;
+    }
+  | {
+      /** 继续确认（T3.3）：Worker 已解除挂起并从断点续传 */
+      type: "resumed";
       fileId: string;
     };
 

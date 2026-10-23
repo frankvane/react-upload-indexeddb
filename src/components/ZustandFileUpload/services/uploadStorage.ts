@@ -48,21 +48,19 @@ export const removeUploadFilesByIds = async (
 };
 
 const interruptedUploadStatuses = new Set<UploadStatus>([
-  UploadStatus.CALCULATING,
   UploadStatus.PREPARING_UPLOAD,
   UploadStatus.UPLOADING,
   UploadStatus.QUEUED_FOR_UPLOAD,
 ]);
 
 export const isUploadableStatus = (status: UploadStatus) =>
+  // PAUSED 需显式「继续」才续传（T3.3），不纳入自动可上传集合，避免与暂停中的
+  // Worker 挂起任务双跑；ERROR/QUEUED 等仍可由 uploadAll/重试自动拾起。
   status === UploadStatus.QUEUED ||
   status === UploadStatus.QUEUED_FOR_UPLOAD ||
-  status === UploadStatus.CALCULATING ||
   status === UploadStatus.PREPARING_UPLOAD ||
   status === UploadStatus.UPLOADING ||
-  status === UploadStatus.PAUSED ||
-  status === UploadStatus.ERROR ||
-  status === UploadStatus.MERGE_ERROR;
+  status === UploadStatus.ERROR;
 
 export interface UploadRecoverySummary {
   totalInterrupted: number;

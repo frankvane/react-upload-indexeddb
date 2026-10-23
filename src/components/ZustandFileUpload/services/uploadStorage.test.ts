@@ -66,9 +66,15 @@ describe("uploadStorage（T2.8 补齐）", () => {
     setItemMock.mockClear();
   });
 
-  it("isUploadableStatus 覆盖全部分支（既有用例保留）", () => {
+  it("isUploadableStatus 覆盖全部分支（T3.3 状态机收敛后 PAUSED 需显式继续）", () => {
+    // T3.3：可上传状态收敛为 QUEUED | QUEUED_FOR_UPLOAD | PREPARING_UPLOAD | UPLOADING | ERROR
     expect(isUploadableStatus(UploadStatus.QUEUED)).toBe(true);
-    expect(isUploadableStatus(UploadStatus.PAUSED)).toBe(true);
+    expect(isUploadableStatus(UploadStatus.QUEUED_FOR_UPLOAD)).toBe(true);
+    expect(isUploadableStatus(UploadStatus.PREPARING_UPLOAD)).toBe(true);
+    expect(isUploadableStatus(UploadStatus.UPLOADING)).toBe(true);
+    expect(isUploadableStatus(UploadStatus.ERROR)).toBe(true);
+    // PAUSED 不再自动续传：必须由用户点击「继续」触发 resume，避免与暂停中的 Worker 重复运行
+    expect(isUploadableStatus(UploadStatus.PAUSED)).toBe(false);
     expect(isUploadableStatus(UploadStatus.DONE)).toBe(false);
     expect(isUploadableStatus(UploadStatus.INSTANT)).toBe(false);
   });
