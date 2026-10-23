@@ -1,7 +1,7 @@
 # react-upload-indexeddb 实施清单（Implementation Checklist）
 
 > 配套文档：[`project-analysis.md`](./project-analysis.md)（问题分析与证据）  
-> 制定日期：2026-10-23　｜　基线版本：`v1.0.5`　｜　目标版本：`v1.1.0`（阶段一+二）/ `v2.0.0`（阶段三）
+> 制定日期：2026-10-23　｜　基线版本：`v1.0.5`　｜　目标版本：`v1.1.0`（阶段一+二）/ `v1.2.0`（阶段四 T4.1+T4.2）/ `v1.3.0`（阶段四 T4.3 去 antd）/ `v2.0.0`（阶段三）
 
 ---
 
@@ -41,7 +41,7 @@
 > 注 1：`useFileProcessor` 卸载后 500ms 不发起上传一项仍以代码评审 + 手工验证覆盖（`fileProcessor.ts` 覆盖率 23.5%，harness 成本高于收益，留待阶段三重构时一并补）。
 > 注 2：e2e playwright 冒烟测试（上传 5MB → 列表可见 → 下载 → md5 一致）**延后**——仓库无 playwright 依赖，引入成本与收益暂不匹配；服务端已有 29 个 `node --test` 集成用例覆盖上传/下载/合并主链路。
 
-**下一步**：阶段三（架构升级）需单独立项与评审（T3.1 流式分片 / T3.2 全局单例治理 / T3.3 状态机收敛 / T3.4 字节级进度），目标版本 `v2.0.0`。
+**下一步**：阶段四（依赖瘦身，分析见 [`dependency-slimming-analysis.md`](./dependency-slimming-analysis.md)）：T4.1 vitest5+vite7 升级与 T4.2 去 ahooks 可并行（合计 1.5 人日，低风险，合入 v1.2.0）；T4.3 去 antd（14~20 人日）建议独立分支与 v1.3.0 发布。阶段三（架构升级）需用户确认后立项（T3.1 流式分片 / T3.2 全局单例治理 / T3.3 状态机收敛 / T3.4 字节级进度），目标版本 `v2.0.0`。
 
 ---
 
@@ -238,6 +238,50 @@
 
 ---
 
+## 阶段四：依赖瘦身（不动业务逻辑，分析见 [`dependency-slimming-analysis.md`](./dependency-slimming-analysis.md)）
+
+> 阶段四全部任务**不改变对外 API**（props / 事件 / 导出类型），除默认视觉样式外无 Breaking Change。
+> 版本规划：T4.1+T4.2 → `v1.2.0`；T4.3 → `v1.3.0`（建议独立 minor 发版，与阶段三 `v2.0.0` 解耦）。
+
+### T4.1 测试工具链升级：vitest 2 → 5 + vite 5 → 7（🟢 复杂度：低，1 人日）
+
+| 项    | 内容                                                                                                                                                                                                 |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 涉及文件 | `package.json`（devDeps）、`.github/workflows/ci.yml`（Node 20 → 22）、`vite.config.ts`（coverage glob 门槛复验）                                                                                                    |
+| 改动要点 | ① vitest 2.1.8 → 5.0.5 + `@vitest/coverage-v8` 5.0.5（peer 对齐，消解当年降级安装的冲突）；② 连带 vite 5.4.19 → 7.x + `@vitejs/plugin-react-swc` 3.10 → 4.x（vitest 5 要求 vite ≥6.4 且 vite 改为 peer）；③ Node ≥22.12，CI setup-node 改 22 |
+| 风险核对 | `clearMocks` 已显式 true（v5 默认变更无影响）；`vi.mock`/`vi.hoisted` 均在顶层（v5 强制要求，已合规）；`-t`/`sequential` 未用；coverage `thresholds` glob 键需升级后复验 |
+| 为什么不上 vite 8 | vite 8 换 Rolldown+Oxc：`manualChunks` 函数形式 deprecated（须迁 `codeSplitting.groups`）、压缩器变更需复测体积、4 个 `?worker&inline` 需重点复验（1.0.4/1.0.5 踩坑区）。收益（构建速度）对本库有限，拆为 T4.1b 可选 |
+| 验收标准 | ① 90 单测全绿 + coverage 门槛通过（含 glob）；② lib 产物体积偏差 <5%；③ pack dry-run 71 文件不变；④ CI（Node 22）全绿 |
+
+### T4.1b vite 7 → 8 迁移（🟡 复杂度：中，1~2 人日，**可选**）
+
+| 项    | 内容                                                                                                                                                                                                 |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 涉及文件 | `vite.config.ts`（`build.rollupOptions.output.manualChunks` → `build.rolldownOptions.output.codeSplitting.groups`）、`vite.lib.config.ts`（复验 lib 模式 + worker inline）                                                              |
+| 改动要点 | ① demo 配置迁 `codeSplitting.groups`；② Oxc minifier 上线后对比产物体积；③ **四个 Worker `?worker&inline` 冒烟复验**（filePrepare/upload/merger/downloader）；④ 无回退问题后删除 rollupOptions 旧键 |
+| 验收标准 | ① lib 与 demo 构建均成功，worker 内联行为不变（demo 上传 5MB 文件冒烟）；② 体积对比报告存档；③ 90 单测 + server 29 用例全绿 |
+
+### T4.2 去除 ahooks：自研 useNetwork（🟢 复杂度：低，0.5 人日）
+
+| 项    | 内容                                                                                                                                                                                                 |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 涉及文件 | 新增 `src/shared/useNetwork.ts` + `src/shared/useNetwork.test.ts`；改 `ZustandFileUpload/hooks/useNetworkDetection.ts`、`ZustandFileDownload/hooks/useNetworkDetection.ts`（仅改 import）；`package.json` 删 `ahooks`；`vite.lib.config.ts` external 删 `ahooks` |
+| 改动要点 | ① 自研 hook 对齐 ahooks 实现的 4 个字段（`online`/`rtt`/`type`/`effectiveType`），事件监听一致（online/offline/connection change），SSR 安全；② 不加 `since` 等死字段；③ 单测 4 用例（初值/online/offline/connection change/卸载清理） |
+| 验收标准 | ① `npm ls ahooks` 为空，pack 后无 ahooks 引用；② `networkStrategy.test.ts` 7 用例仍绿；③ 两处 useNetworkDetection 行为不变（代码评审 + 手工断网冒烟） |
+
+### T4.3 去除 antd：自建轻量 UI 层（🔴 复杂度：高，14~20 人日）
+
+| 项    | 内容                                                                                                                                                                                                 |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 涉及文件 | 20 个文件 21 处 `from "antd"` + 7 文件 15 个 `@ant-design/icons`；新增 `src/ui/`（约 20 组件）+ `src/ui/ui.css`；`store/upload.ts` 的 `MessageInstance` 类型换本地 `MessageLike`；`package.json` peerDependencies 删 antd、`files` 加 CSS；`vite.lib.config.ts` external 删 antd/icons |
+| 改动要点 | ① 基础层（Space/Typography/Card/Tag/Badge/Alert/Empty/Spin/Row/Col/Statistic，3~4 人日）；② **Table 自研**（列渲染/align/ellipsis/rowSelection 按行 disabled/scroll.x/loading/空态/bordered，迁移 FileTable+FileList+SimpleUploadList 约 700 行，3~4 人日）；③ **Modal×2 + Drawer×2**（Portal/遮罩/Esc/焦点陷阱/动画，2~3 人日）；④ **message 全局层**（上传侧接既有 `getMessageApi` 注入层，下载侧静态直调改轻量单例，1 人日）；⑤ 15 图标内联 SVG（0.5~1 人日）；⑥ 测试迁移 + UI 单测 ≥15 用例（2~3 人日）；⑦ 视觉回归走查（1~2 人日） |
+| 已具备利好 | ① 上传侧 message 注入层已存在（`getMessageApi`/`setMessageApi`）；② 公共 API 无 antd 类型泄漏（`AlignItem` 是本地联合类型）；③ src 零 `.css` import，antd v5 CSS-in-JS 替换后只需新增一个自带 `ui.css` |
+| 收益 | peer 依赖 4→3；不用 antd 的消费方省 ~272 kB gzip + CSS-in-JS 运行时；根治"antd 静态 message 不吃 ConfigProvider"（project-analysis 已记录）；demo 1.26 MB → ~350 kB |
+| 代价 | 已用 antd 的消费方（如 vane-crm）多带 ~30~60 kB 库 UI；默认观感从 antd 设计语言变为库自带极简样式（README 必须明示 + 给样式覆盖入口） |
+| 验收标准 | ① `grep "from \"antd\""` 与 `@ant-design/icons` 均为空；② 90 单测全绿 + UI 新增 ≥15 用例；③ `dist/ui.css` 产出且 `files` 包含；④ demo 构建 < 400 kB；⑤ 上传/下载全流程视觉回归清单存档；⑥ README 明示样式变化与覆盖方式 |
+
+---
+
 ## 执行顺序与依赖
 
 ```
@@ -254,6 +298,16 @@
                           ├──► T2.5 ──┤
                           ├──► T2.6 ──┼──► T2.8(最终覆盖率收口)
                           └──► T2.7 ──┘
+
+阶段四（不依赖阶段三，建议先于阶段三执行）
+  T4.1 vitest5+vite7 ─┐（T4.1/T4.2 可并行，互不依赖）
+  T4.2 去 ahooks ─────┼──► v1.2.0
+  T4.1b vite 8（可选）┘
+  T4.3 去 antd ──────────────────────────────► v1.3.0
+        （T4.3 先于阶段三：UI 私有化后反而简化 T3.2 单例治理）
+
+阶段三（需单独立项评审）
+  T3.1 流式分片 ──► T3.2 单例治理 ──► T3.3 状态机 ──► T3.4 字节级进度 ──► v2.0.0
 
 阶段三
   T3.1 ──► T3.3
