@@ -55,13 +55,18 @@ async function fetchWithRetry(
     timeout = 30000,
     retryInterval = 1000,
     authHeaders,
+    credentials,
   }: {
     maxRetries?: number;
     timeout?: number;
     retryInterval?: number;
     authHeaders?: Record<string, string>;
+    credentials?: RequestCredentials;
   } = {}
 ): Promise<Response> {
+  // 默认 same-origin：跨域 Bearer 头鉴权时不携带 Cookie，也不会触发 preflight
+  // 对 Access-Control-Allow-Credentials:true 的强校验；仅当显式传入 'include' 时才携带 Cookie。
+  const requestCredentials: RequestCredentials = credentials ?? "same-origin";
   debug(`开始请求: ${url}`, { method: options.method, maxRetries });
 
   // 合并鉴权头（authHeaders 优先级低于调用方显式 headers，避免覆盖 Content-Type 等）
@@ -110,8 +115,10 @@ async function fetchWithRetry(
         const response = await fetch(url, {
           ...options,
           headers: mergedHeaders,
-          // 同域 Cookie 自动携带（Bearer 头用于跨域），与下载侧 axios withCredentials 一致
-          credentials: "include",
+          // credentials 策略：默认 same-origin（跨域不送 Cookie，Authorization 头照常发送）；
+          // 仅当 uploadConfig.withCredentials 为 true（同域/跨域 Cookie 鉴权）时才 'include'，
+          // 此时需服务端返回 Access-Control-Allow-Credentials:true。
+          credentials: requestCredentials,
           signal: controller.signal,
         });
 
@@ -211,6 +218,9 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
 
     const { fileInfo, fileBuffer, networkParams, uploadConfig } = event.data;
     const authHeaders = uploadConfig?.authHeaders;
+    // 仅当显式开启 withCredentials（Cookie 鉴权）时才带 'include'，否则 same-origin
+    const credentialsMode: RequestCredentials =
+      uploadConfig?.withCredentials === true ? "include" : "same-origin";
 
     // 检查必要参数
     if (!fileInfo) {
@@ -294,7 +304,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
         },
-        { ...retryOptions, authHeaders }
+        { ...retryOptions, authHeaders, credentials: credentialsMode }
       );
 
       debug("秒传确认响应", { status: instantRes.status });
@@ -380,7 +390,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
                   method: "POST",
                   body: formData,
                 },
-                { ...retryOptions, authHeaders }
+                { ...retryOptions, authHeaders, credentials: credentialsMode }
               );
 
               // 更新进度
@@ -453,7 +463,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(mergeRequestBody),
         },
-        { ...retryOptions, authHeaders }
+        { ...retryOptions, authHeaders, credentials: credentialsMode }
       );
       debug("文件合并成功");
 

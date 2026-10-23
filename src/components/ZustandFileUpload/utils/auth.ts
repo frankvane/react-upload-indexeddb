@@ -14,6 +14,12 @@ export interface UploadAuthConfig {
   getAuthHeaders?: () => Record<string, string> | Promise<Record<string, string>>;
   /** Token scheme，默认 Bearer */
   authScheme?: string;
+  /** 是否以 credentials:'include' 发送请求（携带 Cookie）。
+   *  默认 false：跨域走 Bearer 头鉴权，使用 same-origin，不触发 CORS 对
+   *  Access-Control-Allow-Credentials:true 的强校验；
+   *  仅当同域 Cookie 或跨域 Cookie 鉴权时才需设为 true（且服务端需返回
+   *  Access-Control-Allow-Credentials:true）。 */
+  withCredentials?: boolean;
 }
 
 export async function resolveAuthHeaders(

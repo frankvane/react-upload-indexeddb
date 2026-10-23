@@ -1,12 +1,8 @@
-// 导出Worker创建函数
-export const createDownloadWorker = () => {
-  return new Worker(new URL("./downloader.worker.ts", import.meta.url), {
-    type: "module", // 使用module类型
-  });
-};
+// 内联 worker（见 useFileProcessor 注释）：避免发布后被消费方当作外部资产 404。
+import DownloadWorker from "./downloader.worker.ts?worker&inline";
+import MergeWorker from "./merger.worker.ts?worker&inline";
 
-export const createMergeWorker = () => {
-  return new Worker(new URL("./merger.worker.ts", import.meta.url), {
-    type: "module", // 使用module类型
-  });
-};
+// 导出Worker创建函数
+export const createDownloadWorker = () => new DownloadWorker();
+
+export const createMergeWorker = () => new MergeWorker();

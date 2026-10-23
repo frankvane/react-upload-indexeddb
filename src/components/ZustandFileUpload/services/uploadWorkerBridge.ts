@@ -3,6 +3,8 @@ import {
   UploadWorkerRequest,
   UploadWorkerResponse,
 } from "../types/workerProtocol";
+// 内联 worker（见 useFileProcessor 注释）：避免发布后被消费方当作外部资产 404。
+import UploadWorker from "../worker/uploadWorker.ts?worker&inline";
 
 interface UploadWorkerNetworkParams {
   networkType: string;
@@ -17,6 +19,7 @@ interface UploadWorkerApiConfig {
   uploadApi: string;
   checkApi: string;
   authHeaders?: Record<string, string>;
+  withCredentials?: boolean;
 }
 
 interface RunUploadTaskOptions {
@@ -37,10 +40,7 @@ interface UploadTaskResult {
   errorMessage?: string;
 }
 
-const createUploadWorker = () =>
-  new Worker(new URL("../worker/uploadWorker.ts", import.meta.url), {
-    type: "module",
-  });
+const createUploadWorker = () => new UploadWorker();
 
 const workerPool = new Set<Worker>();
 const idleWorkers: Worker[] = [];

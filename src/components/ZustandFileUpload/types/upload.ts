@@ -115,6 +115,8 @@ export interface UploadConfig {
   maxFileSize: number;
   allowedFileTypes: string[];
   maxFiles: number;
+  /** 是否以 credentials:'include' 发送请求（携带 Cookie）。默认 false。见 utils/auth.ts 说明。 */
+  withCredentials?: boolean;
 }
 
 export const statusMap: Record<string, { text: string; color: string }> = {

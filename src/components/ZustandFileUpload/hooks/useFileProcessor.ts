@@ -6,6 +6,10 @@ import { useEffectiveUploadConfig } from "./useEffectiveConfig";
 import { useUploadStore } from "../store/upload";
 import { ProcessingStats, UploadFile } from "../types/upload";
 import { useShallow } from "zustand/react/shallow";
+// 用 Vite `?worker&inline` 把 worker 源码内联为 Blob，消费方无需再解析外部 worker 资产
+// （否则发布后 dev 下 `new URL('...', import.meta.url)` 指向的 .pnpm 深层路径会被 dev server
+// 当作 SPA fallback 返回 HTML，导致 worker 加载失败 → “文件预处理失败”）。
+import FilePrepareWorker from "../worker/filePrepareWorker.ts?worker&inline";
 
 interface WorkerProgressMessage {
   type: "progress";
@@ -33,10 +37,7 @@ interface WorkerCompleteMessage {
 
 type WorkerMessage = WorkerProgressMessage | WorkerCompleteMessage;
 
-const createFilePrepareWorker = () =>
-  new Worker(new URL("../worker/filePrepareWorker.ts", import.meta.url), {
-    type: "module",
-  });
+const createFilePrepareWorker = () => new FilePrepareWorker();
 
 interface UseFileProcessorOptions {
   uploadAll: () => Promise<boolean>;

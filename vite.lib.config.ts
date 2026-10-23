@@ -8,6 +8,11 @@ export default defineConfig({
   plugins: [react()],
   // 库构建不复制 public/ 静态资源（vite.svg 等），保持 dist 干净
   publicDir: false,
+  // 关键：worker chunk（filePrepareWorker/uploadWorker/merger/downloader）经
+  // `new URL('...', import.meta.url)` 引用，默认 base '/' 会生成绝对路径
+  // `/assets/xxx.js`，被消费方 Vite（dev/构建）解析到站点根 → 404 → 文件预处理失败。
+  // 设为 './' 让 worker URL 相对引用，随 import.meta.url 落到库自身目录，消费方直接可用。
+  base: "./",
   build: {
     lib: {
       entry: resolve(__dirname, "src/index.ts"),
@@ -28,7 +33,9 @@ export default defineConfig({
         "zustand/react/shallow",
         "ahooks",
         "localforage",
-        "spark-md5",
+        // 注意：spark-md5 不能 external —— 它被 filePrepareWorker / uploadWorker 引用，
+        // 而 Worker 运行时无法解析裸模块导入；改用 Vite `?worker&inline` 把 worker
+        // （连同 spark-md5）整体内联为 Blob，消费方 dev/构建都无需再解析外部 worker 资产。
         "axios",
       ],
       output: {

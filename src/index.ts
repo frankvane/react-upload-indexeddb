@@ -1,4 +1,5 @@
 // 公共入口：供 npm 消费方导入。仅导出组件、类型与少量工具，不引入任何全局 CSS。
+export { default } from "./components/ZustandFileUpload";
 export { default as FileUpload, default as ZustandFileUpload } from "./components/ZustandFileUpload";
 export { default as FileDownload, default as ZustandFileDownload } from "./components/ZustandFileDownload";
 

@@ -73,6 +73,7 @@ export const useEffectiveUploadConfig = () => {
     getAuthToken: contextConfig.getAuthToken,
     getAuthHeaders: contextConfig.getAuthHeaders,
     authScheme: contextConfig.authScheme,
+    withCredentials: contextConfig.withCredentials,
   }), [
     contextConfig.baseURL,
     contextConfig.uploadApi,
@@ -93,6 +94,7 @@ export const useEffectiveUploadConfig = () => {
     contextConfig.getAuthToken,
     contextConfig.getAuthHeaders,
     contextConfig.authScheme,
+    contextConfig.withCredentials,
     storeConfig.chunkSize,
     storeConfig.fileConcurrency,
     storeConfig.chunkConcurrency,

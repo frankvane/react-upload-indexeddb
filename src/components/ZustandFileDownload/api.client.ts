@@ -41,6 +41,10 @@ interface DownloadApiConfig {
   baseURL?: string;
   listApi?: string;
   downloadApi?: string;
+  /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin）。
+   *  跨域 Bearer 头鉴权场景保持 false 即可；仅同域/跨域 Cookie 鉴权才需 true，
+   *  且服务端需返回 Access-Control-Allow-Credentials:true。 */
+  withCredentials?: boolean;
 }
 
 interface ApiEnvelope<T> {
@@ -65,9 +69,10 @@ const runtimeConfig: RuntimeConfig = {
 const apiClient = axios.create({
   baseURL: runtimeConfig.baseURL,
   timeout: 30000,
-  // 同域 Cookie 自动携带（与上传侧 Worker credentials:'include' 一致）；
-  // 跨域场景需服务端 CORS 允许 credentials，并使用下面 setDownloadAuth 注入 Bearer 头。
-  withCredentials: true,
+  // 默认不携带 Cookie（same-origin 语义）：跨域 Bearer 头鉴权时不触发 CORS 对
+  // Access-Control-Allow-Credentials:true 的强校验；同域 Cookie 场景浏览器仍会
+  // 自动携带。需要跨域 Cookie 鉴权时由 configureDownloadApi({ withCredentials:true }) 开启。
+  withCredentials: false,
   headers: {
     "Content-Type": "application/json",
   },
@@ -83,6 +88,8 @@ export const configureDownloadApi = (config: DownloadApiConfig = {}): void => {
   );
 
   apiClient.defaults.baseURL = runtimeConfig.baseURL;
+  // 是否携带 Cookie：默认 false（same-origin），仅跨域 Cookie 鉴权时显式开启
+  apiClient.defaults.withCredentials = config.withCredentials ?? false;
 };
 
 /**
