@@ -1,4 +1,5 @@
 import SparkMD5 from "spark-md5";
+import { buildQueueId } from "../../../shared/fileId";
 
 /**
  * @enum {string}
@@ -91,7 +92,8 @@ self.onmessage = async (e) => {
 
       const arrayBuffer = await file.arrayBuffer();
       const hash = calculateMD5(arrayBuffer);
-      const id = hash;
+      // 队列 id 含随机后缀：同内容文件不再互相覆盖（P1-7）
+      const id = buildQueueId(hash, file.size, file.lastModified);
 
       /** @type {UploadFile} */
       const uploadFile = {

@@ -5,6 +5,7 @@ import {
 } from "../types/workerProtocol";
 // 内联 worker（见 useFileProcessor 注释）：避免发布后被消费方当作外部资产 404。
 import UploadWorker from "../worker/uploadWorker.ts?worker&inline";
+import { buildChunkKey } from "../../../shared/chunkKey";
 
 interface UploadWorkerNetworkParams {
   networkType: string;
@@ -18,6 +19,7 @@ interface UploadWorkerApiConfig {
   baseURL: string;
   uploadApi: string;
   checkApi: string;
+  mergeApi: string;
   authHeaders?: Record<string, string>;
   withCredentials?: boolean;
 }
@@ -190,6 +192,12 @@ export const runUploadTask = async (
         fileSize: options.file.fileSize,
         hash: options.file.hash,
         chunkSize: options.file.chunkSize,
+        // 分片存储键：chunkSize 变化（网络自适应）后新旧分片互不污染（P1-6）
+        chunkKey: buildChunkKey(
+          options.file.hash,
+          options.file.fileSize,
+          options.file.chunkSize
+        ),
       },
       fileBuffer: options.fileBuffer,
       networkParams: options.networkParams,

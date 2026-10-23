@@ -64,6 +64,7 @@ export interface ZustandFileUploadProps extends UploadAuthConfig {
   baseURL?: string;
   uploadApi?: string;
   checkApi?: string;
+  mergeApi?: string;
 
   // Network/upload tuning
   chunkSize?: number;
@@ -108,6 +109,7 @@ export interface UploadConfig {
   baseURL: string;
   uploadApi: string;
   checkApi: string;
+  mergeApi: string;
   chunkSize: number;
   fileConcurrency: number;
   chunkConcurrency: number;

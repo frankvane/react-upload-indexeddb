@@ -6,6 +6,8 @@
     fileSize: number;
     hash?: string;
     chunkSize?: number;
+    /** 分片存储键（服务端 file_id）：`${md5}_${size}_${chunkSize}`，见 shared/chunkKey.ts */
+    chunkKey?: string;
   };
   fileBuffer: ArrayBuffer;
   networkParams?: {
@@ -21,6 +23,7 @@
     baseURL: string;
     uploadApi: string;
     checkApi: string;
+    mergeApi: string;
     /** 鉴权请求头（已在主线程解析好，序列化传入 Worker） */
     authHeaders?: Record<string, string>;
     /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin）：

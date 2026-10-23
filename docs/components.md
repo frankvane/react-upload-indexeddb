@@ -51,6 +51,7 @@ import { API_BASE_URL, API_PATHS } from "./config/api";
 | `baseURL` | `string` | `API_BASE_URL` | API 基础地址 |
 | `uploadApi` | `string` | `API_PATHS.file.upload` | 分片上传接口 |
 | `checkApi` | `string` | `API_PATHS.file.instant` | 秒传/分片校验接口 |
+| `mergeApi` | `string` | `API_PATHS.file.merge` | 合并接口；URL 拼接统一走 `joinUrl`，`baseURL` 带尾斜杠不会出现 `//api/` |
 | `chunkSize` | `number` | `1024 * 1024` | 分片大小（字节） |
 | `fileConcurrency` | `number` | `2` | 文件级并发 |
 | `chunkConcurrency` | `number` | `2` | 分片级并发 |
@@ -250,17 +251,24 @@ import { API_BASE_URL, API_PATHS } from "./config/api";
 2. 若需“始终自动模式”，上传组件请固定 `settingsSource="props"`，避免本地历史开关影响。
 3. 若希望以组件回调联动埋点/通知，上传组件可以直接使用；下载组件建议先补齐回调触发点再依赖。
 
-## 7. 鉴权接入
+## 7. 分片键与队列 id（v1.1.0 起）
+
+- **分片存储键**（服务端 `file_id`）由客户端生成为 `${md5}_${size}_${chunkSize}`（`src/shared/chunkKey.ts`）。`chunkSize` 会随网络状况在 256KB~8MB 间自适应调整，键中携带 `chunkSize` 使新旧分片方案天然隔离，续传校验不会把另一套分片误判为已传（P1-6）。
+- **秒传判定**以 `md5 + size` 为准（服务端 `instantCheck`），因此 `chunkSize` 变化不影响秒传命中。
+- **上传队列 id**（本地 IndexedDB 主键）为 `${md5}_${size}_${lastModified}_${随机后缀}`，同内容文件多次选择不再互相覆盖（P1-7）。
+- 兼容性：旧版纯 md5 键的请求服务端按兼容逻辑处理；`instantCheck` 检测到复合键与请求的 `size`/`chunk_size` 不一致时，会清空该键下的旧分片结果并提示客户端按新参数重传。
+
+## 8. 鉴权接入
 
 组件不持有任何凭证，鉴权全部通过 props 注入，由消费方决定 Token 来源。上传侧与下载侧共用同一套语义（解析实现在 `src/shared/authHeaders.ts`）。
 
-### 7.1 credentials 默认语义
+### 8.1 credentials 默认语义
 
 - 上传 Worker（`fetch`）与下载分片请求**默认 `same-origin`**：同域场景浏览器自动携带 Cookie；跨域 Bearer 头鉴权不会触发 CORS preflight 对 `Access-Control-Allow-Credentials:true` 的强校验。
 - 仅当需要**跨域 Cookie** 鉴权时才显式 `withCredentials: true`，此时服务端必须返回 `Access-Control-Allow-Credentials:true` 且 `Access-Control-Allow-Origin` 为具体 Origin（不能是 `*`）。
 - 下载侧列表请求走 axios，默认 `withCredentials: false`，语义同上。
 
-### 7.2 组合矩阵
+### 8.2 组合矩阵
 
 | 场景 | 上传侧（FileUpload） | 下载侧（FileDownload） | 服务端要求 |
 | --- | --- | --- | --- |
@@ -268,7 +276,7 @@ import { API_BASE_URL, API_PATHS } from "./config/api";
 | 同域 Cookie | 无需额外代码（默认 `same-origin` 自动携带） | 无需额外代码 | 校验 Cookie |
 | 跨域 Cookie | `withCredentials: true` | `withCredentials: true` | `Access-Control-Allow-Credentials:true` + 具体 Origin |
 
-### 7.3 代码示例
+### 8.3 代码示例
 
 ```tsx
 import { FileUpload, FileDownload, setDownloadAuth } from "react-upload-indexeddb";

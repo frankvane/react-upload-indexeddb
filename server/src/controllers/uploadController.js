@@ -5,6 +5,7 @@ const { TMP_UPLOAD_DIR, UPLOADS_DIR, ensureDir } = require("../config/paths");
 const { md5Buffer, md5File } = require("../utils/hash");
 const {
   sanitizeFileId,
+  parseChunkKey,
   sanitizeFilename,
   buildChunkPath,
 } = require("../utils/fileSecurity");
@@ -126,17 +127,79 @@ const buildChunkMap = (fileId, dbChunks) => {
   return chunkMap;
 };
 
+/**
+ * 清空某个分片键下的旧分片结果（FileChunk 置无效 + 删除 tmp 分片文件）。
+ * 用于 chunkSize/size 变更后旧分片不再可用的场景（P1-6）。
+ */
+const resetChunkResults = async (fileId) => {
+  // 分片状态经异步队列落库，先把队列刷进 DB 再清理，避免漏删已入队分片
+  await flushFileChunkStates(fileId);
+
+  const dbChunks = await withSqliteBusyRetry(() =>
+    FileChunk.findAll({
+      where: { file_id: fileId, status: 1 },
+    })
+  );
+
+  const staleChunkIndexes = [];
+  for (const chunk of dbChunks) {
+    const chunkPath = buildChunkPath(fileId, chunk.chunk_index);
+    if (fs.existsSync(chunkPath)) {
+      await fs.promises.unlink(chunkPath).catch(() => undefined);
+    }
+    staleChunkIndexes.push(chunk.chunk_index);
+  }
+
+  if (staleChunkIndexes.length > 0) {
+    await withSqliteBusyRetry(() =>
+      FileChunk.update(
+        { status: 0 },
+        {
+          where: {
+            file_id: fileId,
+            status: 1,
+            chunk_index: staleChunkIndexes,
+          },
+        }
+      )
+    );
+    dropPendingChunkIndexes(fileId, staleChunkIndexes);
+  }
+
+  return staleChunkIndexes.length;
+};
+
 exports.instantCheck = async (req, res) => {
   try {
-    const { file_id, md5, name, size, chunk_md5s } = req.body;
+    const { file_id, md5, name, size, chunk_md5s, chunk_size } = req.body;
     const safeFileId = sanitizeFileId(file_id);
 
     if (!safeFileId || !md5 || !name || !size) {
       return jsonError(res, 400, "missing required parameters");
     }
 
+    // 复合分片键（${md5}_${size}_${chunkSize}）与请求参数不一致时，
+    // 说明 chunkSize/size 已变更（如网络自适应降级），旧分片不可复用，
+    // 清空旧结果让客户端按新分片方案重传（P1-6）。
+    const parsedKey = parseChunkKey(safeFileId);
+    if (
+      parsedKey &&
+      (parsedKey.size !== Number(size) ||
+        (chunk_size !== undefined && parsedKey.chunkSize !== Number(chunk_size)))
+    ) {
+      const cleared = await resetChunkResults(safeFileId);
+      return jsonOk(res, {
+        uploaded: false,
+        chunkCheckResult: [],
+        reset: true,
+        clearedChunks: cleared,
+      });
+    }
+
+    // 秒传判定按 md5+size：file_id 含 chunkSize 会随网络自适应变化，
+    // 不能作为秒传键（P1-6/P1-7）。
     const file = await File.findOne({
-      where: { file_id: safeFileId, md5, status: 1 },
+      where: { md5, size, status: 1 },
     });
 
     if (file) {
@@ -277,7 +340,7 @@ exports.mergeChunks = async (req, res) => {
       await inFlight.promise;
       const mergedFile = await withSqliteBusyRetry(() =>
         File.findOne({
-          where: { file_id: safeFileId, md5, status: 1 },
+          where: { md5, size, status: 1 },
         })
       );
       if (mergedFile) {
@@ -293,7 +356,7 @@ exports.mergeChunks = async (req, res) => {
 
     const existingFile = await withSqliteBusyRetry(() =>
       File.findOne({
-        where: { file_id: safeFileId, md5, status: 1 },
+        where: { md5, size, status: 1 },
         transaction,
       })
     );

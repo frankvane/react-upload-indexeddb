@@ -37,6 +37,7 @@ export const useEffectiveUploadConfig = () => {
     baseURL: contextConfig.baseURL,
     uploadApi: contextConfig.uploadApi,
     checkApi: contextConfig.checkApi,
+    mergeApi: contextConfig.mergeApi,
 
     // 文件限制配置（通常不允许运行时修改）
     maxFileSize: contextConfig.maxFileSize,
@@ -78,6 +79,7 @@ export const useEffectiveUploadConfig = () => {
     contextConfig.baseURL,
     contextConfig.uploadApi,
     contextConfig.checkApi,
+    contextConfig.mergeApi,
     contextConfig.maxFileSize,
     contextConfig.allowedFileTypes,
     contextConfig.maxFiles,

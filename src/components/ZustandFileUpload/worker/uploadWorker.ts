@@ -1,4 +1,5 @@
 import SparkMD5 from "spark-md5";
+import { joinUrl } from "../../../shared/url";
 
 // Worker消息类型定义
 interface UploadWorkerMessage {
@@ -9,6 +10,8 @@ interface UploadWorkerMessage {
     fileSize: number;
     hash?: string;
     chunkSize?: number;
+    /** 分片存储键（服务端 file_id）：`${md5}_${size}_${chunkSize}`，见 shared/chunkKey.ts */
+    chunkKey?: string;
   };
   fileBuffer: ArrayBuffer;
   networkParams?: {
@@ -21,6 +24,7 @@ interface UploadWorkerMessage {
     baseURL: string;
     uploadApi: string;
     checkApi: string;
+    mergeApi: string;
     authHeaders?: Record<string, string>;
     /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin） */
     withCredentials?: boolean;
@@ -292,11 +296,12 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
 
       // 构建请求体
       const requestBody = {
-        file_id: fileInfo.hash || "",
+        file_id: fileInfo.chunkKey || fileInfo.hash || "",
         md5: fileInfo.hash || "",
         name: fileInfo.fileName,
         size: fileInfo.fileSize,
         total: chunkCount,
+        chunk_size: chunkSize,
         chunk_md5s,
       };
       debug("秒传请求体", requestBody);
@@ -304,7 +309,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
       // 使用配置的 API 地址
       const baseURL = uploadConfig?.baseURL || "";
       const checkApi = uploadConfig?.checkApi || "/api/file/instant";
-      const apiUrl = `${baseURL}${checkApi}`;
+      const apiUrl = joinUrl(baseURL, checkApi);
       debug(`使用API地址: ${apiUrl}`);
 
       const instantRes = await fetchWithRetry(
@@ -381,7 +386,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
             }
 
             const formData = new FormData();
-            formData.append("file_id", fileInfo.hash || "");
+            formData.append("file_id", fileInfo.chunkKey || fileInfo.hash || "");
             formData.append("index", i.toString());
             formData.append("chunk", new Blob([chunk]));
             formData.append("total", chunkCount.toString());
@@ -391,7 +396,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
             try {
               // 使用配置的上传 API 地址
               const uploadApi = uploadConfig?.uploadApi || "/api/file/upload";
-              const uploadUrl = `${baseURL}${uploadApi}`;
+              const uploadUrl = joinUrl(baseURL, uploadApi);
               debug(`分片上传URL: ${uploadUrl}`);
 
               await fetchWithRetry(
@@ -455,7 +460,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
       // 4. 合并
       debug("开始合并文件");
       const mergeRequestBody = {
-        file_id: fileInfo.hash || "",
+        file_id: fileInfo.chunkKey || fileInfo.hash || "",
         md5: fileInfo.hash || "",
         name: fileInfo.fileName,
         size: fileInfo.fileSize,
@@ -463,7 +468,10 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
       };
       debug("合并请求体", mergeRequestBody);
 
-      const mergeUrl = `${baseURL}/api/file/merge`;
+      const mergeUrl = joinUrl(
+        baseURL,
+        uploadConfig?.mergeApi || "/api/file/merge"
+      );
       debug(`合并文件URL: ${mergeUrl}`);
 
       await fetchWithRetry(

@@ -106,7 +106,7 @@
 
 > 依赖关系：T2.1 → T2.2 → T2.3；T2.4 / T2.5 / T2.6 / T2.7 可并行；T2.8 贯穿全程，最后统一收口。
 
-### T2.1 merge API 可配 + URL 归一化（对应 P1-5）🟡 复杂度：中
+### T2.1 merge API 可配 + URL 归一化（对应 P1-5）🟡 复杂度：中 ✅ 已完成（2026-10-23，commit 见 T2.2 合并提交）
 
 | 项 | 内容 |
 | --- | --- |
@@ -114,7 +114,7 @@
 | 改动要点 | ① 新增 `joinUrl(base, path)`：处理首尾斜杠、空 base；② 全链路新增 `mergeApi` prop（默认 `/api/file/merge`，来自 `config/api.ts` 的 `API_PATHS.file.merge`）；③ `uploadWorker` 内所有 URL 拼接改用 `joinUrl` |
 | 验收标准 | ① `src/shared/url.test.ts` 覆盖 6 种组合（空/带斜杠/不带/带路径前缀）；② mock Worker 断言 `mergeUrl === joinUrl(baseURL, mergeApi)`；③ `baseURL="https://x.com/"` 时不再出现 `//api/` |
 
-### T2.2 file_id 与分片索引解耦（对应 P1-6 / P1-7）🔴 复杂度：高（跨端）
+### T2.2 file_id 与分片索引解耦（对应 P1-6 / P1-7）🔴 复杂度：高（跨端）✅ 已完成（2026-10-23）
 
 | 项 | 内容 |
 | --- | --- |

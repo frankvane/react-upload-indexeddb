@@ -220,6 +220,7 @@ export function useBatchUploader(): BatchUploaderActions {
         baseURL: uploadConfig.baseURL,
         uploadApi: uploadConfig.uploadApi,
         checkApi: uploadConfig.checkApi,
+        mergeApi: uploadConfig.mergeApi,
         authHeaders: await resolveAuthHeaders(uploadConfig),
         withCredentials: uploadConfig.withCredentials,
       },
