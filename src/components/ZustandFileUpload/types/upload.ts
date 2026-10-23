@@ -84,6 +84,8 @@ export interface ZustandFileUploadProps extends UploadAuthConfig {
   networkDisplayMode?: "tooltip" | "direct";
   uiMode?: UploadUIMode;
   settingsSource?: UploadSettingsSource;
+  /** 调试日志开关：默认 false。开启后 Worker 输出分片级日志（200ms 节流） */
+  debug?: boolean;
 
   // Callbacks
   onUploadStart?: (files: UploadFile[]) => void;
@@ -119,6 +121,8 @@ export interface UploadConfig {
   maxFiles: number;
   /** 是否以 credentials:'include' 发送请求（携带 Cookie）。默认 false。见 utils/auth.ts 说明。 */
   withCredentials?: boolean;
+  /** 调试日志开关（Worker 内分片级日志，200ms 节流）。默认 false。 */
+  debug?: boolean;
 }
 
 export const statusMap: Record<string, { text: string; color: string }> = {

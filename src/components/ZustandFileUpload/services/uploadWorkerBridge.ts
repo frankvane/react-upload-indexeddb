@@ -22,6 +22,8 @@ interface UploadWorkerApiConfig {
   mergeApi: string;
   authHeaders?: Record<string, string>;
   withCredentials?: boolean;
+  /** 调试日志开关（默认 false，关闭时 Worker 内不产生日志） */
+  debug?: boolean;
 }
 
 interface RunUploadTaskOptions {

@@ -224,6 +224,7 @@ export function useBatchUploader(): BatchUploaderActions {
         mergeApi: uploadConfig.mergeApi,
         authHeaders: await resolveAuthHeaders(uploadConfig),
         withCredentials: uploadConfig.withCredentials,
+        debug: uploadConfig.debug,
       },
       onProgress: (progress) => {
         setProgressMap((prev) => ({

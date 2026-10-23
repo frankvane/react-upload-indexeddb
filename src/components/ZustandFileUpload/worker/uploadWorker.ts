@@ -29,6 +29,8 @@ type UploadWorkerMessage =
         authHeaders?: Record<string, string>;
         /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin） */
         withCredentials?: boolean;
+        /** 调试日志开关：默认 false，关闭时 Worker 内不产生任何日志输出 */
+        debug?: boolean;
       };
     }
   | {
@@ -40,7 +42,31 @@ type UploadWorkerMessage =
 const taskAbortControllers = new Map<string, AbortController>();
 
 // 调试日志函数
-function debug(message: string, data?: Record<string, unknown>): void {
+let DEBUG_ENABLED = false;
+const DEBUG_THROTTLE_MS = 200;
+let lastRoutineDebugAt = 0;
+
+/**
+ * @param urgent 紧急日志（失败/重试/超时/取消）不受节流限制；
+ *               分片级等高频常规日志按 200ms 节流。
+ */
+function debug(
+  message: string,
+  data?: Record<string, unknown>,
+  urgent = false
+): void {
+  if (!DEBUG_ENABLED) {
+    return;
+  }
+
+  const now = Date.now();
+  if (!urgent && now - lastRoutineDebugAt < DEBUG_THROTTLE_MS) {
+    return;
+  }
+  if (!urgent) {
+    lastRoutineDebugAt = now;
+  }
+
   console.log(`[UploadWorker] ${message}`, data || "");
   // 同时发送日志消息到主线程
   self.postMessage({
@@ -108,7 +134,7 @@ async function fetchWithRetry(
       // 如果超过最大重试次数，则拒绝
       if (attempts >= maxRetries) {
         const error = new Error(`已达到最大重试次数: ${maxRetries}`);
-        debug(`请求最终失败: ${url}`, { error: error.message, maxRetries });
+        debug(`请求最终失败: ${url}`, { error: error.message, maxRetries }, true);
         self.postMessage({
           type: "retry",
           error: error.message,
@@ -140,7 +166,7 @@ async function fetchWithRetry(
           }
         }
         timeoutId = setTimeout(() => {
-          debug(`请求超时: ${url}`, { timeout, attempt: currentAttempt });
+          debug(`请求超时: ${url}`, { timeout, attempt: currentAttempt }, true);
           controller.abort();
         }, timeout);
 
@@ -195,13 +221,13 @@ async function fetchWithRetry(
             statusText: response.statusText,
             errorText: errorText.substring(0, 200),
             apiMessage,
-          });
+          }, true);
 
           // 判断是否需要重试
           const isServerError = response.status >= 500;
           if (isServerError && attempts < maxRetries) {
             const nextRetryDelay = retryInterval * currentAttempt;
-            debug(`将在 ${nextRetryDelay}ms 后重试请求`);
+            debug(`将在 ${nextRetryDelay}ms 后重试请求`, undefined, true);
             setTimeout(makeRequest, nextRetryDelay);
             return;
           }
@@ -218,7 +244,7 @@ async function fetchWithRetry(
           error instanceof Error ? error : new Error(String(error));
         debug(`请求异常: ${url} (尝试 ${currentAttempt}/${maxRetries})`, {
           error: wrappedError.message,
-        });
+        }, true);
 
         // 判断是否需要重试
         const isNetworkError =
@@ -230,7 +256,7 @@ async function fetchWithRetry(
 
         if ((isNetworkError || isTimeoutError) && attempts < maxRetries) {
           const nextRetryDelay = retryInterval * currentAttempt;
-          debug(`将在 ${nextRetryDelay}ms 后重试请求`);
+          debug(`将在 ${nextRetryDelay}ms 后重试请求`, undefined, true);
           setTimeout(makeRequest, nextRetryDelay);
           return;
         }
@@ -259,7 +285,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
       const controller = taskAbortControllers.get(fileId);
       if (controller && !controller.signal.aborted) {
         controller.abort();
-        debug("收到取消指令，已中断上传", { fileId });
+        debug("收到取消指令，已中断上传", { fileId }, true);
       }
       self.postMessage({ type: "cancelled", fileId });
       return;
@@ -273,6 +299,8 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
 
     const { fileInfo, fileBuffer, networkParams, uploadConfig } = event.data;
     const authHeaders = uploadConfig?.authHeaders;
+    // 调试日志开关由每次上传任务的配置注入（默认关闭）
+    DEBUG_ENABLED = uploadConfig?.debug === true;
     // 仅当显式开启 withCredentials（Cookie 鉴权）时才带 'include'，否则 same-origin
     const credentialsMode: RequestCredentials =
       uploadConfig?.withCredentials === true ? "include" : "same-origin";
@@ -324,7 +352,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
     debug("开始计算所有分片MD5");
     for (let i = 0; i < chunkCount; i++) {
       if (taskSignal.aborted) {
-        debug("分片MD5计算被取消中断", { fileId: fileInfo.id, at: i });
+        debug("分片MD5计算被取消中断", { fileId: fileInfo.id, at: i }, true);
         return;
       }
       const start = i * chunkSize;
@@ -485,7 +513,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
               failedChunks.push(i);
               debug(`分片 ${i + 1} 上传失败`, {
                 error: error instanceof Error ? error.message : String(error),
-              });
+              }, true);
               console.error(`分片 ${i + 1} 上传失败:`, error);
               throw error;
             }
@@ -505,7 +533,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           debug("有分片上传失败", {
             count: failedChunks.length,
             chunks: failedChunks,
-          });
+          }, true);
           self.postMessage({
             type: "error",
             message: `有 ${failedChunks.length} 个分片上传失败，请重试上传`,
@@ -555,7 +583,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
       // 上传过程中出现致命错误
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      debug("上传过程中出现致命错误", { error: errorMessage });
+      debug("上传过程中出现致命错误", { error: errorMessage }, true);
       self.postMessage({
         type: "error",
         message: errorMessage,
@@ -567,7 +595,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
   } catch (error) {
     // Worker 执行过程中的全局错误处理
     const errorMessage = error instanceof Error ? error.message : String(error);
-    debug("Worker 执行错误", { error: errorMessage });
+    debug("Worker 执行错误", { error: errorMessage }, true);
     self.postMessage({
       type: "error",
       message: errorMessage,

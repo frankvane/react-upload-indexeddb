@@ -57,6 +57,7 @@ export const useEffectiveUploadConfig = () => {
     networkDisplayMode: storeConfig.networkDisplayMode,
     uiMode: contextConfig.uiMode,
     settingsSource: contextConfig.settingsSource,
+    debug: contextConfig.debug,
 
     // 回调函数（来自 Context）
     onUploadStart: contextConfig.onUploadStart,
@@ -92,6 +93,7 @@ export const useEffectiveUploadConfig = () => {
     contextConfig.customUploadHandler,
     contextConfig.uiMode,
     contextConfig.settingsSource,
+    contextConfig.debug,
     contextConfig.authToken,
     contextConfig.getAuthToken,
     contextConfig.getAuthHeaders,

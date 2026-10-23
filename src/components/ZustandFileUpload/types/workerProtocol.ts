@@ -32,6 +32,8 @@
          *  Cookie 鉴权时显式开启，且服务端需返回
          *  Access-Control-Allow-Credentials:true。 */
         withCredentials?: boolean;
+        /** 调试日志开关：默认 false，关闭时 Worker 内不产生任何日志输出 */
+        debug?: boolean;
       };
     }
   | {

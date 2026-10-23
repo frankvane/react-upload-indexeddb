@@ -66,6 +66,7 @@ const ZustandFileUploadCore: React.FC = () => {
       maxFileSize: uploadConfig.maxFileSize,
       allowedFileTypes: normalizedAllowedFileTypes,
       maxFiles: uploadConfig.maxFiles,
+      debug: uploadConfig.debug,
     });
   }, [
     setConfig,
@@ -80,6 +81,7 @@ const ZustandFileUploadCore: React.FC = () => {
     uploadConfig.maxFileSize,
     normalizedAllowedFileTypes,
     uploadConfig.maxFiles,
+    uploadConfig.debug,
   ]);
 
   useEffect(() => {
