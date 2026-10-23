@@ -2,34 +2,42 @@ import SparkMD5 from "spark-md5";
 import { joinUrl } from "../../../shared/url";
 
 // Worker消息类型定义
-interface UploadWorkerMessage {
-  type: "upload";
-  fileInfo: {
-    id: string;
-    fileName: string;
-    fileSize: number;
-    hash?: string;
-    chunkSize?: number;
-    /** 分片存储键（服务端 file_id）：`${md5}_${size}_${chunkSize}`，见 shared/chunkKey.ts */
-    chunkKey?: string;
-  };
-  fileBuffer: ArrayBuffer;
-  networkParams?: {
-    chunkConcurrency?: number;
-    maxRetries?: number;
-    timeout?: number;
-    retryInterval?: number;
-  };
-  uploadConfig: {
-    baseURL: string;
-    uploadApi: string;
-    checkApi: string;
-    mergeApi: string;
-    authHeaders?: Record<string, string>;
-    /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin） */
-    withCredentials?: boolean;
-  };
-}
+type UploadWorkerMessage =
+  | {
+      type: "upload";
+      fileInfo: {
+        id: string;
+        fileName: string;
+        fileSize: number;
+        hash?: string;
+        chunkSize?: number;
+        /** 分片存储键（服务端 file_id）：`${md5}_${size}_${chunkSize}`，见 shared/chunkKey.ts */
+        chunkKey?: string;
+      };
+      fileBuffer: ArrayBuffer;
+      networkParams?: {
+        chunkConcurrency?: number;
+        maxRetries?: number;
+        timeout?: number;
+        retryInterval?: number;
+      };
+      uploadConfig: {
+        baseURL: string;
+        uploadApi: string;
+        checkApi: string;
+        mergeApi: string;
+        authHeaders?: Record<string, string>;
+        /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin） */
+        withCredentials?: boolean;
+      };
+    }
+  | {
+      type: "cancel";
+      fileId: string;
+    };
+
+// 每个上传任务的 AbortController（按 fileId 索引），收到 CANCEL 时中断在途请求
+const taskAbortControllers = new Map<string, AbortController>();
 
 // 调试日志函数
 function debug(message: string, data?: Record<string, unknown>): void {
@@ -52,7 +60,7 @@ function calculateMD5(buffer: ArrayBuffer): string {
   return result;
 }
 
-// 使用 async.retry 进行带重试的请求
+// 使用自定义重试逻辑进行带重试的请求
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
@@ -62,12 +70,15 @@ async function fetchWithRetry(
     retryInterval = 1000,
     authHeaders,
     credentials,
+    signal,
   }: {
     maxRetries?: number;
     timeout?: number;
     retryInterval?: number;
     authHeaders?: Record<string, string>;
     credentials?: RequestCredentials;
+    /** 外部取消信号（任务级 AbortController）：abort 时中断在途 fetch 与重试 */
+    signal?: AbortSignal;
   } = {}
 ): Promise<Response> {
   // 默认 same-origin：跨域 Bearer 头鉴权时不携带 Cookie，也不会触发 preflight
@@ -86,6 +97,14 @@ async function fetchWithRetry(
     let attempts = 0;
 
     const makeRequest = async () => {
+      // 取消后不再发起（或重试）任何请求
+      if (signal?.aborted) {
+        const error = new Error("上传已取消");
+        error.name = "AbortError";
+        reject(error);
+        return;
+      }
+
       // 如果超过最大重试次数，则拒绝
       if (attempts >= maxRetries) {
         const error = new Error(`已达到最大重试次数: ${maxRetries}`);
@@ -110,6 +129,16 @@ async function fetchWithRetry(
       try {
         // 创建 AbortController 用于超时控制
         const controller = new AbortController();
+        // 外部取消信号联动：CANCEL 到达时一并中断在途 fetch
+        if (signal) {
+          if (signal.aborted) {
+            controller.abort();
+          } else {
+            signal.addEventListener("abort", () => controller.abort(), {
+              once: true,
+            });
+          }
+        }
         timeoutId = setTimeout(() => {
           debug(`请求超时: ${url}`, { timeout, attempt: currentAttempt });
           controller.abort();
@@ -224,6 +253,18 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
   try {
     debug("Worker 收到消息", { type: event.data.type });
 
+    // 取消任务：中断该文件在途请求并退出循环（P1-8）
+    if (event.data.type === "cancel") {
+      const { fileId } = event.data;
+      const controller = taskAbortControllers.get(fileId);
+      if (controller && !controller.signal.aborted) {
+        controller.abort();
+        debug("收到取消指令，已中断上传", { fileId });
+      }
+      self.postMessage({ type: "cancelled", fileId });
+      return;
+    }
+
     // 只处理上传类型的消息
     if (event.data.type !== "upload") {
       debug("未知的消息类型", { type: event.data.type });
@@ -249,6 +290,11 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
       });
       throw new Error("缺少必要参数：fileBuffer");
     }
+
+    // 任务级取消信号：CANCEL 消息或主线程 terminate 均可中断全部在途请求（P1-8）
+    const taskController = new AbortController();
+    taskAbortControllers.set(fileInfo.id, taskController);
+    const taskSignal = taskController.signal;
 
     debug("文件信息", {
       fileName: fileInfo.fileName,
@@ -277,6 +323,10 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
     // 1. 计算所有分片的md5
     debug("开始计算所有分片MD5");
     for (let i = 0; i < chunkCount; i++) {
+      if (taskSignal.aborted) {
+        debug("分片MD5计算被取消中断", { fileId: fileInfo.id, at: i });
+        return;
+      }
       const start = i * chunkSize;
       const end = Math.min(fileBuffer.byteLength, start + chunkSize);
       const chunk = fileBuffer.slice(start, end);
@@ -319,7 +369,12 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
         },
-        { ...retryOptions, authHeaders, credentials: credentialsMode }
+        {
+          ...retryOptions,
+          authHeaders,
+          credentials: credentialsMode,
+          signal: taskSignal,
+        }
       );
 
       debug("秒传确认响应", { status: instantRes.status });
@@ -405,7 +460,12 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
                   method: "POST",
                   body: formData,
                 },
-                { ...retryOptions, authHeaders, credentials: credentialsMode }
+                {
+          ...retryOptions,
+          authHeaders,
+          credentials: credentialsMode,
+          signal: taskSignal,
+        }
               );
 
               // 更新进度
@@ -481,7 +541,12 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(mergeRequestBody),
         },
-        { ...retryOptions, authHeaders, credentials: credentialsMode }
+        {
+          ...retryOptions,
+          authHeaders,
+          credentials: credentialsMode,
+          signal: taskSignal,
+        }
       );
       debug("文件合并成功");
 
@@ -495,6 +560,9 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         type: "error",
         message: errorMessage,
       });
+    } finally {
+      // 任务结束（成功/失败/取消）后释放 AbortController，避免 Map 残留
+      taskAbortControllers.delete(fileInfo.id);
     }
   } catch (error) {
     // Worker 执行过程中的全局错误处理

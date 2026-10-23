@@ -1,38 +1,44 @@
-﻿export interface UploadWorkerRequest {
-  type: "upload";
-  fileInfo: {
-    id: string;
-    fileName: string;
-    fileSize: number;
-    hash?: string;
-    chunkSize?: number;
-    /** 分片存储键（服务端 file_id）：`${md5}_${size}_${chunkSize}`，见 shared/chunkKey.ts */
-    chunkKey?: string;
-  };
-  fileBuffer: ArrayBuffer;
-  networkParams?: {
-    networkType?: string;
-    fileConcurrency?: number;
-    chunkConcurrency?: number;
-    chunkSize?: number;
-    maxRetries?: number;
-    timeout?: number;
-    retryInterval?: number;
-  };
-  uploadConfig: {
-    baseURL: string;
-    uploadApi: string;
-    checkApi: string;
-    mergeApi: string;
-    /** 鉴权请求头（已在主线程解析好，序列化传入 Worker） */
-    authHeaders?: Record<string, string>;
-    /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin）：
-     *  跨域 Bearer 头鉴权不触发 CORS credentials 强校验；仅同域/跨域
-     *  Cookie 鉴权时显式开启，且服务端需返回
-     *  Access-Control-Allow-Credentials:true。 */
-    withCredentials?: boolean;
-  };
-}
+﻿export type UploadWorkerRequest =
+  | {
+      type: "upload";
+      fileInfo: {
+        id: string;
+        fileName: string;
+        fileSize: number;
+        hash?: string;
+        chunkSize?: number;
+        /** 分片存储键（服务端 file_id）：`${md5}_${size}_${chunkSize}`，见 shared/chunkKey.ts */
+        chunkKey?: string;
+      };
+      fileBuffer: ArrayBuffer;
+      networkParams?: {
+        networkType?: string;
+        fileConcurrency?: number;
+        chunkConcurrency?: number;
+        chunkSize?: number;
+        maxRetries?: number;
+        timeout?: number;
+        retryInterval?: number;
+      };
+      uploadConfig: {
+        baseURL: string;
+        uploadApi: string;
+        checkApi: string;
+        mergeApi: string;
+        /** 鉴权请求头（已在主线程解析好，序列化传入 Worker） */
+        authHeaders?: Record<string, string>;
+        /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin）：
+         *  跨域 Bearer 头鉴权不触发 CORS credentials 强校验；仅同域/跨域
+         *  Cookie 鉴权时显式开启，且服务端需返回
+         *  Access-Control-Allow-Credentials:true。 */
+        withCredentials?: boolean;
+      };
+    }
+  | {
+      /** 取消指定文件的上传任务：Worker 内 AbortController.abort() 中断在途请求 */
+      type: "cancel";
+      fileId: string;
+    };
 
 export type UploadWorkerResponse =
   | {
@@ -60,5 +66,10 @@ export type UploadWorkerResponse =
       attemptNumber?: number;
       retriesLeft?: number;
       message?: string;
+    }
+  | {
+      /** 取消完成确认：Worker 已中断该文件的在途请求 */
+      type: "cancelled";
+      fileId: string;
     };
 

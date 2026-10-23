@@ -8,12 +8,14 @@
 ## [Unreleased]
 
 ### Added
+- **T2.3 Worker CANCEL 协议**：上传 Worker 新增 `cancel` 消息与 `cancelled` 响应；每个任务维护 AbortController，取消时中断全部在途 fetch 与重试；bridge 新增 `cancelUploadTask(fileId)`（800ms 无响应则 terminate 兜底）；取消后文件状态回 `QUEUED` 并释放 buffer
 - **T2.1 `mergeApi` prop**：合并接口路径可配（默认 `API_PATHS.file.merge`）；新增 `src/shared/url.ts` 的 `joinUrl`，`baseURL` 带尾斜杠不再产生 `//api/`
 - **T2.2 分片存储键解耦**：服务端 `file_id` 改为客户端生成的 `${md5}_${size}_${chunkSize}` 复合键（`src/shared/chunkKey.ts`），网络自适应调整 `chunkSize` 后新旧分片互不污染；上传队列 id 增加随机后缀（`src/shared/fileId.ts`），同内容文件不再互相覆盖
 - 服务端 `instantCheck` 增加 `chunk_size` 一致性校验：复合键与请求 `size`/`chunk_size` 不符时清空旧分片结果并返回 `reset:true`；旧版纯 md5 键请求保持兼容
 - server 依赖安装并就绪（`npm --prefix server install`），`server/tests/chunk-key.test.js` 新增 4 个分片键集成测试；`server` test script 改为串行执行，避免并行测试共享 tmp/uploads 目录互相清理
 
 ### Fixed
+- **P1-8 取消残留**：修复 `runUploadTask` 中 abort 竞态下 `finish` 提前返回导致 signal 监听与 Worker 不清理的泄漏；Worker 内 fetch 现按任务级 AbortController 中断
 - **P0-1 下载分片鉴权**：`FileDownload` 新增 `authToken` / `getAuthToken` / `getAuthHeaders` / `authScheme` / `withCredentials` props；鉴权头随 `START_DOWNLOAD` 下发到 Worker，分片 Range 请求合并注入（默认 `same-origin`，仅 `withCredentials:true` 时 `include`）
 - **P0-2 上传 `withCredentials` 打通**：`UploadProvider` 此前漏解构/漏传 `withCredentials`，导致 Cookie 鉴权模式恒不生效；现已贯通 props → Context → effective config → Worker
 - **P2-29 `configureDownloadApi` 缺省重置**：`withCredentials` 缺省改为保留现值；`baseURL` 仅在非空字符串时覆盖，组件重复 mount 不再清空既有配置

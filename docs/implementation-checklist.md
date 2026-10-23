@@ -122,7 +122,7 @@
 | 设计要点（推荐方案 A） | ① 客户端本地队列 id = `${md5}_${size}_${lastModified}_${randomSuffix}`（解决同内容文件冲突）；② **分片存储键**（服务端 `file_id`）改为 `${md5}_${size}_${chunkSize}`，天然兼容 `sanitizeFileId` 的白名单（`[a-zA-Z0-9_-]`）；③ `File` 表按 `md5` 判秒传不变；④ `instantCheck` 增加 `size` 与 `chunk_size` 一致性校验，不一致则清空旧分片结果；⑤ 备选方案 B：`FileChunk` 增加 `chunk_size` 列并以 `(file_id, chunk_size)` 联合索引，改动更小但历史数据需迁移 |
 | 验收标准 | ① 新增 `server` 集成测试：同一 md5 不同 chunkSize 的两轮上传互不污染，均能合并成功；② 客户端单测：id 生成器唯一性（连续 1000 次无碰撞）；③ e2e：4MB 分片传一半 → 切网使 chunkSize 变 1MB → 重试 → 合并成功且 md5 校验通过 |
 
-### T2.3 Worker CANCEL 协议（对应 P1-8）🟡 复杂度：中
+### T2.3 Worker CANCEL 协议（对应 P1-8）🟡 复杂度：中 ✅ 已完成（2026-10-23）
 
 | 项 | 内容 |
 | --- | --- |

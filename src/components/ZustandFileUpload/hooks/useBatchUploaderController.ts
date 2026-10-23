@@ -5,6 +5,7 @@ import { UploadCleanupPolicy } from "../services/cleanupPolicy";
 import localforage from "localforage";
 import { loadAllUploadFiles, runConcurrentQueue } from "../services/uploadOrchestrator";
 import {
+  cancelUploadTask,
   disposeUploadWorkerPool,
   runUploadTask,
 } from "../services/uploadWorkerBridge";
@@ -237,8 +238,11 @@ export function useBatchUploader(): BatchUploaderActions {
     const latest = (await localforage.getItem<UploadFile>(file.id)) ?? file;
 
     if (result.cancelled || signal?.aborted) {
+      // 取消语义：状态回 QUEUED 可重新入队，同时释放 buffer（ArrayBuffer
+      // 随消息转移已从 IndexedDB 记录中剥离，重传需重新读取文件数据）
       latest.status = UploadStatus.QUEUED;
       latest.errorMessage = undefined;
+      latest.buffer = undefined;
       await localforage.setItem(file.id, latest);
       scheduleRefresh();
       return false;
@@ -412,6 +416,15 @@ export function useBatchUploader(): BatchUploaderActions {
     if (activeController && !activeController.signal.aborted) {
       activeController.abort();
       messageApi.info("已取消当前上传任务");
+    }
+
+    // P1-8：abort 只会让主线程 Promise 落败，Worker 内在途 fetch 需显式
+    // CANCEL 才会中断（bridge 收到 signal 后会 terminate 兜底）
+    const uploadingFiles = useUploadStore
+      .getState()
+      .files.filter((file) => file.status === UploadStatus.UPLOADING);
+    for (const file of uploadingFiles) {
+      cancelUploadTask(file.id);
     }
 
     setIsUploading(false);

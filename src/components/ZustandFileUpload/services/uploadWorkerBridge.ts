@@ -46,6 +46,11 @@ const createUploadWorker = () => new UploadWorker();
 
 const workerPool = new Set<Worker>();
 const idleWorkers: Worker[] = [];
+/** fileId → 正在处理该文件的 Worker，供 cancelUploadTask 精确取消（P1-8） */
+const taskWorkerMap = new Map<string, Worker>();
+
+/** CANCEL 兜底时长：worker 无 cancelled 响应即强制终止 */
+const CANCEL_FALLBACK_MS = 800;
 
 const acquireUploadWorker = (): Worker => {
   const existingWorker = idleWorkers.pop();
@@ -85,6 +90,31 @@ export const disposeUploadWorkerPool = () => {
   for (const worker of Array.from(workerPool)) {
     disposeUploadWorker(worker);
   }
+  taskWorkerMap.clear();
+};
+
+/**
+ * 取消指定文件的上传任务（P1-8）：
+ * 1. 向 Worker 发送 CANCEL，内部 AbortController 中断在途 fetch 与重试；
+ * 2. 兜底：若 CANCEL_FALLBACK_MS 内未收到 cancelled 响应（如 Worker 卡死），
+ *    直接 terminate 该 Worker。
+ */
+export const cancelUploadTask = (fileId: string): void => {
+  const worker = taskWorkerMap.get(fileId);
+  if (!worker) {
+    return;
+  }
+
+  worker.postMessage({ type: "cancel", fileId });
+
+  setTimeout(() => {
+    // cancelled 响应到达后 finish/cleanup 会将 fileId 从 map 移除；
+    // 仍残留说明 worker 无响应，强制终止兜底
+    if (taskWorkerMap.get(fileId) === worker) {
+      taskWorkerMap.delete(fileId);
+      disposeUploadWorker(worker);
+    }
+  }, CANCEL_FALLBACK_MS);
 };
 
 export const runUploadTask = async (
@@ -110,12 +140,26 @@ export const runUploadTask = async (
         return;
       }
       settled = true;
+      taskWorkerMap.delete(options.file.id);
       cleanup();
       resolve(result);
     };
 
     const handleAbort = () => {
       shouldRecycleWorker = false;
+      taskWorkerMap.delete(options.file.id);
+
+      if (settled) {
+        // 任务已结束又收到取消（竞态）：仍需处置 worker 与监听，避免泄漏
+        if (options.signal) {
+          options.signal.removeEventListener("abort", handleAbort);
+        }
+        worker.onmessage = null;
+        worker.onerror = null;
+        disposeUploadWorker(worker);
+        return;
+      }
+
       finish({
         success: false,
         skipped: false,
@@ -181,8 +225,21 @@ export const runUploadTask = async (
           skipped: false,
           errorMessage: payload.message ?? "Upload failed",
         });
+        return;
+      }
+
+      if (payload.type === "cancelled") {
+        // Worker 确认已中断该文件的在途请求
+        finish({
+          success: false,
+          skipped: false,
+          cancelled: true,
+          errorMessage: "上传已取消",
+        });
       }
     };
+
+    taskWorkerMap.set(options.file.id, worker);
 
     const message: UploadWorkerRequest = {
       type: "upload",
