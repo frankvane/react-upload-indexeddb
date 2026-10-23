@@ -50,14 +50,42 @@ export class ChunkPersistenceService {
     return false;
   }
 
-  async getChunkHealth(fileId: string, totalChunks: number): Promise<ChunkHealth> {
+  /**
+   * 单次游标扫描某个文件的全部已存分片（P1-11）。
+   * 旧实现按 index 逐个 getItem：500 分片 = 500 次 IndexedDB 事务；
+   * iterate 一次遍历即可拿到全部结果，且能发现超出 totalChunks 的残留分片。
+   */
+  private async scanFileChunks(fileId: string): Promise<Map<number, Blob>> {
     await this.ensureReady();
+
+    const prefix = `${fileId}_chunk_`;
+    const found = new Map<number, Blob>();
+
+    await new Promise<void>((resolve, reject) => {
+      chunkStore
+        .iterate<Blob, void>((value, key) => {
+          if (typeof key === "string" && key.startsWith(prefix)) {
+            const index = Number(key.slice(prefix.length));
+            if (Number.isInteger(index) && index >= 0) {
+              found.set(index, value);
+            }
+          }
+          return undefined;
+        })
+        .then(resolve, reject);
+    });
+
+    return found;
+  }
+
+  async getChunkHealth(fileId: string, totalChunks: number): Promise<ChunkHealth> {
+    const found = await this.scanFileChunks(fileId);
 
     const missingChunks: number[] = [];
     const corruptChunks: number[] = [];
 
     for (let i = 0; i < totalChunks; i += 1) {
-      const chunk = await chunkStore.getItem<Blob>(`${fileId}_chunk_${i}`);
+      const chunk = found.get(i);
       if (!chunk) {
         missingChunks.push(i);
         continue;
@@ -84,11 +112,11 @@ export class ChunkPersistenceService {
   }
 
   async getPendingChunks(fileId: string, totalChunks: number): Promise<number[]> {
-    await this.ensureReady();
+    const found = await this.scanFileChunks(fileId);
 
     const pending: number[] = [];
     for (let i = 0; i < totalChunks; i += 1) {
-      const chunk = await chunkStore.getItem<Blob>(`${fileId}_chunk_${i}`);
+      const chunk = found.get(i);
       if (!chunk || chunk.size === 0) {
         pending.push(i);
       }
@@ -98,11 +126,11 @@ export class ChunkPersistenceService {
   }
 
   async countDownloadedChunks(fileId: string, totalChunks: number): Promise<number> {
-    await this.ensureReady();
+    const found = await this.scanFileChunks(fileId);
 
     let count = 0;
     for (let i = 0; i < totalChunks; i += 1) {
-      const chunk = await chunkStore.getItem<Blob>(`${fileId}_chunk_${i}`);
+      const chunk = found.get(i);
       if (chunk && chunk.size > 0) {
         count += 1;
       }
@@ -112,21 +140,29 @@ export class ChunkPersistenceService {
   }
 
   async removeAllChunks(fileId: string, totalChunks: number) {
-    await this.ensureReady();
+    const found = await this.scanFileChunks(fileId);
 
-    for (let i = 0; i < totalChunks; i += 1) {
-      await chunkStore.removeItem(`${fileId}_chunk_${i}`);
-    }
+    // 以扫描到的实际分片为准（覆盖 totalChunks 与实际不符的残留）
+    const indexes = new Set<number>([
+      ...found.keys(),
+      ...Array.from({ length: Math.max(0, totalChunks) }, (_, i) => i),
+    ]);
+
+    await Promise.all(
+      Array.from(indexes, (index) =>
+        chunkStore.removeItem(`${fileId}_chunk_${index}`)
+      )
+    );
   }
 
   async collectChunks(fileId: string, totalChunks: number) {
-    await this.ensureReady();
+    const found = await this.scanFileChunks(fileId);
 
     const chunks: Blob[] = [];
     const missingChunks: number[] = [];
 
     for (let i = 0; i < totalChunks; i += 1) {
-      const chunk = await chunkStore.getItem<Blob>(`${fileId}_chunk_${i}`);
+      const chunk = found.get(i);
       if (!chunk) {
         missingChunks.push(i);
         continue;

@@ -8,6 +8,8 @@
 ## [Unreleased]
 
 ### Added
+- **T2.5 下载侧存储性能**：`ChunkPersistenceService` 五个查询方法改为 `chunkStore.iterate()` 单游标扫描（500 分片从 500 次事务降为 1 次）；合并完成（`handleMergeComplete` / `mergeInMainThread`）后异步 `removeAllChunks`，消除 chunks + completeFiles 双份占用；`calculateStorageSize`/`calculateFileSize` 删除 `JSON.stringify(file).length` 估算，改为只统计 Blob 实际字节
+- 新增 devDependency `fake-indexeddb`，`chunkPersistenceService.test.ts` 覆盖 500 分片单游标、合并后清理、多文件前缀隔离
 - **T2.3 Worker CANCEL 协议**：上传 Worker 新增 `cancel` 消息与 `cancelled` 响应；每个任务维护 AbortController，取消时中断全部在途 fetch 与重试；bridge 新增 `cancelUploadTask(fileId)`（800ms 无响应则 terminate 兜底）；取消后文件状态回 `QUEUED` 并释放 buffer
 - **T2.1 `mergeApi` prop**：合并接口路径可配（默认 `API_PATHS.file.merge`）；新增 `src/shared/url.ts` 的 `joinUrl`，`baseURL` 带尾斜杠不再产生 `//api/`
 - **T2.2 分片存储键解耦**：服务端 `file_id` 改为客户端生成的 `${md5}_${size}_${chunkSize}` 复合键（`src/shared/chunkKey.ts`），网络自适应调整 `chunkSize` 后新旧分片互不污染；上传队列 id 增加随机后缀（`src/shared/fileId.ts`），同内容文件不再互相覆盖

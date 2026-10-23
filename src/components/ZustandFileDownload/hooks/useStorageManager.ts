@@ -49,16 +49,9 @@ export const useStorageManager = () => {
 
       let totalUsage = 0;
 
-      await fileStore.ready();
-      const fileKeys = await fileStore.keys();
-      totalUsage += await sumInBatches(
-        fileKeys,
-        STORAGE_CALC_BATCH_SIZE,
-        async (key) => {
-          const file = await fileStore.getItem<DownloadFile>(key);
-          return file ? JSON.stringify(file).length : 0;
-        }
-      );
+      // 元数据（fileStore 中的 JSON 记录）体积小且 stringify 估算偏差大
+      // （多字节字符 length≠字节数、不含 IndexedDB 结构开销），不再计入；
+      // 统计以 chunk / completeFile 的 Blob.size 实际字节为准（P1-12）。
 
       await chunkStore.ready();
       const chunkKeys = await chunkStore.keys();
@@ -165,7 +158,8 @@ export const useStorageManager = () => {
         return 0;
       }
 
-      let totalSize = JSON.stringify(file).length;
+      // 与 calculateStorageSize 一致：只统计 Blob 实际字节，不做 JSON 估算
+      let totalSize = 0;
 
       await chunkStore.ready();
       const fileChunkPrefix = `${fileId}_chunk_`;

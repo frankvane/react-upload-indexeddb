@@ -157,6 +157,10 @@ export const useFileDownloader = () => {
         }
 
         await mergeService.mergeInMainThread(file);
+        // 合并后异步清理分片，避免双份占用（P1-12）
+        void chunkService
+          .removeAllChunks(file.id, file.totalChunks)
+          .catch(() => undefined);
         removeProcessing(file.id);
       } catch (err) {
         updateFile(file.id, {

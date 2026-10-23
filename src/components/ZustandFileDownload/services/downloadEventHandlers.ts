@@ -63,6 +63,11 @@ export const createDownloadEventHandlers = ({
     }
 
     await mergeService.markCompleted(file);
+    // 合并完成后分片不再需要：异步清理，避免 chunks + completeFiles
+    // 双份占用磁盘配额（P1-12）
+    void chunkService
+      .removeAllChunks(file.id, file.totalChunks)
+      .catch(() => undefined);
     removeProcessing(file.id);
   },
 
