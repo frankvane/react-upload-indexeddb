@@ -60,7 +60,7 @@ const createFile = (): UploadFile =>
 
 const baseOptions = () => ({
   file: createFile(),
-  fileBuffer: new ArrayBuffer(8),
+  fileRef: new File([new Uint8Array(8)], "demo.bin"),
   networkParams: {
     networkType: "wifi",
     fileConcurrency: 2,

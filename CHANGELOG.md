@@ -8,6 +8,12 @@
 ## [Unreleased]
 
 ### Added
+- **T3.1 流式分片 + 采样哈希（Breaking Change，目标 v2.0.0）**：
+  - `UploadFile.buffer` 字段移除，新增**运行时** `fileRef: File`（仅当前会话内存，不序列化进 IndexedDB）；文件字节改为上传时由 Worker 经 `fileRef.slice(start,end).arrayBuffer()` 逐分片惰性读取，内存峰值 = `chunkSize × chunkConcurrency`，与文件大小解耦（彻底消除整文件驻留）
+  - 新增 `src/components/ZustandFileUpload/services/fileRegistry.ts`：主线程文件引用注册表，上传成功 / 删除 / 清理时联动释放，避免 File 句柄长期驻留
+  - 新增 `hashMode` prop（`"full"` 默认全量流式哈希 / `"sample"` 采样哈希：首 4MB + 尾 4MB + 中间 3 采样点 + size），贯通 props → Context → 预处理 Worker → 上传 Worker → 服务端 `mergeChunks`；`sample` 模式下服务端跳过全量 md5 强校验（分片级 md5 校验仍全覆盖）
+  - 刷新续传语义变更：页面刷新后需**重新选择同一文件**方可续传，已上传分片由服务端 `chunkCheckResult` 自动跳过（详见 README「v2.0.0 重大变更」）
+  - 测试环境 jsdom 缺 `Blob.arrayBuffer`，在 `src/test/setup.ts` 以 `FileReader` 补齐（浏览器原生支持，production 代码不变）
 - **T4.3 去除 antd 依赖（Breaking Change 预备项，建议 v1.3.0 独立发版）**：
   - 新增内置 UI 套件 `src/ui/`（19 个组件 + 19 个内联 SVG 图标 + 15 kB CSS，视觉贴近 antd v5，全部 `rui-` 前缀）：
     - `primitives.tsx`：Button / Tag / Badge / Spin / Empty / Divider / Card / Space / Alert / Statistic / Progress / Switch / InputNumber / Slider

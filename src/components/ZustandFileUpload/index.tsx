@@ -63,6 +63,7 @@ const ZustandFileUploadCore: React.FC = () => {
       fileConcurrency: uploadConfig.fileConcurrency,
       chunkConcurrency: uploadConfig.chunkConcurrency,
       maxRetries: uploadConfig.maxRetries,
+      hashMode: uploadConfig.hashMode,
       maxFileSize: uploadConfig.maxFileSize,
       allowedFileTypes: normalizedAllowedFileTypes,
       maxFiles: uploadConfig.maxFiles,
@@ -78,6 +79,7 @@ const ZustandFileUploadCore: React.FC = () => {
     uploadConfig.fileConcurrency,
     uploadConfig.chunkConcurrency,
     uploadConfig.maxRetries,
+    uploadConfig.hashMode,
     uploadConfig.maxFileSize,
     normalizedAllowedFileTypes,
     uploadConfig.maxFiles,
@@ -120,9 +122,9 @@ const ZustandFileUploadCore: React.FC = () => {
         );
       }
 
-      if (recovery.missingBufferCount > 0) {
+      if (recovery.missingFileRefCount > 0) {
         messageApi.warning(
-          `${recovery.missingBufferCount} 个文件缓存缺失，需重新选择后上传`
+          `${recovery.missingFileRefCount} 个文件缓存缺失，需重新选择后上传`
         );
       }
 

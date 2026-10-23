@@ -5,6 +5,7 @@ import localforage from "localforage";
 import { useEffectiveUploadConfig } from "./useEffectiveConfig";
 import { useUploadStore } from "../store/upload";
 import { ProcessingStats, UploadFile } from "../types/upload";
+import { registerFileRef } from "../services/fileRegistry";
 import { useShallow } from "zustand/react/shallow";
 // 用 Vite `?worker&inline` 把 worker 源码内联为 Blob，消费方无需再解析外部 worker 资产
 // （否则发布后 dev 下 `new URL('...', import.meta.url)` 指向的 .pnpm 深层路径会被 dev server
@@ -31,7 +32,8 @@ interface WorkerProgressMessage {
 
 interface WorkerCompleteMessage {
   type: "complete";
-  uploadFiles: UploadFile[];
+  /** 含 fileRef 回传（T3.1）：主线程登记后剥离再持久化 */
+  uploadFiles: Array<UploadFile & { fileRef?: File }>;
   stats: ProcessingStats;
 }
 
@@ -233,7 +235,13 @@ export function useFileProcessor({ uploadAll }: UseFileProcessorOptions) {
             setCost(cost);
 
             for (const file of data.uploadFiles) {
-              await localforage.setItem(file.id, file);
+              // T3.1：fileRef 仅入主线程注册表，剥离后再持久化，
+              // IndexedDB 中不再存放整文件数据（原 buffer 字段已移除）
+              const { fileRef, ...persistable } = file;
+              if (fileRef) {
+                registerFileRef(file.id, fileRef);
+              }
+              await localforage.setItem(file.id, persistable);
 
               if (!fileStartTimesRef.current[file.fileName] && data.uploadFiles.length > 0) {
                 setFileTimings((prev: Record<string, number>) => ({
@@ -269,6 +277,7 @@ export function useFileProcessor({ uploadAll }: UseFileProcessorOptions) {
 
         worker.postMessage({
           files: validFiles,
+          hashMode: uploadConfig.hashMode,
           networkParams: {
             networkType,
             fileConcurrency,

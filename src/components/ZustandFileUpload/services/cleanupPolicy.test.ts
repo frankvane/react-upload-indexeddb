@@ -25,7 +25,7 @@ vi.mock("./uploadStorage", () => ({
 const createFile = (
   id: string,
   status: UploadStatus,
-  withBuffer = false
+  withFileRef = false
 ): UploadFile =>
   ({
     id,
@@ -37,7 +37,9 @@ const createFile = (
     progress: 100,
     createdAt: 0,
     order: 0,
-    ...(withBuffer ? { buffer: new ArrayBuffer(4) } : {}),
+    ...(withFileRef
+      ? { fileRef: new File([new Uint8Array(4)], `${id}.bin`) }
+      : {}),
   }) as UploadFile;
 
 const createOptions = () => {
@@ -164,10 +166,10 @@ describe("UploadCleanupPolicy", () => {
 
     await policy.forceCleanupUI();
 
-    // buffer 被清空并回写，然后整条记录被移除
-    expect(mockSetItem).toHaveBeenCalledWith(
+    // 记录被从 IndexedDB 移除（T3.1 起不再有 buffer 字段需要剥离）
+    expect(mockSetItem).not.toHaveBeenCalledWith(
       "f-buffer",
-      expect.objectContaining({ buffer: undefined })
+      expect.anything()
     );
     expect(mockRemoveItem).toHaveBeenCalledWith("f-buffer");
   });

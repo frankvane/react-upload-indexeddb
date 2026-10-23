@@ -49,8 +49,7 @@ const dispatch = (data: unknown) => {
 
 const runUpload = async (debug: boolean) => {
   // 1000 字节、1 字节/片 → 1000 个分片，制造高频分片级日志
-  const fileBuffer = new ArrayBuffer(1000);
-  new Uint8Array(fileBuffer).fill(9);
+  const fileRef = new File([new Uint8Array(1000).fill(9)], "debug.bin");
 
   await dispatch({
     type: "upload",
@@ -60,9 +59,9 @@ const runUpload = async (debug: boolean) => {
       fileSize: 1000,
       hash: "a".repeat(32),
       chunkSize: 1,
-      chunkKey: `${"a".repeat(32)}_1000_1`,
+        chunkKey: `${"a".repeat(32)}_1000_1`,
     },
-    fileBuffer,
+    fileRef,
     networkParams: { chunkConcurrency: 8, maxRetries: 1 },
     uploadConfig: {
       baseURL: "",

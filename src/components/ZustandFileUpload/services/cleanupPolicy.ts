@@ -1,6 +1,7 @@
 ﻿import { UploadFile, UploadStatus } from "../types/upload";
 import localforage from "localforage";
 import { listUploadFiles } from "./uploadStorage";
+import { releaseFileRef } from "./fileRegistry";
 
 interface BatchInfo {
   current: number;
@@ -79,11 +80,6 @@ export class UploadCleanupPolicy {
         continue;
       }
 
-      if (file.buffer) {
-        file.buffer = undefined;
-        await localforage.setItem(file.id, file);
-      }
-
       this.syncCompletedFile(file);
       markedCount += 1;
     }
@@ -125,6 +121,7 @@ export class UploadCleanupPolicy {
 
       if (canCleanup(file.status)) {
         await localforage.removeItem(id);
+        releaseFileRef(id);
         this.completedFileIds.delete(id);
       }
     }

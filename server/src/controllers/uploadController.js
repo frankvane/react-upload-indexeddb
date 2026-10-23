@@ -321,7 +321,8 @@ exports.mergeChunks = async (req, res) => {
     ensureDir(TMP_UPLOAD_DIR);
     ensureDir(UPLOADS_DIR);
 
-    const { file_id, md5, name, size, total, user_id, category_id } = req.body;
+    const { file_id, md5, name, size, total, user_id, category_id, hash_mode } =
+      req.body;
     const safeFileId = sanitizeFileId(file_id);
     const safeName = sanitizeFilename(name);
 
@@ -400,12 +401,17 @@ exports.mergeChunks = async (req, res) => {
       await fs.promises.unlink(chunkPath);
     }
 
-    const mergedMd5 = await md5File(targetPath);
-    if (mergedMd5 !== md5) {
-      throw httpError(422, "file md5 verification failed", {
-        expected: md5,
-        actual: mergedMd5,
-      });
+    // 全量 md5 校验：仅 hash_mode 为 full（默认/未声明）时执行。
+    // sample 模式下 md5 是采样哈希，与合并后真实文件 md5 必然不一致，故跳过最终校验；
+    // 分片级 md5 比对（上面 chunk_md5 与 DB 比对）仍全覆盖，保证完整性不受损。
+    if (hash_mode !== "sample") {
+      const mergedMd5 = await md5File(targetPath);
+      if (mergedMd5 !== md5) {
+        throw httpError(422, "file md5 verification failed", {
+          expected: md5,
+          actual: mergedMd5,
+        });
+      }
     }
 
     const fileTypeResult = await detectFileType(targetPath);

@@ -13,6 +13,7 @@ import { useUploadStore } from "../store/upload";
 import { useEffectiveUploadConfig } from "./useEffectiveConfig";
 import { useShallow } from "zustand/react/shallow";
 import { isUploadableStatus } from "../services/uploadStorage";
+import { getFileRef, releaseFileRef } from "../services/fileRegistry";
 import { resolveAuthHeaders } from "../utils/auth";
 
 export interface RetrySummary {
@@ -192,11 +193,14 @@ export function useBatchUploader(): BatchUploaderActions {
       return false;
     }
 
-    const fileWithBuffer = await localforage.getItem<UploadFile>(file.id);
-
-    if (!fileWithBuffer?.buffer) {
+    // T3.1：文件字节不再驻留 IndexedDB，改由主线程 fileRegistry 持有运行时引用。
+    // 页面刷新后注册表清空 → 需用户重新选择同一文件方可续传（服务端分片检查决定跳过范围）。
+    const fileRef = getFileRef(file.id);
+    if (!fileRef) {
       file.status = UploadStatus.ERROR;
-      file.errorMessage = "文件数据丢失";
+      file.progress = 0;
+      file.errorMessage = "文件引用已失效，请重新选择该文件以继续上传";
+      file.awaitingReselect = true;
       await localforage.setItem(file.id, file);
       scheduleRefresh();
       return false;
@@ -208,7 +212,7 @@ export function useBatchUploader(): BatchUploaderActions {
 
     const result = await runUploadTask({
       file,
-      fileBuffer: fileWithBuffer.buffer,
+      fileRef,
       signal,
       networkParams: {
         networkType,
@@ -225,6 +229,7 @@ export function useBatchUploader(): BatchUploaderActions {
         authHeaders: await resolveAuthHeaders(uploadConfig),
         withCredentials: uploadConfig.withCredentials,
         debug: uploadConfig.debug,
+        hashMode: uploadConfig.hashMode,
       },
       onProgress: (progress) => {
         setProgressMap((prev) => ({
@@ -239,11 +244,10 @@ export function useBatchUploader(): BatchUploaderActions {
     const latest = (await localforage.getItem<UploadFile>(file.id)) ?? file;
 
     if (result.cancelled || signal?.aborted) {
-      // 取消语义：状态回 QUEUED 可重新入队，同时释放 buffer（ArrayBuffer
-      // 随消息转移已从 IndexedDB 记录中剥离，重传需重新读取文件数据）
+      // 取消语义：状态回 QUEUED 可重新入队（保留 fileRef 以便后续重传/续传）
       latest.status = UploadStatus.QUEUED;
       latest.errorMessage = undefined;
-      latest.buffer = undefined;
+      latest.awaitingReselect = false;
       await localforage.setItem(file.id, latest);
       scheduleRefresh();
       return false;
@@ -252,8 +256,9 @@ export function useBatchUploader(): BatchUploaderActions {
     if (result.success) {
       latest.status = result.skipped ? UploadStatus.INSTANT : UploadStatus.DONE;
       latest.progress = 100;
-      latest.buffer = undefined;
       latest.errorMessage = undefined;
+      // 上传完成：释放文件引用，避免 File 句柄长期驻留
+      releaseFileRef(file.id);
 
       await localforage.setItem(file.id, latest);
       scheduleRefresh();

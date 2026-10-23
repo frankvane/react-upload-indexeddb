@@ -46,3 +46,17 @@ Object.defineProperty(window, "getComputedStyle", {
   writable: true,
   value: ((elt: Element) => originalGetComputedStyle(elt)) as typeof window.getComputedStyle,
 });
+
+// jsdom 的 Blob/File 未实现 arrayBuffer()（浏览器原生支持）。Worker 流式分片
+// 依赖 File.slice(start,end).arrayBuffer()，故在此为测试环境补齐该能力，
+// 使上传 Worker 的单测可在 jsdom 下真实跑完分片读取与 md5 计算。
+if (typeof Blob !== "undefined" && typeof Blob.prototype.arrayBuffer !== "function") {
+  Blob.prototype.arrayBuffer = function arrayBuffer(this: Blob): Promise<ArrayBuffer> {
+    return new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(this);
+    });
+  };
+}

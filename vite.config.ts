@@ -10,6 +10,11 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     test: {
       environment: "jsdom",
+      // 显式指定 pool：本沙箱环境下 vitest 5 的默认 pool 无法正常初始化
+      // worker 会话（globalThis.__vitest__ 未建立，导致 describe/afterEach 报
+      // "failed to find the current suite" / "reading 'config'"），改用 forks
+      // 可稳定初始化会话；threads 同样可用。
+      pool: "forks",
       setupFiles: "./src/test/setup.ts",
       include: ["src/**/*.test.{ts,tsx}"],
       css: true,

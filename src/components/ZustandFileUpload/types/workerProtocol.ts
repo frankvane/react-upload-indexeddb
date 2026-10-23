@@ -1,4 +1,6 @@
-﻿export type UploadWorkerRequest =
+﻿import type { UploadHashMode } from "./upload";
+
+export type UploadWorkerRequest =
   | {
       type: "upload";
       fileInfo: {
@@ -10,7 +12,12 @@
         /** 分片存储键（服务端 file_id）：`${md5}_${size}_${chunkSize}`，见 shared/chunkKey.ts */
         chunkKey?: string;
       };
-      fileBuffer: ArrayBuffer;
+      /**
+       * 文件引用（T3.1 流式分片）：替代原 fileBuffer 整文件传输。
+       * File/Blob 可结构化克隆进 Worker，分片按需 slice 读取，
+       * 内存驻留 = chunkSize × chunkConcurrency，与文件大小无关。
+       */
+      fileRef: File;
       networkParams?: {
         networkType?: string;
         fileConcurrency?: number;
@@ -34,6 +41,8 @@
         withCredentials?: boolean;
         /** 调试日志开关：默认 false，关闭时 Worker 内不产生任何日志输出 */
         debug?: boolean;
+        /** 文件哈希模式：sample 时服务端合并跳过全量 md5 强校验（分片级校验保留） */
+        hashMode?: UploadHashMode;
       };
     }
   | {

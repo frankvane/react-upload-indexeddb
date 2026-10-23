@@ -86,7 +86,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
     iterateMock.mockImplementation(async (callback) => {
       callback(
         createFile("u1", UploadStatus.UPLOADING, {
-          buffer: new ArrayBuffer(8),
+          fileRef: new File([new Uint8Array(8)], "u1.bin"),
         }),
         "u1"
       );
@@ -98,7 +98,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
     expect(summary).toEqual({
       totalInterrupted: 1,
       recoveredCount: 1,
-      missingBufferCount: 0,
+      missingFileRefCount: 0,
     });
     expect(setItemMock).toHaveBeenCalledTimes(1);
     const [, saved] = setItemMock.mock.calls[0];
@@ -119,7 +119,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
     expect(summary).toEqual({
       totalInterrupted: 1,
       recoveredCount: 0,
-      missingBufferCount: 1,
+      missingFileRefCount: 1,
     });
     const [, saved] = setItemMock.mock.calls[0];
     expect(saved.status).toBe(UploadStatus.ERROR);
@@ -138,7 +138,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
     expect(summary).toEqual({
       totalInterrupted: 0,
       recoveredCount: 0,
-      missingBufferCount: 0,
+      missingFileRefCount: 0,
     });
     expect(setItemMock).not.toHaveBeenCalled();
   });

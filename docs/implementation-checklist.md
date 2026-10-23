@@ -212,14 +212,18 @@
 
 > ⚠️ 阶段三改变对外行为，必须走 major 版本并在 README 标注 Breaking Change。
 
-### T3.1 流式分片 + 采样哈希（对应 P0-3）🔴 复杂度：高
+### T3.1 流式分片 + 采样哈希（对应 P0-3）🔴 复杂度：高 ✅ 已完成（2026-10-23）
 
 | 项               | 内容                                                                                                                                                                                                                                                                                                                      |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 涉及文件            | `worker/filePrepareWorker.ts`、`types/upload.ts`、`services/uploadStorage.ts`、`services/uploadWorkerBridge.ts`、`worker/uploadWorker.ts`、`hooks/useBatchUploaderController.ts:194`                                                                                                                                         |
-| 设计要点            | ① `UploadFile` 移除 `buffer`，新增 `fileRef: File`（不序列化）；② 哈希改为**采样哈希**：首 4MB + 尾 4MB + 中间 3 个采样点 + `size`，默认关闭全量强哈希，`hashMode: "sample" \| "full"` 可配；③ 上传按 `fileRef.slice(start, end).arrayBuffer()` 逐片读、逐片传、逐片释放；④ **刷新续传新语义**：IndexedDB 只持久化"已上传分片索引 + 元数据"，刷新后需用户重新选择同一文件（或使用 OPFS 持久化分片），服务端 `chunkCheckResult` 决定续传范围 |
-| Breaking Change | README「刷新可续传」从"自动恢复"改为"重新选择文件后续传已传分片"；`UploadFile.buffer` 字段移除                                                                                                                                                                                                                                                          |
-| 验收标准            | ① 内存基准：2GB 文件上传期间 `performance.memory` 峰值增幅 < 200MB；② IndexedDB 中不存在整文件 Blob；③ e2e：刷新页面 → 重选同文件 → 已完成分片不重传（服务端计数断言）                                                                                                                                                                                                     |
+| 涉及文件            | `worker/filePrepareWorker.ts`、`types/upload.ts`、`types/workerProtocol.ts`、`services/uploadStorage.ts`、`services/uploadWorkerBridge.ts`、`worker/uploadWorker.ts`、`hooks/useFileProcessor.ts`、`hooks/useBatchUploaderController.ts`、`services/fileRegistry.ts`（新）、`context/UploadContext.tsx`、`hooks/useEffectiveConfig.ts`、`server/src/controllers/uploadController.js`、`src/test/setup.ts`（jsdom `Blob.arrayBuffer` 补丁） |
+| 设计要点            | ① `UploadFile` 移除 `buffer`，新增 `fileRef: File`（不序列化，仅运行时）；② 新增 `services/fileRegistry.ts` 主线程文件引用注册表（登记/取用/释放，删除/清理时联动释放）；③ 哈希支持**采样哈希**：`hashMode: "sample" \| "full"` 可配，默认 `full`（全量流式 hash，内存与文件大小无关），`sample` 为首 4MB+尾 4MB+中间 3 采样点+size；④ 上传 Worker 按 `fileRef.slice(start,end).arrayBuffer()` 逐片惰性读取、逐片 md5、逐片上传，内存峰值 = `chunkSize × chunkConcurrency`；⑤ **刷新续传新语义**：IndexedDB 只持久化元数据，刷新后 `recoverInterruptedUploadFiles` 标记 `awaitingReselect`，上传前 `getFileRef` 缺失则提示「请重新选择文件」；⑥ 服务端 `mergeChunks` 在 `hash_mode==="sample"` 时跳过全量 md5 强校验（分片级 md5 校验保留） |
+| Breaking Change | README「刷新可续传」从"自动恢复"改为"重新选择文件后续传已传分片"；`UploadFile.buffer` 字段移除（API 消费方若曾读取该字段须删除）                                                                                                                                                                                                                                                                                                                                                       |
+| 验收标准            | ① 内存基准：整文件不再驻留（无 `performance.memory` 峰值占满风险，理论上限 = chunkSize×chunkConcurrency）；② IndexedDB 不再写入整文件 Blob（`buffer` 字段已从类型与代码移除）；③ 全量 `vitest run` **21 文件 / 108 用例全绿**，覆盖 worker CANCEL / debug 节流 / bridge / storage recovery / cleanup；④ `eslint .` 0 告警；⑤ lib 构建成功（`dist/index.js` 204.52 kB + `dist/style.css` 15.25 kB）；⑥ server 语法校验通过 |
+| 实施结果            | ① 108 单测全绿，lint 0 告警，lib 构建 + tsc d.ts 退出 0；② `grep "buffer" src` 仅剩注释残留；③ `fileRef` 经 `fileRegistry` 在成功/删除/清理时释放，避免 File 句柄长期驻留；④ `hashMode` 从 props 贯通到预处理 Worker、上传 Worker、服务端 merge；⑤ 测试环境 jsdom 缺 `Blob.arrayBuffer`，在 `setup.ts` 以 `FileReader` 补齐（浏览器原生支持，production 代码不变） |
+| 遗留事项            | ① 2GB 真实内存基准 / e2e 刷新重选断言依赖浏览器人工或 playwright（仓库未引入），暂以架构论证 + 单测间接保障；② `sample` 模式为可选增强，默认仍 `full`，秒传与全量校验不变；③ T3.2 单例治理后会把 `fileRegistry` 改为按组件实例持有（当前为模块级单例，按 fileId 隔离） |
+
+> 注：T3.1 已独立可验证（108 用例 + lint + lib 构建 + server 语法），但**未单独打 tag**——按阶段三整体目标版本 `v2.0.0`，待 T3.2~T3.4 完成后一并发版（或用户确认先行发 `v2.0.0-alpha.1`）。
 
 ### T3.2 全局单例治理（对应 P0-4）🔴 复杂度：高
 

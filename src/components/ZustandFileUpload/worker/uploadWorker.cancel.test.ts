@@ -78,8 +78,7 @@ describe("uploadWorker CANCEL 协议（T2.3）", () => {
   });
 
   it("上传途中收到 CANCEL：在途 fetch 的 signal 被中断，并回 cancelled 确认", async () => {
-    const fileBuffer = new ArrayBuffer(1024);
-    new Uint8Array(fileBuffer).fill(7);
+    const fileRef = new File([new Uint8Array(1024).fill(7)], "cancel.bin");
 
     const uploadPromise = dispatch({
       type: "upload",
@@ -91,7 +90,7 @@ describe("uploadWorker CANCEL 协议（T2.3）", () => {
         chunkSize: 1024,
         chunkKey: `${"0".repeat(32)}_1024_1024`,
       },
-      fileBuffer,
+      fileRef,
       networkParams: { chunkConcurrency: 1, maxRetries: 1 },
       uploadConfig: {
         baseURL: "",
@@ -130,8 +129,7 @@ describe("uploadWorker CANCEL 协议（T2.3）", () => {
   });
 
   it("CANCEL 后不再对同一任务发起任何新请求（重试短路）", async () => {
-    const fileBuffer = new ArrayBuffer(2048);
-    new Uint8Array(fileBuffer).fill(3);
+    const fileRef = new File([new Uint8Array(2048).fill(3)], "cancel2.bin");
 
     const uploadPromise = dispatch({
       type: "upload",
@@ -143,7 +141,7 @@ describe("uploadWorker CANCEL 协议（T2.3）", () => {
         chunkSize: 1024,
         chunkKey: `${"1".repeat(32)}_2048_1024`,
       },
-      fileBuffer,
+      fileRef,
       networkParams: { chunkConcurrency: 2, maxRetries: 3, retryInterval: 10 },
       uploadConfig: {
         baseURL: "",

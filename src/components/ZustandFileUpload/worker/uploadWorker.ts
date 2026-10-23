@@ -1,5 +1,6 @@
 import SparkMD5 from "spark-md5";
 import { joinUrl } from "../../../shared/url";
+import type { UploadHashMode } from "../types/upload";
 
 // Worker消息类型定义
 type UploadWorkerMessage =
@@ -14,7 +15,11 @@ type UploadWorkerMessage =
         /** 分片存储键（服务端 file_id）：`${md5}_${size}_${chunkSize}`，见 shared/chunkKey.ts */
         chunkKey?: string;
       };
-      fileBuffer: ArrayBuffer;
+      /**
+       * 文件引用（T3.1 流式分片）：替代原 fileBuffer 整文件传输。
+       * File 结构化克隆进 Worker，分片按需 slice 读取，内存驻留与文件大小无关。
+       */
+      fileRef: File;
       networkParams?: {
         chunkConcurrency?: number;
         maxRetries?: number;
@@ -31,6 +36,8 @@ type UploadWorkerMessage =
         withCredentials?: boolean;
         /** 调试日志开关：默认 false，关闭时 Worker 内不产生任何日志输出 */
         debug?: boolean;
+        /** 文件哈希模式：sample 时服务端合并跳过全量 md5 强校验（分片级校验保留） */
+        hashMode?: UploadHashMode;
       };
     }
   | {
@@ -297,7 +304,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
       return;
     }
 
-    const { fileInfo, fileBuffer, networkParams, uploadConfig } = event.data;
+    const { fileInfo, fileRef, networkParams, uploadConfig } = event.data;
     const authHeaders = uploadConfig?.authHeaders;
     // 调试日志开关由每次上传任务的配置注入（默认关闭）
     DEBUG_ENABLED = uploadConfig?.debug === true;
@@ -311,12 +318,12 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
       throw new Error("缺少必要参数：fileInfo");
     }
 
-    if (!fileBuffer) {
-      debug("缺少文件数据", {
+    if (!fileRef) {
+      debug("缺少文件引用", {
         fileId: fileInfo?.id,
         fileName: fileInfo?.fileName,
       });
-      throw new Error("缺少必要参数：fileBuffer");
+      throw new Error("缺少必要参数：fileRef");
     }
 
     // 任务级取消信号：CANCEL 消息或主线程 terminate 均可中断全部在途请求（P1-8）
@@ -331,11 +338,11 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
     });
 
     const chunkSize = fileInfo.chunkSize || 1024 * 1024;
-    const chunkCount = Math.ceil(fileBuffer.byteLength / chunkSize);
+    const chunkCount = Math.ceil(fileRef.size / chunkSize);
     debug("分片信息", {
       chunkSize,
       chunkCount,
-      totalSize: fileBuffer.byteLength,
+      totalSize: fileRef.size,
     });
 
     // 使用网络参数中的分片并发数和重试参数
@@ -356,8 +363,8 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         return;
       }
       const start = i * chunkSize;
-      const end = Math.min(fileBuffer.byteLength, start + chunkSize);
-      const chunk = fileBuffer.slice(start, end);
+      const end = Math.min(fileRef.size, start + chunkSize);
+      const chunk = await fileRef.slice(start, end).arrayBuffer();
       debug(`计算分片 ${i + 1}/${chunkCount} MD5`, {
         start,
         end,
@@ -381,6 +388,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         total: chunkCount,
         chunk_size: chunkSize,
         chunk_md5s,
+        hash_mode: uploadConfig.hashMode,
       };
       debug("秒传请求体", requestBody);
 
@@ -461,8 +469,8 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         const uploadTasks = needUploadChunks.map((i) => {
           return async () => {
             const start = i * chunkSize;
-            const end = Math.min(fileBuffer.byteLength, start + chunkSize);
-            const chunk = fileBuffer.slice(start, end);
+            const end = Math.min(fileRef.size, start + chunkSize);
+            const chunkBuf = await fileRef.slice(start, end).arrayBuffer();
             const chunkMd5 = chunk_md5s[i];
             if (!chunkMd5) {
               throw new Error(`分片 ${i} 缺少 MD5，无法上传`);
@@ -471,7 +479,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
             const formData = new FormData();
             formData.append("file_id", fileInfo.chunkKey || fileInfo.hash || "");
             formData.append("index", i.toString());
-            formData.append("chunk", new Blob([chunk]));
+            formData.append("chunk", new Blob([chunkBuf]));
             formData.append("total", chunkCount.toString());
             formData.append("chunk_md5", chunkMd5);
 
@@ -553,6 +561,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         name: fileInfo.fileName,
         size: fileInfo.fileSize,
         total: chunkCount,
+        hash_mode: uploadConfig.hashMode,
       };
       debug("合并请求体", mergeRequestBody);
 

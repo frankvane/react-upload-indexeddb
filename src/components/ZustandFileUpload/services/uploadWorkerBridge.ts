@@ -1,4 +1,4 @@
-import { UploadFile } from "../types/upload";
+import { UploadFile, type UploadHashMode } from "../types/upload";
 import {
   UploadWorkerRequest,
   UploadWorkerResponse,
@@ -24,11 +24,14 @@ interface UploadWorkerApiConfig {
   withCredentials?: boolean;
   /** 调试日志开关（默认 false，关闭时 Worker 内不产生日志） */
   debug?: boolean;
+  /** 文件哈希模式（T3.1）：sample 时服务端合并跳过全量 md5 强校验 */
+  hashMode?: UploadHashMode;
 }
 
 interface RunUploadTaskOptions {
   file: UploadFile;
-  fileBuffer: ArrayBuffer;
+  /** 主线程文件引用（T3.1 流式分片）：File 结构化克隆进 Worker，按需 slice 读取 */
+  fileRef: File;
   networkParams: UploadWorkerNetworkParams;
   uploadConfig: UploadWorkerApiConfig;
   signal?: AbortSignal;
@@ -258,11 +261,13 @@ export const runUploadTask = async (
           options.file.chunkSize
         ),
       },
-      fileBuffer: options.fileBuffer,
+      fileRef: options.fileRef,
       networkParams: options.networkParams,
       uploadConfig: options.uploadConfig,
     };
 
-    worker.postMessage(message, [options.fileBuffer]);
+    // 注意：File 通过结构化克隆传入 Worker（不转移），主线程注册表仍需持有该
+    // 引用以支持刷新后的重选/重试；若用 transfer 列表转移，主线程引用会被置空。
+    worker.postMessage(message);
   });
 };

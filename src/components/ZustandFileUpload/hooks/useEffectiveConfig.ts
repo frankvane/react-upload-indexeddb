@@ -49,6 +49,7 @@ export const useEffectiveUploadConfig = () => {
     fileConcurrency: storeConfig.fileConcurrency,
     chunkConcurrency: storeConfig.chunkConcurrency,
     maxRetries: storeConfig.maxRetries,
+    hashMode: contextConfig.hashMode,
 
     // UI 配置（允许运行时修改）
     autoUpload: storeConfig.autoUpload,
@@ -103,6 +104,7 @@ export const useEffectiveUploadConfig = () => {
     storeConfig.fileConcurrency,
     storeConfig.chunkConcurrency,
     storeConfig.maxRetries,
+    contextConfig.hashMode,
     storeConfig.autoUpload,
     storeConfig.autoCleanup,
     storeConfig.cleanupDelay,

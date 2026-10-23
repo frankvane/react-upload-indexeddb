@@ -41,7 +41,16 @@ export interface UploadFile {
   errorMessage?: string; // Error message
   createdAt: number; // Created timestamp
   order: number; // Queue order
-  buffer?: ArrayBuffer; // File binary buffer
+  /**
+   * 运行时文件引用（T3.1 起替代原 buffer 字段）：
+   * 不持久化进 IndexedDB，仅当前会话内存持有；页面刷新即丢失，
+   * 续传需用户重新选择同一文件（服务端分片检查决定跳过范围）。
+   */
+  fileRef?: File;
+  /** 本条记录使用的哈希模式（影响队列 id / 服务端分片键，会话间不宜变更） */
+  hashMode?: UploadHashMode;
+  /** 刷新后等待用户重新选择文件：为 true 时 uploadAll 跳过并提示 */
+  awaitingReselect?: boolean;
 }
 
 export interface ProcessingStats {
@@ -57,6 +66,16 @@ export interface ProcessingStats {
 
 export type UploadUIMode = "full" | "simple";
 export type UploadSettingsSource = "localStorage" | "props";
+/**
+ * 文件哈希模式（T3.1）：
+ * - "full"（默认）：全量流式哈希——按 1MB 分块顺序读入 Worker 增量计算，
+ *   内存驻留与文件大小无关；哈希值与文件内容一一对应，服务端合并时强校验。
+ * - "sample"：采样哈希——首 4MB + 中间 3 个 4MB 采样点 + 尾 4MB + 文件大小，
+ *   大文件可跳过绝大部分读取；代价是存在极低概率的采样碰撞（同大小且采样
+ *   区内容一致的不同文件会被视为同一文件），服务端合并时退化为
+ *   「大小 + 逐分片 md5」校验（分片级仍全覆盖，不含糊）。
+ */
+export type UploadHashMode = "sample" | "full";
 
 // Upload component props.
 export interface ZustandFileUploadProps extends UploadAuthConfig {
@@ -71,6 +90,11 @@ export interface ZustandFileUploadProps extends UploadAuthConfig {
   fileConcurrency?: number;
   chunkConcurrency?: number;
   maxRetries?: number;
+  /**
+   * 文件哈希模式（T3.1）。默认 "full"（全量流式哈希，内存与文件大小无关）；
+   * "sample" 为采样哈希，适合超大文件、可容忍极低概率采样碰撞的场景。
+   */
+  hashMode?: UploadHashMode;
 
   // File constraints
   maxFileSize?: number; // Per-file limit in bytes
@@ -116,6 +140,8 @@ export interface UploadConfig {
   fileConcurrency: number;
   chunkConcurrency: number;
   maxRetries: number;
+  /** 文件哈希模式：full=全量流式（默认），sample=采样。见 UploadHashMode 说明 */
+  hashMode: UploadHashMode;
   maxFileSize: number;
   allowedFileTypes: string[];
   maxFiles: number;
