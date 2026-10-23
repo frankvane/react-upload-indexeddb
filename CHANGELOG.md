@@ -8,6 +8,7 @@
 ## [Unreleased]
 
 ### Added
+- **T2.7 下载列表性能与安全**：`collectAllFiles` 加 5s TTL + 源目录 mtime 签名缓存（增删立即可见、内容不变零扫描）；`file_id` 格式校验（sha256 hex）后非法 id 直接 404 不扫描；`fileIdCache` 改 LRU（上限 5000）；`findFileById` 未命中不再循环全量扫描；`/list` 支持 `page`/`pageSize` 分页（默认全量兼容）
 - **T2.6 服务端健壮性**：
   - 合并流程重 IO（readFile/appendFile/md5File/缩略图）移出长事务，改为事务外合并 + 短事务写库，根治大文件合并期间 SQLITE_BUSY
   - 新增 `server/src/janitor.js`：启动时 + 每 6h 扫描 `tmp/upload`，删除超过 `TMP_TTL_HOURS`（默认 24h）的孤儿分片（`.gitkeep` 受保护），`index.js` 启动时接入

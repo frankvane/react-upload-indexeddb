@@ -9,6 +9,29 @@ const { File } = require("../models");
 const fileIdCache = new Map();
 const fileSystem = fs.promises;
 
+// fileIdCache LRU 上限：Map 保持插入序，超限时淘汰最久未使用者
+const FILE_ID_CACHE_MAX = 5000;
+
+// 列表缓存：5s TTL + 源目录 mtime 签名。目录内文件增删会更新目录 mtime，
+// 签名变化即失效，保证上传/删除后立即可见；内容不变时免除全目录扫描。
+const LIST_CACHE_TTL_MS = 5000;
+let listCache = { at: 0, files: null, signature: "" };
+
+const getSourceDirsSignature = async () => {
+  const parts = [];
+  for (const dirPath of [DOWNLOAD_DIR, UPLOADS_DIR]) {
+    try {
+      const stats = await fileSystem.stat(dirPath);
+      parts.push(`${dirPath}:${stats.mtimeMs}`);
+    } catch {
+      parts.push(`${dirPath}:missing`);
+    }
+  }
+  return parts.join("|");
+};
+
+const FILE_ID_PATTERN = /^[a-f0-9]{64}$/;
+
 const jsonError = (res, statusCode, message, data = {}) =>
   res.status(statusCode).json({ code: statusCode, message, data });
 
@@ -88,6 +111,13 @@ const buildCacheEntry = async (
     mtime: stats.mtimeMs,
     displayName,
   };
+  // LRU 淘汰：超上限先删最久未使用的 key
+  if (fileIdCache.size >= FILE_ID_CACHE_MAX && !fileIdCache.has(filePath)) {
+    const oldestKey = fileIdCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      fileIdCache.delete(oldestKey);
+    }
+  }
   fileIdCache.set(filePath, entry);
   return entry;
 };
@@ -140,7 +170,18 @@ const buildUploadedMetadataMap = async () => {
   return { metadataMap, metadataByMd5 };
 };
 
-const collectAllFiles = async () => {
+const collectAllFiles = async ({ force = false } = {}) => {
+  const now = Date.now();
+  const signature = await getSourceDirsSignature();
+  if (
+    !force &&
+    listCache.files &&
+    signature === listCache.signature &&
+    now - listCache.at < LIST_CACHE_TTL_MS
+  ) {
+    return listCache.files;
+  }
+
   const files = [];
   const { metadataMap, metadataByMd5 } = await buildUploadedMetadataMap();
 
@@ -178,6 +219,7 @@ const collectAllFiles = async () => {
     }
   }
 
+  listCache = { at: now, files, signature };
   return files;
 };
 
@@ -185,6 +227,9 @@ const findFileById = async (fileId) => {
   for (const [filePath, info] of fileIdCache.entries()) {
     if (info.fileId !== fileId) continue;
     if (await readFileStats(filePath)) {
+      // LRU：命中后移到最后（刷新使用序）
+      fileIdCache.delete(filePath);
+      fileIdCache.set(filePath, info);
       return {
         filePath,
         fileName: info.displayName || path.basename(filePath),
@@ -194,7 +239,11 @@ const findFileById = async (fileId) => {
     fileIdCache.delete(filePath);
   }
 
-  const files = await collectAllFiles();
+  // 列表缓存新鲜则直接复用（不触发全量扫描）；过期才强制刷新一次。
+  // 刷新后仍未命中即返回 null，不再循环全量扫描（P1-14）。
+  const files = await collectAllFiles({
+    force: Date.now() - listCache.at >= LIST_CACHE_TTL_MS,
+  });
   const found = files.find((file) => file.id === fileId);
   if (!found) return null;
 
@@ -207,7 +256,7 @@ const findFileById = async (fileId) => {
 
 exports.getFileList = async (req, res) => {
   try {
-    const { search } = req.query;
+    const { search, page, pageSize } = req.query;
     let files = (await collectAllFiles()).map(({ filePath, ...rest }) => rest);
 
     if (search) {
@@ -217,8 +266,28 @@ exports.getFileList = async (req, res) => {
       );
     }
 
+    // 分页参数可选：不传时全量返回（保持兼容）
+    const total = files.length;
+    const parsedPage = Number.parseInt(page, 10);
+    const parsedPageSize = Number.parseInt(pageSize, 10);
+    if (Number.isFinite(parsedPage) || Number.isFinite(parsedPageSize)) {
+      const safePageSize = Number.isFinite(parsedPageSize) && parsedPageSize > 0
+        ? Math.min(parsedPageSize, 200)
+        : 50;
+      const safePage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+      const start = (safePage - 1) * safePageSize;
+      files = files.slice(start, start + safePageSize);
+
+      return jsonOk(res, {
+        total,
+        page: safePage,
+        pageSize: safePageSize,
+        files,
+      });
+    }
+
     return jsonOk(res, {
-      total: files.length,
+      total,
       files,
     });
   } catch (error) {
@@ -231,6 +300,11 @@ exports.downloadFile = async (req, res) => {
     const { file_id } = req.params;
     if (!file_id) {
       return jsonError(res, 400, "missing file_id");
+    }
+    // 格式校验：合法 id 是 sha256 hex（64 位小写十六进制）。
+    // 非法 id 直接 404，不做任何目录扫描（P1-14）。
+    if (!FILE_ID_PATTERN.test(file_id)) {
+      return jsonError(res, 404, "file not found");
     }
 
     const found = await findFileById(file_id);
