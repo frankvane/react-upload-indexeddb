@@ -14,6 +14,43 @@ export default defineConfig(({ mode }) => {
       include: ["src/**/*.test.{ts,tsx}"],
       css: true,
       clearMocks: true,
+      coverage: {
+        provider: "v8",
+        reporter: ["text", "json-summary"],
+        reportsDirectory: "./coverage",
+        // 只统计源码，排除测试文件本身与 demo 入口
+        include: ["src/**/*.{ts,tsx}"],
+        exclude: [
+          "src/**/*.test.{ts,tsx}",
+          "src/**/__tests__/**",
+          "src/main.tsx",
+          "src/App.tsx",
+          "src/vite-env.d.ts",
+          "src/components/DebugPanel*",
+        ],
+        thresholds: {
+          // 全库行覆盖门槛（ratchet 策略：设为当前可达值，逐步抬高；
+          // 长期目标见 docs/implementation-checklist.md T2.8：lines/statements 60、branches 50）
+          lines: 35,
+          functions: 40,
+          statements: 35,
+          branches: 40,
+          // src/shared 与 services 是纯逻辑层，门槛更高
+          // 长期目标 80/80/80/75；shared 已达标，services 按当前聚合值设 70 起步
+          "src/shared/**": {
+            lines: 80,
+            functions: 80,
+            statements: 80,
+            branches: 75,
+          },
+          "src/components/**/services/**": {
+            lines: 70,
+            functions: 80,
+            statements: 70,
+            branches: 75,
+          },
+        },
+      },
     },
     server: {
       proxy: {

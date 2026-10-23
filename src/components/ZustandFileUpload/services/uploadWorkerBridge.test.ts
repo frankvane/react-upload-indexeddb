@@ -203,3 +203,118 @@ describe("cancelUploadTask（T2.3 Worker CANCEL 协议）", () => {
     expect(() => cancelUploadTask("not-running")).not.toThrow();
   });
 });
+
+describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
+  beforeEach(() => {
+    disposeUploadWorkerPool();
+    FakeUploadWorker.instances = [];
+    FakeUploadWorker.autoRespond = true;
+  });
+
+  const runWithResponses = async (
+    responses: Array<Record<string, unknown>>,
+    hooks: {
+      onProgress?: (p: number) => void;
+      onRetry?: (m: string) => void;
+      onDebug?: (m: string, d?: Record<string, unknown>) => void;
+    } = {}
+  ) => {
+    // 拦截 postMessage：不自动回 done，按脚本投递响应序列
+    const originalPost = FakeUploadWorker.prototype.postMessage;
+    FakeUploadWorker.prototype.postMessage = function patched(
+      message: PostedMessage
+    ) {
+      this.posted.push(message);
+      for (const next of responses.splice(0)) {
+        this.onmessage?.({ data: next } as MessageEvent);
+      }
+    };
+    try {
+      return await runUploadTask({
+        ...baseOptions(),
+        uploadConfig: apiConfig,
+        ...hooks,
+      });
+    } finally {
+      FakeUploadWorker.prototype.postMessage = originalPost;
+    }
+  };
+
+  it("progress / retry / debug 消息转发到对应回调", async () => {
+    const onProgress = vi.fn();
+    const onRetry = vi.fn();
+    const onDebug = vi.fn();
+
+    const result = await runWithResponses(
+      [
+        { type: "progress", progress: 42, chunkIndex: 3 },
+        { type: "retry", message: "network blip" },
+        { type: "debug", message: "chunk md5 done", data: { count: 4 } },
+        { type: "done", skipped: false },
+      ],
+      { onProgress, onRetry, onDebug }
+    );
+
+    expect(result.success).toBe(true);
+    expect(onProgress).toHaveBeenCalledWith(42);
+    expect(onRetry).toHaveBeenCalledWith("network blip");
+    expect(onDebug).toHaveBeenCalledWith("chunk md5 done", { count: 4 });
+  });
+
+  it("error 消息以 errorMessage 收场", async () => {
+    const result = await runWithResponses([
+      { type: "error", message: "chunk 3 upload failed", failedChunks: [3] },
+    ]);
+
+    expect(result.success).toBe(false);
+    expect(result.cancelled).toBeFalsy();
+    expect(result.errorMessage).toBe("chunk 3 upload failed");
+  });
+
+  it("worker onerror 以错误原因收场且不回收 worker", async () => {
+    FakeUploadWorker.autoRespond = false;
+    const taskPromise = runUploadTask({
+      ...baseOptions(),
+      uploadConfig: apiConfig,
+    });
+
+    const worker = FakeUploadWorker.instances[0];
+    worker.onerror?.({ message: "worker crashed" } as Event);
+
+    const result = await taskPromise;
+    expect(result.success).toBe(false);
+    expect(result.errorMessage).toBe("worker crashed");
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("signal 已 aborted 时不创建 worker，直接 cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await runUploadTask({
+      ...baseOptions(),
+      uploadConfig: apiConfig,
+      signal: controller.signal,
+    });
+
+    expect(result.cancelled).toBe(true);
+    expect(FakeUploadWorker.instances).toHaveLength(0);
+  });
+
+  it("上传中外部 signal abort：任务 cancelled 且 worker 被销毁", async () => {
+    FakeUploadWorker.autoRespond = false;
+    const controller = new AbortController();
+    const taskPromise = runUploadTask({
+      ...baseOptions(),
+      uploadConfig: apiConfig,
+      signal: controller.signal,
+    });
+
+    const worker = FakeUploadWorker.instances[0];
+    controller.abort();
+
+    const result = await taskPromise;
+    expect(result.cancelled).toBe(true);
+    expect(worker.terminated).toBe(true);
+  });
+});

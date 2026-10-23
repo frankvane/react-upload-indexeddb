@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client:
+    name: 客户端（lint / test / build / pack）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: 单元测试 + 覆盖率门槛
+        run: npx vitest run --coverage
+
+      - name: 契约校验
+        run: node scripts/verify-client-contract.mjs
+
+      - name: 库构建（ESM/CJS + d.ts）
+        run: npm run build
+
+      - name: 打包 dry-run（校验 files/exports）
+        run: npm pack --dry-run
+
+  server:
+    name: 参考服务端（node --test）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: 安装依赖
+        run: npm --prefix server ci
+
+      - name: 服务端测试
+        run: npm --prefix server test

@@ -8,6 +8,7 @@
 ## [Unreleased]
 
 ### Added
+- **T2.8 测试体系与 CI**：新增 `.github/workflows/ci.yml`（lint → 客户端 test+coverage → 契约校验 → server test → 构建 → pack dry-run）；客户端测试扩至 **20 文件 / 90 用例**（新增 `downloadEventHandlers`、`uploadWorkerBridge`、`uploadStorage`、`chunkPersistenceService` 等），服务端 5 文件 / 29 用例；`vite.config.ts` 启用覆盖率门槛（ratchet 策略：全库 lines 35 / funcs 40 / branch 40，`src/shared` 80、`services` 70 单独门槛，长期目标 60% / 80%）
 - **T2.7 下载列表性能与安全**：`collectAllFiles` 加 5s TTL + 源目录 mtime 签名缓存（增删立即可见、内容不变零扫描）；`file_id` 格式校验（sha256 hex）后非法 id 直接 404 不扫描；`fileIdCache` 改 LRU（上限 5000）；`findFileById` 未命中不再循环全量扫描；`/list` 支持 `page`/`pageSize` 分页（默认全量兼容）
 - **T2.6 服务端健壮性**：
   - 合并流程重 IO（readFile/appendFile/md5File/缩略图）移出长事务，改为事务外合并 + 短事务写库，根治大文件合并期间 SQLITE_BUSY
