@@ -271,7 +271,10 @@ exports.downloadFile = async (req, res) => {
         "Content-Disposition",
         `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
       );
-      fs.createReadStream(filePath, { start, end }).pipe(res);
+      // 客户端中断下载时销毁流，避免 fd 泄漏（P1-13e）
+      const rangeStream = fs.createReadStream(filePath, { start, end });
+      req.on("close", () => rangeStream.destroy());
+      rangeStream.pipe(res);
       return;
     }
 
@@ -285,7 +288,10 @@ exports.downloadFile = async (req, res) => {
       `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
     );
 
-    fs.createReadStream(filePath).pipe(res);
+    // 客户端中断下载时销毁流，避免 fd 泄漏（P1-13e）
+    const fileStream = fs.createReadStream(filePath);
+    req.on("close", () => fileStream.destroy());
+    fileStream.pipe(res);
   } catch (error) {
     return jsonError(res, 500, error.message);
   }

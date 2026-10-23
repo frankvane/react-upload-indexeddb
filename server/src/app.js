@@ -1,15 +1,46 @@
 const cors = require("cors");
 const express = require("express");
 const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
 const fileRoutes = require("./routes/fileRoutes");
 const { createAuthMiddleware } = require("./middleware/auth");
 
 const app = express();
 
-app.use(cors());
+// CORS：默认 *（保持兼容）；生产建议 CORS_ORIGIN="https://a.com,https://b.com" 收紧。
+// 通配 origin 时不能携带 credentials（浏览器规范），需要 Cookie 鉴权必须配具体 origin。
+const corsOrigin = (process.env.CORS_ORIGIN || "*").trim();
+const corsOptions =
+  corsOrigin === "*"
+    ? { origin: true }
+    : {
+        origin: corsOrigin
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+        credentials: true,
+      };
+app.use(cors(corsOptions));
+
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(process.env.NODE_ENV === "test" ? "tiny" : "dev"));
+
+// 限流：默认 300 次/分钟/IP（RATE_LIMIT_MAX 可调，RATE_LIMIT_ENABLED=false 关闭）。
+// 测试环境默认关闭，避免 supertest 批量请求被 429 拦截。
+if (
+  process.env.RATE_LIMIT_ENABLED !== "false" &&
+  process.env.NODE_ENV !== "test"
+) {
+  const limiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: Number.parseInt(process.env.RATE_LIMIT_MAX || "", 10) || 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { code: 429, message: "too many requests", data: {} },
+  });
+  app.use("/api/", limiter);
+}
 
 app.get("/api/health", (_req, res) => {
   res.json({

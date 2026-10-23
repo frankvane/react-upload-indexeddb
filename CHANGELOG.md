@@ -8,6 +8,13 @@
 ## [Unreleased]
 
 ### Added
+- **T2.6 服务端健壮性**：
+  - 合并流程重 IO（readFile/appendFile/md5File/缩略图）移出长事务，改为事务外合并 + 短事务写库，根治大文件合并期间 SQLITE_BUSY
+  - 新增 `server/src/janitor.js`：启动时 + 每 6h 扫描 `tmp/upload`，删除超过 `TMP_TTL_HOURS`（默认 24h）的孤儿分片（`.gitkeep` 受保护），`index.js` 启动时接入
+  - multer 分片上限 env 化（`CHUNK_MAX_SIZE_MB`，默认 20）
+  - CORS 白名单（`CORS_ORIGIN`，默认 `*` 兼容；具体 origin 时自动开 credentials）+ `express-rate-limit` 限流（`RATE_LIMIT_MAX` 默认 300/min/IP，测试环境默认关闭）
+  - 下载流（Range 与全量两处）监听 `req.on("close")` 销毁，避免客户端中断后 fd 泄漏
+  - `.env.example` 补充全部新增环境变量说明
 - **T2.5 下载侧存储性能**：`ChunkPersistenceService` 五个查询方法改为 `chunkStore.iterate()` 单游标扫描（500 分片从 500 次事务降为 1 次）；合并完成（`handleMergeComplete` / `mergeInMainThread`）后异步 `removeAllChunks`，消除 chunks + completeFiles 双份占用；`calculateStorageSize`/`calculateFileSize` 删除 `JSON.stringify(file).length` 估算，改为只统计 Blob 实际字节
 - 新增 devDependency `fake-indexeddb`，`chunkPersistenceService.test.ts` 覆盖 500 分片单游标、合并后清理、多文件前缀隔离
 - **T2.3 Worker CANCEL 协议**：上传 Worker 新增 `cancel` 消息与 `cancelled` 响应；每个任务维护 AbortController，取消时中断全部在途 fetch 与重试；bridge 新增 `cancelUploadTask(fileId)`（800ms 无响应则 terminate 兜底）；取消后文件状态回 `QUEUED` 并释放 buffer

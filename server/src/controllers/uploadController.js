@@ -352,24 +352,21 @@ exports.mergeChunks = async (req, res) => {
 
     await flushFileChunkStates(safeFileId);
 
-    transaction = await sequelize.transaction();
-
+    // 秒传/已合并检查从事务内移到事务外：与 DB 的交互保持短事务，
+    // 避免大文件合并的 readFile/appendFile/md5File IO 长时间持锁
+    // 导致并发合并触发 SQLITE_BUSY（P1-13a）。
     const existingFile = await withSqliteBusyRetry(() =>
       File.findOne({
         where: { md5, size, status: 1 },
-        transaction,
       })
     );
     if (existingFile) {
-      await transaction.rollback();
-      transaction = null;
       return jsonOk(res, { alreadyMerged: true, file: existingFile });
     }
 
     const dbChunks = await withSqliteBusyRetry(() =>
       FileChunk.findAll({
         where: { file_id: safeFileId, status: 1 },
-        transaction,
       })
     );
     const chunkMap = new Map(dbChunks.map((chunk) => [chunk.chunk_index, chunk]));
@@ -431,34 +428,45 @@ exports.mergeChunks = async (req, res) => {
       }
     }
 
-    await withSqliteBusyRetry(() =>
-      File.upsert(
-        {
-          file_id: safeFileId,
-          file_name: safeName,
-          size,
-          user_id: user_id || "test",
-          status: 1,
-          md5,
-          category_id: category_id || 1,
-          file_ext: fileExt,
-          file_type: fileType,
-          file_path: filePath,
-          thumbnail_path: thumbnailPath,
-        },
-        { transaction }
-      )
-    );
+    // 重 IO 全部完成后再开短事务写库：File upsert + 分片状态归档一次提交
+    transaction = await sequelize.transaction();
+    try {
+      await withSqliteBusyRetry(() =>
+        File.upsert(
+          {
+            file_id: safeFileId,
+            file_name: safeName,
+            size,
+            user_id: user_id || "test",
+            status: 1,
+            md5,
+            category_id: category_id || 1,
+            file_ext: fileExt,
+            file_type: fileType,
+            file_path: filePath,
+            thumbnail_path: thumbnailPath,
+          },
+          { transaction }
+        )
+      );
 
-    await withSqliteBusyRetry(() =>
-      FileChunk.update(
-        { status: 2 },
-        { where: { file_id: safeFileId }, transaction }
-      )
-    );
+      await withSqliteBusyRetry(() =>
+        FileChunk.update(
+          { status: 2 },
+          { where: { file_id: safeFileId }, transaction }
+        )
+      );
 
-    await transaction.commit();
-    transaction = null;
+      await transaction.commit();
+      transaction = null;
+    } catch (dbError) {
+      if (transaction && !transaction.finished) {
+        await transaction.rollback();
+        transaction = null;
+      }
+      throw dbError;
+    }
+
     return jsonOk(res);
   } catch (error) {
     if (transaction && !transaction.finished) {

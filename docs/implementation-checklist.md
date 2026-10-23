@@ -146,7 +146,7 @@
 | 改动要点 | ① `getChunkHealth/getPendingChunks/countDownloadedChunks/collectChunks` 改为 `chunkStore.iterate()` 单次游标，一次遍历产出全部结果；② 合并成功（`handleMergeComplete` / `markCompleted`）后异步 `removeAllChunks(fileId)`；③ `calculateStorageSize` 的元数据部分改用 Blob.size 累加（元数据用 `estimate()` 兜底），删除 `JSON.stringify(file).length` 估算 |
 | 验收标准 | ① 新增 `chunkPersistenceService` 单测（fake-indexeddb）：500 分片 `getPendingChunks` 只发起 1 次游标；② e2e：下载完成后 `chunkStore` 中该文件 key 数为 0，`StorageStats` 与浏览器实际占用偏差 < 5% |
 
-### T2.6 服务端健壮性（对应 P1-13）🟡 复杂度：高
+### T2.6 服务端健壮性（对应 P1-13）🟡 复杂度：高 ✅ 已完成（2026-10-23）
 
 | 子项 | 文件 | 要点与验收 |
 | --- | --- | --- |
