@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="280" viewBox="0 0 1320 280" role="img" aria-label="简化外观与完整模式关系">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.2}
+      .accent{fill:#eef4ff;stroke:#8fb3e8}
+      .t{font:13px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#1f2328;text-anchor:middle}
+      .s{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .l{stroke:#57606a;stroke-width:1.2;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1320" height="280" fill="#ffffff"/>
+
+  <rect class="box" x="40" y="50" width="200" height="64" rx="8"/>
+  <text class="t" x="140" y="76">简化外观</text>
+  <text class="s" x="140" y="94">uiMode=simple</text>
+
+  <rect class="box" x="40" y="170" width="200" height="64" rx="8"/>
+  <text class="t" x="140" y="196">完整上传模式 UI</text>
+  <text class="s" x="140" y="214">参数调节 + 诊断</text>
+
+  <rect class="box accent" x="310" y="110" width="220" height="64" rx="8"/>
+  <text class="t" x="420" y="136">ZustandFileUpload 内核</text>
+  <text class="s" x="420" y="154">同一套分片引擎</text>
+
+  <rect class="box" x="590" y="110" width="220" height="64" rx="8"/>
+  <text class="t" x="700" y="136">共享 hooks / store / worker</text>
+  <text class="s" x="700" y="154">单一内核，无第二套实现</text>
+
+  <rect class="box" x="860" y="100" width="230" height="74" rx="8"/>
+  <text class="t" x="975" y="126">自动策略 + 自动清理</text>
+  <text class="s" x="975" y="144">IndexedDB 续传</text>
+
+  <rect class="box accent" x="1140" y="110" width="140" height="64" rx="8"/>
+  <text class="t" x="1210" y="147">/api/file/*</text>
+
+  <path class="l" d="M240 82 L280 82 L280 132 L306 132"/>
+  <path class="l" d="M240 202 L280 202 L280 154 L306 154"/>
+  <path class="l" d="M530 142 L586 142"/>
+  <path class="l" d="M810 142 L856 142"/>
+  <path class="l" d="M1090 142 L1136 142"/>
+</svg>

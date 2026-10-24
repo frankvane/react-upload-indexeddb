@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1220" height="960" viewBox="0 0 1220 960" role="img" aria-label="上传暂停与恢复时序">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.2}
+      .t{font:12.5px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#1f2328;text-anchor:middle}
+      .s{font:9.5px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .lb{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .fl{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#8b949e;text-anchor:start}
+      .l{stroke:#57606a;stroke-width:1.2;fill:none;marker-end:url(#arrow)}
+      .d{stroke-dasharray:5 3}
+      .life{stroke:#d0d7de;stroke-width:1}
+      .frame{fill:none;stroke:#c8d1db;stroke-dasharray:5 4}
+      .note{fill:#fffbe6;stroke:#e3d49b}
+      .lbg{fill:#ffffff}
+      .nt{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#6b5900;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1220" height="960" fill="#ffffff"/>
+  <rect class="frame" x="95" y="600" width="900" height="280" rx="4"/>
+  <text class="fl" x="105" y="617">alt Worker 是否存活</text>
+  <line class="life" x1="120" y1="68" x2="120" y2="940"/>
+  <rect class="box" x="35" y="24" width="170" height="44" rx="6"/>
+  <text class="t" x="120" y="44">上传 UI</text>
+  <text class="s" x="120" y="59">FileTable</text>
+  <line class="life" x1="360" y1="68" x2="360" y2="940"/>
+  <rect class="box" x="245" y="24" width="230" height="44" rx="6"/>
+  <text class="t" x="360" y="51">useBatchUploaderController</text>
+  <line class="life" x1="620" y1="68" x2="620" y2="940"/>
+  <rect class="box" x="525" y="24" width="190" height="44" rx="6"/>
+  <text class="t" x="620" y="44">UploadWorkerPool</text>
+  <text class="s" x="620" y="59">bridge</text>
+  <line class="life" x1="880" y1="68" x2="880" y2="940"/>
+  <rect class="box" x="805" y="24" width="150" height="44" rx="6"/>
+  <text class="t" x="880" y="51">uploadWorker</text>
+  <line class="life" x1="1120" y1="68" x2="1120" y2="940"/>
+  <rect class="box" x="1045" y="24" width="150" height="44" rx="6"/>
+  <text class="t" x="1120" y="51">/api/file/*</text>
+  <rect class="note" x="40" y="85" width="900" height="30" rx="4"/>
+  <text class="nt" x="490" y="104">上传中</text>
+  <rect class="note" x="40" y="475" width="900" height="30" rx="4"/>
+  <text class="nt" x="490" y="494">用户点击「继续」</text>
+  <path class="l d" d="M878 150 L122 150"/>
+  <rect class="lbg" x="419" y="135" width="162" height="14" rx="2"/>
+  <text class="lb" x="500" y="146">progress（字节级 detail）</text>
+  <path class="l" d="M122 188 L358 188"/>
+  <rect class="lbg" x="168" y="173" width="144" height="14" rx="2"/>
+  <text class="lb" x="240" y="184">pauseUploadFile(file)</text>
+  <path class="l" d="M362 226 L400 226 L400 244 L368 244"/>
+  <text class="lb" x="408" y="238" style="text-anchor:start">乐观置 PAUSED + 持久化</text>
+  <path class="l" d="M362 282 L618 282"/>
+  <rect class="lbg" x="412" y="267" width="156" height="14" rx="2"/>
+  <text class="lb" x="490" y="278">pauseUploadTask(fileId)</text>
+  <path class="l" d="M622 320 L878 320"/>
+  <rect class="lbg" x="690.5" y="305" width="119" height="14" rx="2"/>
+  <text class="lb" x="750" y="316">postMessage pause</text>
+  <path class="l d" d="M878 358 L622 358"/>
+  <rect class="lbg" x="638" y="343" width="224" height="14" rx="2"/>
+  <text class="lb" x="750" y="354">paused{uploadedChunks,totalChunks}</text>
+  <path class="l d" d="M618 396 L362 396"/>
+  <rect class="lbg" x="348" y="381" width="284" height="14" rx="2"/>
+  <text class="lb" x="490" y="392">runUploadTask 返回 paused:true（销毁 Worker）</text>
+  <path class="l d" d="M358 434 L122 434"/>
+  <rect class="lbg" x="194.5" y="419" width="91" height="14" rx="2"/>
+  <text class="lb" x="240" y="430">显示「已暂停」</text>
+  <path class="l" d="M122 530 L358 530"/>
+  <rect class="lbg" x="165" y="515" width="150" height="14" rx="2"/>
+  <text class="lb" x="240" y="526">resumeUploadFile(file)</text>
+  <path class="l" d="M362 568 L618 568"/>
+  <rect class="lbg" x="409" y="553" width="162" height="14" rx="2"/>
+  <text class="lb" x="490" y="564">resumeUploadTask(fileId)</text>
+  <path class="l d" d="M618 630 L362 630"/>
+  <rect class="lbg" x="470.5" y="615" width="39" height="14" rx="2"/>
+  <text class="lb" x="490" y="626">true</text>
+  <path class="l d" d="M358 668 L122 668"/>
+  <rect class="lbg" x="196.5" y="653" width="87" height="14" rx="2"/>
+  <text class="lb" x="240" y="664">置 UPLOADING</text>
+  <path class="l d" d="M618 706 L362 706"/>
+  <rect class="lbg" x="408.5" y="691" width="163" height="14" rx="2"/>
+  <text class="lb" x="490" y="702">false（已释放 / 刷新卸载）</text>
+  <path class="l" d="M362 744 L400 744 L400 762 L368 762"/>
+  <text class="lb" x="408" y="756" style="text-anchor:start">复用 processFileUpload 重发起</text>
+  <path class="l" d="M362 782 L1118 782"/>
+  <rect class="lbg" x="648.5" y="767" width="183" height="14" rx="2"/>
+  <text class="lb" x="740" y="778">POST /instant（跳过已传分片）</text>
+  <path class="l d" d="M1118 820 L362 820"/>
+  <rect class="lbg" x="694.5" y="805" width="91" height="14" rx="2"/>
+  <text class="lb" x="740" y="816">仅返回缺失分片</text>
+  <path class="l" d="M362 858 L878 858"/>
+  <rect class="lbg" x="541.5" y="843" width="157" height="14" rx="2"/>
+  <text class="lb" x="620" y="854">续传缺失分片（字节级续传）</text>
+  <path class="l d" d="M878 896 L122 896"/>
+  <rect class="lbg" x="446.5" y="881" width="107" height="14" rx="2"/>
+  <text class="lb" x="500" y="892">progress / done</text>
+</svg>

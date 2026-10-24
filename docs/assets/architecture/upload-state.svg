@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="370" viewBox="0 0 1300 370" role="img" aria-label="上传状态机">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.2}
+      .accent{fill:#eef4ff;stroke:#8fb3e8}
+      .t{font:13px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#1f2328;text-anchor:middle}
+      .s{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .l{stroke:#57606a;stroke-width:1.2;fill:none;marker-end:url(#arrow)}
+      .lb{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a}
+      .end{fill:#57606a}
+    </style>
+  </defs>
+  <rect width="1300" height="370" fill="#ffffff"/>
+
+  <circle class="end" cx="60" cy="96" r="7"/>
+
+  <rect class="box" x="100" y="72" width="140" height="48" rx="8"/>
+  <text class="t" x="170" y="92">queued</text>
+  <text class="s" x="170" y="108">排队中</text>
+
+  <rect class="box" x="330" y="72" width="180" height="48" rx="8"/>
+  <text class="t" x="420" y="92">queued-for-upload</text>
+  <text class="s" x="420" y="108">待上传</text>
+
+  <rect class="box" x="600" y="72" width="180" height="48" rx="8"/>
+  <text class="t" x="690" y="92">preparing-upload</text>
+  <text class="s" x="690" y="108">预处理 / 秒传校验</text>
+
+  <rect class="box accent" x="870" y="72" width="160" height="48" rx="8"/>
+  <text class="t" x="950" y="92">uploading</text>
+  <text class="s" x="950" y="108">上传中</text>
+
+  <rect class="box" x="1120" y="40" width="140" height="48" rx="8"/>
+  <text class="t" x="1190" y="60">done</text>
+  <text class="s" x="1190" y="76">已完成</text>
+
+  <rect class="box" x="1120" y="120" width="140" height="48" rx="8"/>
+  <text class="t" x="1190" y="140">instant</text>
+  <text class="s" x="1190" y="156">秒传成功</text>
+
+  <rect class="box" x="870" y="210" width="160" height="48" rx="8"/>
+  <text class="t" x="950" y="230">paused</text>
+  <text class="s" x="950" y="246">已暂停</text>
+
+  <rect class="box" x="600" y="240" width="180" height="48" rx="8"/>
+  <text class="t" x="690" y="260">error</text>
+  <text class="s" x="690" y="276">失败可重试 / 续传</text>
+
+  <!-- 迁移 -->
+  <path class="l" d="M67 96 L96 96"/>
+  <path class="l" d="M240 96 L326 96"/>
+  <path class="l" d="M510 96 L596 96"/>
+  <path class="l" d="M780 96 L866 96"/>
+
+  <path class="l" d="M1030 96 L1075 96 L1075 64 L1116 64"/>
+  <path class="l" d="M1030 100 L1080 100 L1080 144 L1116 144"/>
+
+  <path class="l" d="M910 120 L910 206"/>
+  <path class="l" d="M990 206 L990 124"/>
+
+  <path class="l" d="M690 120 L690 236"/>
+
+  <path class="l" d="M880 120 L880 170 L640 170 L640 236"/>
+
+  <path class="l" d="M600 264 L570 264 L570 88 L596 88"/>
+
+  <path class="l" d="M600 282 L540 282 L540 320 L170 320 L170 122"/>
+
+  <path class="l" d="M1030 234 L1046 234"/>
+  <circle class="end" cx="1052" cy="234" r="6"/>
+
+  <path class="l" d="M630 288 L630 310"/>
+  <circle class="end" cx="630" cy="318" r="6"/>
+
+  <path class="l" d="M1260 64 L1276 64"/>
+  <circle class="end" cx="1284" cy="64" r="6"/>
+
+  <path class="l" d="M1260 144 L1276 144"/>
+  <circle class="end" cx="1284" cy="144" r="6"/>
+
+  <!-- 标签 -->
+  <text class="lb" x="130" y="66" text-anchor="middle">选择文件</text>
+  <text class="lb" x="275" y="66" text-anchor="middle">进入自动上传批次</text>
+  <text class="lb" x="545" y="66" text-anchor="middle">预处理 / 秒传校验</text>
+  <text class="lb" x="823" y="66" text-anchor="middle">开始分片上传</text>
+  <text class="lb" x="1075" y="86" text-anchor="middle">合并成功</text>
+  <text class="lb" x="1072" y="134" text-anchor="end">命中秒传</text>
+  <text class="lb" x="920" y="168" text-anchor="start">暂停</text>
+  <text class="lb" x="1000" y="168" text-anchor="start">继续</text>
+  <text class="lb" x="698" y="152" text-anchor="start">校验失败 / 无文件引用</text>
+  <text class="lb" x="700" y="186" text-anchor="start">分片上传失败（超限重试）</text>
+  <text class="lb" x="594" y="256" text-anchor="end">用户点「重试」</text>
+  <text class="lb" x="410" y="312" text-anchor="middle">重试前复位</text>
+  <text class="lb" x="1062" y="238" text-anchor="start">[*] 删除</text>
+  <text class="lb" x="232" y="342" text-anchor="start">[*] = 终止状态；paused 删除时复位为 queued</text>
+</svg>

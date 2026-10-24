@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1120" viewBox="0 0 1500 1120" role="img" aria-label="上传链路时序">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.2}
+      .t{font:12.5px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#1f2328;text-anchor:middle}
+      .s{font:9.5px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .lb{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .fl{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#8b949e;text-anchor:start}
+      .l{stroke:#57606a;stroke-width:1.2;fill:none;marker-end:url(#arrow)}
+      .d{stroke-dasharray:5 3}
+      .life{stroke:#d0d7de;stroke-width:1}
+      .frame{fill:none;stroke:#c8d1db;stroke-dasharray:5 4}
+      .note{fill:#fffbe6;stroke:#e3d49b}
+      .lbg{fill:#ffffff}
+      .nt{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#6b5900;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1500" height="1120" fill="#ffffff"/>
+  <rect class="frame" x="800" y="360" width="670" height="340" rx="4"/>
+  <text class="fl" x="810" y="377">loop 每个文件</text>
+  <rect class="frame" x="800" y="520" width="670" height="175" rx="4"/>
+  <text class="fl" x="810" y="537">alt 需要上传分片</text>
+  <rect class="frame" x="250" y="820" width="830" height="175" rx="4"/>
+  <text class="fl" x="260" y="837">opt 页面刷新后续传</text>
+  <line class="life" x1="100" y1="68" x2="100" y2="1100"/>
+  <rect class="box" x="55" y="24" width="90" height="44" rx="6"/>
+  <text class="t" x="100" y="51">用户</text>
+  <line class="life" x1="270" y1="68" x2="270" y2="1100"/>
+  <rect class="box" x="180" y="24" width="180" height="44" rx="6"/>
+  <text class="t" x="270" y="44">上传 UI</text>
+  <text class="s" x="270" y="59">完整 / 简化外观</text>
+  <line class="life" x1="450" y1="68" x2="450" y2="1100"/>
+  <rect class="box" x="365" y="24" width="170" height="44" rx="6"/>
+  <text class="t" x="450" y="44">策略引擎</text>
+  <text class="s" x="450" y="59">网络检测 · 并发</text>
+  <line class="life" x1="640" y1="68" x2="640" y2="1100"/>
+  <rect class="box" x="540" y="24" width="200" height="44" rx="6"/>
+  <text class="t" x="640" y="44">filePrepareWorker</text>
+  <text class="s" x="640" y="59">hash / 分片信息</text>
+  <line class="life" x1="830" y1="68" x2="830" y2="1100"/>
+  <rect class="box" x="740" y="24" width="180" height="44" rx="6"/>
+  <text class="t" x="830" y="44">uploadWorker</text>
+  <text class="s" x="830" y="59">分片上传 / 合并</text>
+  <line class="life" x1="1030" y1="68" x2="1030" y2="1100"/>
+  <rect class="box" x="955" y="24" width="150" height="44" rx="6"/>
+  <text class="t" x="1030" y="44">IndexedDB</text>
+  <text class="s" x="1030" y="59">队列 / 分片状态</text>
+  <line class="life" x1="1220" y1="68" x2="1220" y2="1100"/>
+  <rect class="box" x="1140" y="24" width="160" height="44" rx="6"/>
+  <text class="t" x="1220" y="44">/api/file/*</text>
+  <text class="s" x="1220" y="59">uploadController</text>
+  <line class="life" x1="1400" y1="68" x2="1400" y2="1100"/>
+  <rect class="box" x="1310" y="24" width="180" height="44" rx="6"/>
+  <text class="t" x="1400" y="44">SQLite / 文件系统</text>
+  <text class="s" x="1400" y="59">chunks · tmp · uploads</text>
+  <rect class="note" x="1120" y="498" width="200" height="26" rx="4"/>
+  <text class="nt" x="1220" y="515">秒传 / 分片校验</text>
+  <rect class="note" x="105" y="786" width="330" height="26" rx="4"/>
+  <text class="nt" x="270" y="803">onBatchComplete · autoCleanup 清理成功项</text>
+  <path class="l" d="M102 110 L268 110"/>
+  <rect class="lbg" x="156" y="95" width="58" height="14" rx="2"/>
+  <text class="lb" x="185" y="106">选择文件</text>
+  <path class="l" d="M272 148 L448 148"/>
+  <rect class="lbg" x="309" y="133" width="102" height="14" rx="2"/>
+  <text class="lb" x="360" y="144">采集当前网络状态</text>
+  <path class="l d" d="M448 186 L272 186"/>
+  <rect class="lbg" x="250.5" y="171" width="219" height="14" rx="2"/>
+  <text class="lb" x="360" y="182">online / rtt / downlink → 自动参数</text>
+  <path class="l" d="M272 224 L638 224"/>
+  <rect class="lbg" x="373" y="209" width="164" height="14" rx="2"/>
+  <text class="lb" x="455" y="220">读取文件 + hash + 分片信息</text>
+  <path class="l d" d="M638 262 L272 262"/>
+  <rect class="lbg" x="389" y="247" width="132" height="14" rx="2"/>
+  <text class="lb" x="455" y="258">产出 UploadFile 队列</text>
+  <path class="l" d="M272 300 L828 300"/>
+  <rect class="lbg" x="452.5" y="285" width="195" height="14" rx="2"/>
+  <text class="lb" x="550" y="296">自动开始上传（autoUpload=true）</text>
+  <path class="l" d="M832 338 L1028 338"/>
+  <rect class="lbg" x="851.5" y="323" width="157" height="14" rx="2"/>
+  <text class="lb" x="930" y="334">写入上传队列与初始分片状态</text>
+  <path class="l" d="M832 400 L1218 400"/>
+  <rect class="lbg" x="977.5" y="385" width="95" height="14" rx="2"/>
+  <text class="lb" x="1025" y="396">POST /instant</text>
+  <path class="l" d="M1222 438 L1398 438"/>
+  <rect class="lbg" x="1230" y="423" width="160" height="14" rx="2"/>
+  <text class="lb" x="1310" y="434">查询 file_chunks / files</text>
+  <path class="l d" d="M1218 476 L832 476"/>
+  <rect class="lbg" x="961.5" y="461" width="127" height="14" rx="2"/>
+  <text class="lb" x="1025" y="472">已上传 or 需补传分片</text>
+  <path class="l" d="M832 570 L1218 570"/>
+  <rect class="lbg" x="937" y="555" width="176" height="14" rx="2"/>
+  <text class="lb" x="1025" y="566">POST /upload（每个缺失分片）</text>
+  <path class="l" d="M1222 608 L1398 608"/>
+  <rect class="lbg" x="1265.5" y="593" width="89" height="14" rx="2"/>
+  <text class="lb" x="1310" y="604">落盘 tmp 分片</text>
+  <path class="l" d="M1222 646 L1398 646"/>
+  <rect class="lbg" x="1253.5" y="631" width="113" height="14" rx="2"/>
+  <text class="lb" x="1310" y="642">记录 chunk 元数据</text>
+  <path class="l" d="M832 684 L1028 684"/>
+  <rect class="lbg" x="884.5" y="669" width="91" height="14" rx="2"/>
+  <text class="lb" x="930" y="680">持久化分片进度</text>
+  <path class="l d" d="M828 712 L272 712"/>
+  <rect class="lbg" x="426" y="697" width="248" height="14" rx="2"/>
+  <text class="lb" x="550" y="708">onUploadComplete（秒传时 skipped=true）</text>
+  <path class="l" d="M272 750 L1218 750"/>
+  <rect class="lbg" x="633" y="735" width="224" height="14" rx="2"/>
+  <text class="lb" x="745" y="746">GET /list（业务侧按需刷新，库内不做）</text>
+  <path class="l" d="M102 860 L268 860"/>
+  <rect class="lbg" x="139.5" y="845" width="91" height="14" rx="2"/>
+  <text class="lb" x="185" y="856">刷新或重开页面</text>
+  <path class="l" d="M272 898 L1028 898"/>
+  <rect class="lbg" x="573" y="883" width="154" height="14" rx="2"/>
+  <text class="lb" x="650" y="894">读取未完成队列 / 分片状态</text>
+  <path class="l d" d="M1028 936 L272 936"/>
+  <rect class="lbg" x="604.5" y="921" width="91" height="14" rx="2"/>
+  <text class="lb" x="650" y="932">返回恢复上下文</text>
+  <path class="l" d="M272 974 L828 974"/>
+  <rect class="lbg" x="504.5" y="959" width="91" height="14" rx="2"/>
+  <text class="lb" x="550" y="970">仅续传缺失分片</text>
+</svg>

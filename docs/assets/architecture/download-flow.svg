@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1010" viewBox="0 0 1500 1010" role="img" aria-label="下载链路时序">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.2}
+      .t{font:12.5px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#1f2328;text-anchor:middle}
+      .s{font:9.5px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .lb{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .fl{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#8b949e;text-anchor:start}
+      .l{stroke:#57606a;stroke-width:1.2;fill:none;marker-end:url(#arrow)}
+      .d{stroke-dasharray:5 3}
+      .life{stroke:#d0d7de;stroke-width:1}
+      .frame{fill:none;stroke:#c8d1db;stroke-dasharray:5 4}
+      .note{fill:#fffbe6;stroke:#e3d49b}
+      .lbg{fill:#ffffff}
+      .nt{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#6b5900;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1500" height="1010" fill="#ffffff"/>
+  <rect class="frame" x="250" y="440" width="600" height="115" rx="4"/>
+  <text class="fl" x="260" y="457">alt 下载任务</text>
+  <rect class="frame" x="680" y="580" width="800" height="210" rx="4"/>
+  <text class="fl" x="690" y="597">loop 分片下载</text>
+  <rect class="frame" x="680" y="800" width="800" height="100" rx="4"/>
+  <text class="fl" x="690" y="817">alt 暂停或刷新</text>
+  <line class="life" x1="100" y1="68" x2="100" y2="990"/>
+  <rect class="box" x="55" y="24" width="90" height="44" rx="6"/>
+  <text class="t" x="100" y="51">用户</text>
+  <line class="life" x1="280" y1="68" x2="280" y2="990"/>
+  <rect class="box" x="200" y="24" width="160" height="44" rx="6"/>
+  <text class="t" x="280" y="51">下载 UI</text>
+  <line class="life" x1="480" y1="68" x2="480" y2="990"/>
+  <rect class="box" x="385" y="24" width="190" height="44" rx="6"/>
+  <text class="t" x="480" y="44">useDownloadFiles</text>
+  <text class="s" x="480" y="59">列表 / 进度</text>
+  <line class="life" x1="700" y1="68" x2="700" y2="990"/>
+  <rect class="box" x="600" y="24" width="200" height="44" rx="6"/>
+  <text class="t" x="700" y="44">downloader.worker</text>
+  <text class="s" x="700" y="59">Range 拉取 / 合并</text>
+  <line class="life" x1="920" y1="68" x2="920" y2="990"/>
+  <rect class="box" x="845" y="24" width="150" height="44" rx="6"/>
+  <text class="t" x="920" y="44">IndexedDB</text>
+  <text class="s" x="920" y="59">分片 / 进度</text>
+  <line class="life" x1="1150" y1="68" x2="1150" y2="990"/>
+  <rect class="box" x="1065" y="24" width="170" height="44" rx="6"/>
+  <text class="t" x="1150" y="44">/api/file/*</text>
+  <text class="s" x="1150" y="59">downloadController</text>
+  <line class="life" x1="1370" y1="68" x2="1370" y2="990"/>
+  <rect class="box" x="1295" y="24" width="150" height="44" rx="6"/>
+  <text class="t" x="1370" y="44">文件系统</text>
+  <text class="s" x="1370" y="59">uploads / tmp</text>
+  <path class="l" d="M102 110 L278 110"/>
+  <rect class="lbg" x="155.5" y="95" width="69" height="14" rx="2"/>
+  <text class="lb" x="190" y="106">进入下载页</text>
+  <path class="l" d="M282 148 L478 148"/>
+  <rect class="lbg" x="329" y="133" width="102" height="14" rx="2"/>
+  <text class="lb" x="380" y="144">初始化并拉取列表</text>
+  <path class="l" d="M482 186 L1148 186"/>
+  <rect class="lbg" x="780" y="171" width="70" height="14" rx="2"/>
+  <text class="lb" x="815" y="182">GET /list</text>
+  <path class="l" d="M1152 224 L1368 224"/>
+  <rect class="lbg" x="1199.5" y="209" width="121" height="14" rx="2"/>
+  <text class="lb" x="1260" y="220">扫描上传 / 下载目录</text>
+  <path class="l d" d="M1148 262 L482 262"/>
+  <rect class="lbg" x="736.5" y="247" width="157" height="14" rx="2"/>
+  <text class="lb" x="815" y="258">文件清单（原始文件名优先）</text>
+  <path class="l d" d="M478 300 L282 300"/>
+  <rect class="lbg" x="351" y="285" width="58" height="14" rx="2"/>
+  <text class="lb" x="380" y="296">展示列表</text>
+  <path class="l" d="M102 338 L278 338"/>
+  <rect class="lbg" x="161" y="323" width="58" height="14" rx="2"/>
+  <text class="lb" x="190" y="334">点击下载</text>
+  <path class="l" d="M282 376 L918 376"/>
+  <rect class="lbg" x="549" y="361" width="102" height="14" rx="2"/>
+  <text class="lb" x="600" y="372">查询历史下载进度</text>
+  <path class="l d" d="M918 414 L282 414"/>
+  <rect class="lbg" x="554.5" y="399" width="91" height="14" rx="2"/>
+  <text class="lb" x="600" y="410">返回已完成分片</text>
+  <path class="l" d="M282 490 L698 490"/>
+  <rect class="lbg" x="444.5" y="475" width="91" height="14" rx="2"/>
+  <text class="lb" x="490" y="486">从断点继续下载</text>
+  <path class="l" d="M282 528 L698 528"/>
+  <rect class="lbg" x="439" y="513" width="102" height="14" rx="2"/>
+  <text class="lb" x="490" y="524">新建分片下载任务</text>
+  <path class="l" d="M702 615 L1148 615"/>
+  <rect class="lbg" x="841" y="600" width="168" height="14" rx="2"/>
+  <text class="lb" x="925" y="611">GET /download/:id + Range</text>
+  <path class="l" d="M1152 653 L1368 653"/>
+  <rect class="lbg" x="1220" y="638" width="80" height="14" rx="2"/>
+  <text class="lb" x="1260" y="649">范围读取片段</text>
+  <path class="l d" d="M1148 691 L702 691"/>
+  <rect class="lbg" x="885" y="676" width="80" height="14" rx="2"/>
+  <text class="lb" x="925" y="687">返回分片数据</text>
+  <path class="l" d="M702 729 L918 729"/>
+  <rect class="lbg" x="759" y="714" width="102" height="14" rx="2"/>
+  <text class="lb" x="810" y="725">持久化分片与进度</text>
+  <path class="l" d="M282 830 L918 830"/>
+  <rect class="lbg" x="517.5" y="815" width="165" height="14" rx="2"/>
+  <text class="lb" x="600" y="826">保留当前进度（暂停 / 刷新）</text>
+  <path class="l" d="M282 868 L918 868"/>
+  <rect class="lbg" x="523" y="853" width="154" height="14" rx="2"/>
+  <text class="lb" x="600" y="864">读取断点 / 仅请求缺失分片</text>
+  <path class="l" d="M702 935 L740 935 L740 953 L708 953"/>
+  <text class="lb" x="748" y="947" style="text-anchor:start">合并分片</text>
+  <path class="l d" d="M698 975 L282 975"/>
+  <rect class="lbg" x="444.5" y="960" width="91" height="14" rx="2"/>
+  <text class="lb" x="490" y="971">完成并导出文件</text>
+</svg>

@@ -263,7 +263,7 @@ npm run dev
 | 文档                                                                                                                               | 内容                                     |
 | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | [组件使用文档](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/components.md)                                   | Props / 回调 / 集成示例                  |
-| [架构详图](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/architecture.md)                                     | 流程图 / 时序图 / 自动策略（Mermaid 源） |
+| [架构详图](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/architecture.md)                                     | 架构 / 时序 / 状态机（手绘 SVG）         |
 | [API 契约](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/server-api-contract.md)                              | 请求响应结构与错误语义                   |
 | [文档索引](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/README.md)                                           | 现行文档地图 / 历史归档 / 维护约定       |
 | [依赖瘦身分析（归档）](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/archive/dependency-slimming-analysis.md) | 去 antd / ahooks 的动机与方案            |

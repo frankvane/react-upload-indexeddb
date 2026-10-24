@@ -39,7 +39,7 @@
 - **版本变更同步顺序**：README（用法）→ components.md（API）→ architecture.md（设计）→ CHANGELOG（记录）。
 - **破坏性变更**（如 v3.0.0 移除 `SimpleUploadList` / `SimpleDownloadList` 与 `/simple` 子路径）必须在 README 给出迁移写法，并在 CHANGELOG 的 Removed 段落登记。
 - **阶段任务完成后**将分析/清单移入 `archive/`，并在文首标注归档版本与日期；归档文档不再回改正文（除更正失效链接）。
-- README 的架构/时序图为 `docs/assets/readme/*.svg`（**手写 SVG**，无渲染工具依赖），直接编辑即可；`architecture.md` 的 Mermaid 仅由 GitHub 原生渲染，两者互不自动同步。
+- README 与 `architecture.md` 的架构/时序/状态机图均为**手写 SVG**（`docs/assets/readme/`、`docs/assets/architecture/`），直接编辑即可，无渲染工具依赖。
 
 ## 四、运维补充
 

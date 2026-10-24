@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1020" viewBox="0 0 1280 1020" role="img" aria-label="自动策略决策流">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.2}
+      .diamond{fill:#fff8e6;stroke:#dcb76a;stroke-width:1.2}
+      .t{font:13px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#1f2328;text-anchor:middle}
+      .s{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .l{stroke:#57606a;stroke-width:1.2;fill:none;marker-end:url(#arrow)}
+      .lb{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a}
+    </style>
+  </defs>
+  <rect width="1280" height="1020" fill="#ffffff"/>
+
+  <rect class="box" x="430" y="40" width="260" height="48" rx="8"/>
+  <text class="t" x="560" y="69">开始上传批次</text>
+
+  <rect class="box" x="430" y="124" width="260" height="58" rx="8"/>
+  <text class="t" x="560" y="150">读取网络状态</text>
+  <text class="s" x="560" y="168">online / offline / rtt / downlink</text>
+
+  <polygon class="diamond" points="560,212 660,252 560,292 460,252"/>
+  <text class="t" x="560" y="257">是否在线</text>
+
+  <rect class="box" x="170" y="223" width="220" height="58" rx="8"/>
+  <text class="t" x="280" y="249">等待网络恢复</text>
+  <text class="s" x="280" y="267">保留上传队列</text>
+
+  <rect class="box" x="430" y="332" width="260" height="58" rx="8"/>
+  <text class="t" x="560" y="358">计算自动参数</text>
+  <text class="s" x="560" y="376">chunkSize / 文件并发 / 分片并发</text>
+
+  <rect class="box" x="430" y="422" width="260" height="58" rx="8"/>
+  <text class="t" x="560" y="448">约束校验</text>
+  <text class="s" x="560" y="466">maxFileSize / maxFiles / maxRetries</text>
+
+  <rect class="box" x="430" y="512" width="260" height="58" rx="8"/>
+  <text class="t" x="560" y="538">写入上传队列</text>
+  <text class="s" x="560" y="556">IndexedDB 持久化</text>
+
+  <rect class="box accent" x="430" y="602" width="260" height="58" rx="8" fill="#eef4ff" stroke="#8fb3e8"/>
+  <text class="t" x="560" y="628">自动上传</text>
+  <text class="s" x="560" y="646">uploadWorker 分片并发</text>
+
+  <polygon class="diamond" points="560,700 660,730 560,760 460,730"/>
+  <text class="t" x="560" y="735">文件完成？</text>
+
+  <rect class="box" x="430" y="800" width="260" height="58" rx="8"/>
+  <text class="t" x="560" y="826">刷新服务端清单</text>
+  <text class="s" x="560" y="844">GET /list（业务侧按需）</text>
+
+  <polygon class="diamond" points="860,858 980,890 860,922 740,890"/>
+  <text class="t" x="860" y="895">autoCleanup?</text>
+
+  <rect class="box" x="1020" y="820" width="210" height="58" rx="8"/>
+  <text class="t" x="1125" y="846">倒计时清理</text>
+  <text class="s" x="1125" y="864">cleanupPolicy 成功后清理</text>
+
+  <rect class="box" x="1020" y="930" width="210" height="58" rx="8"/>
+  <text class="t" x="1125" y="956">保留完成项</text>
+  <text class="s" x="1125" y="974">供人工处理</text>
+
+  <path class="l" d="M560 88 L560 120"/>
+  <path class="l" d="M560 182 L560 208"/>
+
+  <path class="l" d="M460 252 L394 252"/>
+  <text class="lb" x="425" y="244" text-anchor="end">否</text>
+
+  <path class="l" d="M280 223 L280 153 L426 153"/>
+  <text class="lb" x="292" y="147" text-anchor="start">网络恢复</text>
+
+  <path class="l" d="M560 292 L560 328"/>
+  <text class="lb" x="570" y="314" text-anchor="start">是</text>
+
+  <path class="l" d="M560 390 L560 418"/>
+  <path class="l" d="M560 480 L560 508"/>
+  <path class="l" d="M560 570 L560 598"/>
+  <path class="l" d="M560 660 L560 696"/>
+
+  <path class="l" d="M460 730 L380 730 L380 631 L426 631"/>
+  <text class="lb" x="430" y="722" text-anchor="end">否</text>
+
+  <path class="l" d="M560 760 L560 796"/>
+  <text class="lb" x="570" y="786" text-anchor="start">是</text>
+
+  <path class="l" d="M690 829 L715 829 L715 890 L736 890"/>
+
+  <path class="l" d="M920 874 L970 874 L970 849 L1016 849"/>
+  <text class="lb" x="932" y="866" text-anchor="start">是</text>
+
+  <path class="l" d="M980 890 L1000 890 L1000 959 L1016 959"/>
+  <text class="lb" x="1008" y="912" text-anchor="start">否</text>
+</svg>

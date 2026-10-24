@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1340" height="850" viewBox="0 0 1340 850" role="img" aria-label="react-upload-indexeddb 系统总览">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.2;rx:8}
+      .accent{fill:#eef4ff;stroke:#8fb3e8}
+      .t{font:13px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#1f2328;text-anchor:middle}
+      .s{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .l{stroke:#57606a;stroke-width:1.2;fill:none;marker-end:url(#arrow)}
+      .panel{fill:none;stroke:#d8dee4;stroke-dasharray:5 4}
+      .pt{font:12px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#8b949e}
+    </style>
+  </defs>
+  <rect width="1340" height="850" fill="#ffffff"/>
+
+  <rect class="panel" x="20" y="20" width="880" height="810" rx="10"/>
+  <text class="pt" x="40" y="46">前端（React + Zustand + localforage）</text>
+  <rect class="panel" x="920" y="20" width="400" height="810" rx="10"/>
+  <text class="pt" x="940" y="46">后端（Express + Sequelize + SQLite）</text>
+
+  <rect class="box accent" x="70" y="70" width="230" height="58"/>
+  <text class="t" x="185" y="96">App 页面入口</text>
+  <text class="s" x="185" y="114">上传 / 下载 / 简化模式</text>
+
+  <rect class="box" x="70" y="170" width="230" height="58"/>
+  <text class="t" x="185" y="196">网络状态检测</text>
+  <text class="s" x="185" y="214">online / offline / rtt / downlink</text>
+
+  <rect class="box" x="70" y="270" width="230" height="58"/>
+  <text class="t" x="185" y="296">自动策略引擎</text>
+  <text class="s" x="185" y="314">chunkSize + 两级并发</text>
+
+  <rect class="box" x="350" y="170" width="230" height="58"/>
+  <text class="t" x="465" y="196">uiMode=simple</text>
+  <text class="s" x="465" y="214">简化外观</text>
+
+  <rect class="box accent" x="70" y="390" width="230" height="58"/>
+  <text class="t" x="185" y="416">ZustandFileUpload</text>
+  <text class="s" x="185" y="434">自动上传内核</text>
+
+  <rect class="box accent" x="350" y="390" width="230" height="58"/>
+  <text class="t" x="465" y="416">ZustandFileDownload</text>
+  <text class="s" x="465" y="434">下载内核</text>
+
+  <rect class="box" x="620" y="390" width="250" height="58"/>
+  <text class="t" x="745" y="416">自动清理定时器</text>
+  <text class="s" x="745" y="434">autoCleanup + cleanupDelay</text>
+
+  <rect class="box" x="70" y="490" width="230" height="58"/>
+  <text class="t" x="185" y="516">Upload Hooks</text>
+  <text class="s" x="185" y="534">processor / uploader / cleanup</text>
+
+  <rect class="box" x="350" y="490" width="230" height="58"/>
+  <text class="t" x="465" y="516">Download Hooks</text>
+  <text class="s" x="465" y="534">files / downloader / storage</text>
+
+  <rect class="box" x="70" y="590" width="230" height="58"/>
+  <text class="t" x="185" y="616">Upload Workers</text>
+  <text class="s" x="185" y="634">filePrepare / uploadWorker</text>
+
+  <rect class="box" x="350" y="590" width="230" height="58"/>
+  <text class="t" x="465" y="616">Download Workers</text>
+  <text class="s" x="465" y="634">downloader / merger</text>
+
+  <rect class="box" x="70" y="700" width="230" height="58"/>
+  <text class="t" x="185" y="726">Upload IndexedDB</text>
+  <text class="s" x="185" y="744">队列 / 分片状态 / 设置快照</text>
+
+  <rect class="box" x="350" y="700" width="230" height="58"/>
+  <text class="t" x="465" y="726">Download IndexedDB</text>
+  <text class="s" x="465" y="744">下载分片 / 下载进度</text>
+
+  <rect class="box accent" x="980" y="380" width="300" height="58"/>
+  <text class="t" x="1130" y="406">文件接口</text>
+  <text class="s" x="1130" y="424">instant / upload / merge / list / download</text>
+
+  <rect class="box" x="950" y="500" width="170" height="48"/>
+  <text class="t" x="1035" y="529">uploadController</text>
+
+  <rect class="box" x="1140" y="500" width="170" height="48"/>
+  <text class="t" x="1225" y="529">downloadController</text>
+
+  <rect class="box" x="950" y="620" width="170" height="58"/>
+  <text class="t" x="1035" y="646">SQLite</text>
+  <text class="s" x="1035" y="664">files / file_chunks</text>
+
+  <rect class="box" x="1140" y="620" width="170" height="58"/>
+  <text class="t" x="1225" y="646">文件系统</text>
+  <text class="s" x="1225" y="664">tmp / uploads / download</text>
+
+  <path class="l" d="M185 128 L185 166"/>
+  <path class="l" d="M185 228 L185 266"/>
+  <path class="l" d="M185 328 L185 386"/>
+  <path class="l" d="M300 99 L600 99 L600 300 L465 300 L465 386"/>
+  <path class="l" d="M300 115 L325 115 L325 199 L346 199"/>
+  <path class="l" d="M350 210 L320 210 L320 419 L304 419"/>
+  <path class="l" d="M185 448 L185 486"/>
+  <path class="l" d="M465 448 L465 486"/>
+  <path class="l" d="M185 548 L185 586"/>
+  <path class="l" d="M465 548 L465 586"/>
+  <path class="l" d="M300 419 L616 419"/>
+  <path class="l" d="M165 648 L165 696" marker-start="url(#arrow)"/>
+  <path class="l" d="M445 648 L445 696" marker-start="url(#arrow)"/>
+  <path class="l" d="M300 610 L880 610 L880 395 L976 395"/>
+  <path class="l" d="M580 630 L890 630 L890 425 L976 425"/>
+  <path class="l" d="M1080 438 L1080 470 L1035 470 L1035 496"/>
+  <path class="l" d="M1180 438 L1180 470 L1225 470 L1225 496"/>
+  <path class="l" d="M1000 548 L1000 616"/>
+  <path class="l" d="M1060 548 L1060 578 L1150 578 L1150 616"/>
+  <path class="l" d="M1200 548 L1200 596 L1080 596 L1080 616"/>
+  <path class="l" d="M1240 548 L1240 616"/>
+</svg>
