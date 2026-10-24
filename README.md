@@ -87,6 +87,8 @@ import { SimpleUploadList, SimpleDownloadList } from "react-upload-indexeddb";
 `<ZustandFileDownload showStorageStats={false} showNetworkStatus={false} showBatchInfo={false} />`
 让完整版呈现简化外观。
 
+> 简化上传组件为**纯自动模式**：选择文件即自动上传、失败自动重试，工具栏只提供「选择文件」，不暴露手动上传/重试按钮（页面刷新后残留的排队行会在挂载时转为"请重新选择文件"的失败态，见 CHANGELOG 2.0.5 / 2.0.6）。
+
 ### 按需引入（真·分包）
 
 ```ts
@@ -104,10 +106,38 @@ import { SimpleUploadList, SimpleDownloadList } from "react-upload-indexeddb/sim
 
 | 组件 | 用途 | 常用属性 |
 | --- | --- | --- |
-| `ZustandFileUpload` | 完整上传 | `baseURL` `uploadApi` `checkApi` `chunkSize` `fileConcurrency` `chunkConcurrency` `autoUpload` `autoCleanup` `hashMode` `maxFileSize` `allowedFileTypes` |
-| `ZustandFileDownload` | 完整下载 | `baseURL` `listApi` `downloadApi` `chunkSize` `maxConcurrency` `autoStart` `showProgress` `showStorageStats` `showNetworkStatus` `showBatchInfo` |
+| `ZustandFileUpload` | 完整上传 | `baseURL` `uploadApi` `checkApi` `chunkSize` `fileConcurrency` `chunkConcurrency` `autoUpload` `autoCleanup` `hashMode` `maxFileSize` `allowedFileTypes` `visibleColumns` |
+| `ZustandFileDownload` | 完整下载 | `baseURL` `listApi` `downloadApi` `chunkSize` `maxConcurrency` `autoStart` `showProgress` `showStorageStats` `showNetworkStatus` `showBatchInfo` `visibleColumns` |
 | `SimpleUploadList` | 简化上传 | 同 `ZustandFileUpload`（默认 `autoUpload=true`、极简 UI） |
 | `SimpleDownloadList` | 简化下载 | 同 `ZustandFileDownload`（默认 `showStorageStats/showNetworkStatus/showBatchInfo=false`） |
+
+> 列控制 / 面板开关均**不改变底层引擎**，只影响展示。详见下方「自定义表格列」与「简化外观」。
+
+### 自定义表格列（visibleColumns）
+
+上传 `ZustandFileUpload` 与下载 `ZustandFileDownload` 支持 `visibleColumns`：传入列 key 数组即可**控制显示哪些列，并按数组顺序排列**；不传则显示全部内置列。隐藏「操作」列后表格内不再提供暂停/继续/重试/删除按钮，由消费方自行提供控制。
+
+```tsx
+import {
+  ZustandFileUpload,
+  ZustandFileDownload,
+  type UploadColumnKey,
+  type DownloadColumnKey,
+} from "react-upload-indexeddb";
+
+// 上传：只显示 文件名 / 状态 / 进度 / 操作，按此顺序
+<ZustandFileUpload visibleColumns={["fileName", "status", "progress", "action"]} />
+
+// 下载：只显示 文件名 / 大小 / 状态 / 操作
+<ZustandFileDownload visibleColumns={["fileName", "fileSize", "status", "action"]} />
+```
+
+列 key（区分大小写）：
+
+- 上传 `UploadColumnKey`：`index` | `fileName` | `fileSize` | `chunkCount` | `status` | `progress` | `action`
+- 下载 `DownloadColumnKey`：`fileName` | `fileSize` | `chunks` | `status` | `progress` | `action`
+
+> `SimpleUploadList` / `SimpleDownloadList` 走各自独立的列集，当前未暴露 `visibleColumns`。
 
 完整 Props 说明与回调（`onUploadStart/Progress/Complete/Error`、`onBatchComplete`、`onStorageChange` 等）见
 [docs/components.md](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/components.md)。

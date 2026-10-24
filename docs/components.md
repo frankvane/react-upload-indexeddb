@@ -73,6 +73,7 @@ import { API_BASE_URL, API_PATHS } from "./config/api";
 | `withCredentials` | `boolean` | `false` | 是否以 `credentials:'include'` 发送（携带 Cookie）。默认 `same-origin`；仅跨域 Cookie 鉴权时开启 |
 | `customFileValidator` | `(file: File) => { valid: boolean; message?: string }` | `undefined` | 自定义文件校验 |
 | `customUploadHandler` | `(file, config) => Promise<boolean>` | `undefined` | 自定义上传处理器（当前版本为预留） |
+| `visibleColumns` | `UploadColumnKey[]` | `undefined`（显示全部内置列） | 控制上传表格显示的列并决定其顺序；列 key：`index` \| `fileName` \| `fileSize` \| `chunkCount` \| `status` \| `progress` \| `action`（v2.0.4 起） |
 
 ### 2.3 回调方法
 
@@ -205,6 +206,7 @@ import { API_BASE_URL, API_PATHS } from "./config/api";
 | `showBatchInfo` | `boolean` | `true` | 是否显示批次汇总条（活动中/排队中/已完成/批次进度 + 进度条，v2.0.1 起） |
 | `customDownloadHandler` | `(file, config) => Promise<boolean>` | `undefined` | 自定义下载处理器（当前版本为预留） |
 | `customProgressHandler` | `(file, progress) => void` | `undefined` | 自定义进度处理器（当前版本为预留） |
+| `visibleColumns` | `DownloadColumnKey[]` | `undefined`（显示全部内置列） | 控制下载表格显示的列并决定其顺序；列 key：`fileName` \| `fileSize` \| `chunks` \| `status` \| `progress` \| `action`（v2.0.4 起） |
 
 ### 4.3 回调方法（接口已定义）
 

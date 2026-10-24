@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.0.6] - 2026-10-24
+
+### Fixed
+- **挂载时清理历史排队僵尸行**：页面刷新后运行时 `fileRef`（File 引用）必然丢失，此前停留在 `QUEUED` / `QUEUED_FOR_UPLOAD` 的行既无法自动上传、又无重试入口，会永远卡在「排队中」（`recoverInterruptedUploadFiles` 的 `interruptedUploadStatuses` 不含 `QUEUED`，不会触碰它们）。现组件挂载时统一将这些历史排队行转为 `ERROR`（`awaitingReselect: true`，progress 归 0，提示「页面已刷新，请重新选择文件后上传」），给出明确指引而非静默卡死。属存储/UI 治理，**公开 API 不变**（`6566515`）
+
+## [2.0.5] - 2026-10-24
+
+### Fixed
+- **simple 模式回归纯自动**：移除 `FileUploadActions` 在 simple 模式下的「上传文件」「重试失败文件」两个手动触发按钮（此前 2.0.3 为临时修复 simple 模式排队/失败无入口而加）。simple 模式恢复「选择文件即自动上传/自动重试」的纯自动语义，工具栏仅保留「选择文件」；僵尸行治理交由 2.0.6 的挂载清理机制统一处理（`d9fac9c`）
+
 ## [2.0.4] - 2026-10-24
 
 ### Added
