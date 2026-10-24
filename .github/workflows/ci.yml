@@ -57,6 +57,7 @@ jobs:
       - name: 安装依赖
         run: npm --prefix server ci
 
-      - name: 服务端测试 + 覆盖率门槛
-        # `test` 内含 node --experimental-test-coverage，未达门槛（行80/分支65/函数80）即非零退出
-        run: npm --prefix server test
+      - name: 服务端测试 + 覆盖率门槛 + e2e 冒烟
+        # `verify` = `test`（含 node --experimental-test-coverage 门槛 行80/分支65/函数80）
+        #   + `e2e`（真实服务端 round-trip：上传→合并→分片下载→重组→md5 比对）
+        run: npm --prefix server run verify

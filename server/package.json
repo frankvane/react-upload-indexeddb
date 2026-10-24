@@ -12,7 +12,8 @@
     "test": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-exclude='src/index.js' --test-coverage-lines=80 --test-coverage-branches=65 --test-coverage-functions=80 --test-concurrency=1 tests/**/*.test.js",
     "test:plain": "node --test --test-concurrency=1 tests/**/*.test.js",
     "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-exclude='src/index.js' --test-concurrency=1 tests/**/*.test.js",
-    "verify": "npm run test"
+    "e2e": "node e2e/smoke.mjs",
+    "verify": "npm run test && npm run e2e"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
