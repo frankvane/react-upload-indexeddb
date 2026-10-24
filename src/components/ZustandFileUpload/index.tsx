@@ -15,11 +15,12 @@ import {
 import {
   recoverInterruptedUploadFiles,
 } from "./services/uploadStorage";
+import { loadAllUploadFiles } from "./services/uploadOrchestrator";
 import { useUploadStore } from "./store/upload";
 import { useUploadEngine } from "./context/UploadEngineContext";
 import { UploadProvider } from "./context/UploadContext";
 import { useUploadContext } from "./context/useUploadContext";
-import { ZustandFileUploadProps } from "./types/upload";
+import { UploadStatus, ZustandFileUploadProps } from "./types/upload";
 import { useShallow } from "zustand/react/shallow";
 
 const ZustandFileUploadCore: React.FC = () => {
@@ -104,6 +105,26 @@ const ZustandFileUploadCore: React.FC = () => {
 
     const recoverInterruptedUploads = async () => {
       const recovery = await recoverInterruptedUploadFiles(engine.storage);
+
+      // 历史 QUEUED 行治理：QUEUED 不在 interruptedUploadStatuses 内，
+      // 恢复逻辑不会触碰；而页面刷新后运行时 File 引用（fileRef）必然丢失，
+      // 这类行永远无法自动上传，会一直卡在「排队中」且没有重试入口。
+      // 挂载时统一转为 awaitingReselect 的 ERROR 行，给出明确指引。
+      const staleQueuedFiles = (await loadAllUploadFiles(engine.storage)).filter(
+        (file) =>
+          file.status === UploadStatus.QUEUED ||
+          file.status === UploadStatus.QUEUED_FOR_UPLOAD
+      );
+      for (const stale of staleQueuedFiles) {
+        await engine.storage.setItem(stale.id, {
+          ...stale,
+          status: UploadStatus.ERROR,
+          progress: 0,
+          errorMessage: "页面已刷新，请重新选择文件后上传",
+          awaitingReselect: true,
+        });
+      }
+
       await refreshFiles();
 
       if (disposed || recovery.totalInterrupted === 0) {
