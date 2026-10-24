@@ -9,6 +9,8 @@ const testDbStorage = path.join(__dirname, "tmp-test-list-cache.sqlite");
 process.env.DB_STORAGE = testDbStorage;
 process.env.CHUNK_STATE_FLUSH_INTERVAL_MS = "60000";
 process.env.CHUNK_STATE_MAX_PENDING = "99999";
+// 1000 个并发请求的派发耗时可能超过默认 5s TTL，放大 TTL 才能稳定验证"缓存命中零扫描"
+process.env.LIST_CACHE_TTL_MS = "60000";
 
 const app = require("../src/app");
 const { syncModels, sequelize } = require("../src/models");

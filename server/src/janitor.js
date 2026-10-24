@@ -5,6 +5,12 @@ const { TMP_UPLOAD_DIR } = require("./config/paths");
 const DEFAULT_TTL_HOURS = 24;
 const DEFAULT_INTERVAL_HOURS = 6;
 
+// 环境变量缺失时 Number(undefined) 为 NaN，需显式回退，否则 setInterval(NaN) 会被压成 1ms
+const toPositiveNumber = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 // 受保护文件：目录占位文件不应被清理
 const PROTECTED_FILES = new Set([".gitkeep"]);
 
@@ -59,14 +65,15 @@ const startOrphanChunkJanitor = ({
   logger = console,
 } = {}) => {
   const ttlMs =
-    (ttlHours ?? Number(process.env.TMP_TTL_HOURS) ?? DEFAULT_TTL_HOURS) *
+    toPositiveNumber(ttlHours ?? process.env.TMP_TTL_HOURS, DEFAULT_TTL_HOURS) *
     60 *
     60 *
     1000;
   const intervalMs =
-    (intervalHours ??
-      Number(process.env.JANITOR_INTERVAL_HOURS) ??
-      DEFAULT_INTERVAL_HOURS) *
+    toPositiveNumber(
+      intervalHours ?? process.env.JANITOR_INTERVAL_HOURS,
+      DEFAULT_INTERVAL_HOURS,
+    ) *
     60 *
     60 *
     1000;

@@ -14,8 +14,10 @@ const FILE_ID_CACHE_MAX = 5000;
 
 // 列表缓存：5s TTL + 源目录 mtime 签名。目录内文件增删会更新目录 mtime，
 // 签名变化即失效，保证上传/删除后立即可见；内容不变时免除全目录扫描。
-const LIST_CACHE_TTL_MS = 5000;
+const LIST_CACHE_TTL_MS = Number(process.env.LIST_CACHE_TTL_MS) || 5000;
 let listCache = { at: 0, files: null, signature: "" };
+// 单飞：TTL 过期瞬间的并发请求共享同一次刷新，避免各自全量扫描（惊群）
+let listRefresh = null;
 
 const getSourceDirsSignature = async () => {
   const parts = [];
@@ -69,7 +71,10 @@ const extractMd5FromHashedFilename = (name) => {
   }
 
   const duplicatedMatch = base.match(/^([a-f0-9]{32})_([a-f0-9]{32})$/i);
-  if (duplicatedMatch && duplicatedMatch[1].toLowerCase() === duplicatedMatch[2].toLowerCase()) {
+  if (
+    duplicatedMatch &&
+    duplicatedMatch[1].toLowerCase() === duplicatedMatch[2].toLowerCase()
+  ) {
     return duplicatedMatch[1].toLowerCase();
   }
 
@@ -88,11 +93,7 @@ const readFileStats = async (filePath) => {
   }
 };
 
-const buildCacheEntry = async (
-  filePath,
-  stats,
-  options = {}
-) => {
+const buildCacheEntry = async (filePath, stats, options = {}) => {
   const displayName = options.displayName || path.basename(filePath);
   const preferredMd5 = options.md5;
   const cached = fileIdCache.get(filePath);
@@ -148,7 +149,9 @@ const buildUploadedMetadataMap = async () => {
 
     metadataMap.set(absolutePath, {
       fileName: plain.file_name || physicalName,
-      fileExt: plain.file_ext || path.extname(plain.file_name || physicalName).replace(".", ""),
+      fileExt:
+        plain.file_ext ||
+        path.extname(plain.file_name || physicalName).replace(".", ""),
       fileType: plain.file_type || getFileType(plain.file_name || physicalName),
       thumbnailUrl: toUrlPath(plain.thumbnail_path),
       md5: plain.md5 || null,
@@ -158,8 +161,11 @@ const buildUploadedMetadataMap = async () => {
     if (plain.md5) {
       metadataByMd5.set(String(plain.md5).toLowerCase(), {
         fileName: plain.file_name || physicalName,
-        fileExt: plain.file_ext || path.extname(plain.file_name || physicalName).replace(".", ""),
-        fileType: plain.file_type || getFileType(plain.file_name || physicalName),
+        fileExt:
+          plain.file_ext ||
+          path.extname(plain.file_name || physicalName).replace(".", ""),
+        fileType:
+          plain.file_type || getFileType(plain.file_name || physicalName),
         thumbnailUrl: toUrlPath(plain.thumbnail_path),
         md5: plain.md5 || null,
         createdAt: plain.createdAt || plain.created_at || null,
@@ -182,45 +188,56 @@ const collectAllFiles = async ({ force = false } = {}) => {
     return listCache.files;
   }
 
-  const files = [];
-  const { metadataMap, metadataByMd5 } = await buildUploadedMetadataMap();
-
-  for (const dirPath of getSourceDirs()) {
-    const names = await fileSystem.readdir(dirPath);
-    for (const name of names) {
-      if (name.startsWith(".")) continue;
-      const filePath = path.join(dirPath, name);
-      const stats = await readFileStats(filePath);
-      if (!stats) continue;
-      const absolutePath = path.resolve(filePath);
-      const uploadedMetadata =
-        metadataMap.get(absolutePath) ||
-        metadataByMd5.get(extractMd5FromHashedFilename(name));
-      const displayName = uploadedMetadata?.fileName || name;
-
-      const cacheEntry = await buildCacheEntry(filePath, stats, {
-        displayName,
-        md5: uploadedMetadata?.md5 || undefined,
-      });
-      files.push({
-        id: cacheEntry.fileId,
-        fileName: displayName,
-        fileSize: stats.size,
-        fileType: uploadedMetadata?.fileType || getFileType(displayName),
-        fileExt:
-          uploadedMetadata?.fileExt ||
-          path.extname(displayName).replace(".", ""),
-        url: `/api/file/download/${cacheEntry.fileId}`,
-        thumbnailUrl: uploadedMetadata?.thumbnailUrl || null,
-        createdAt: uploadedMetadata?.createdAt || stats.birthtime,
-        md5: cacheEntry.md5,
-        filePath,
-      });
-    }
+  if (listRefresh) {
+    return listRefresh;
   }
 
-  listCache = { at: now, files, signature };
-  return files;
+  listRefresh = (async () => {
+    const files = [];
+    const { metadataMap, metadataByMd5 } = await buildUploadedMetadataMap();
+
+    for (const dirPath of getSourceDirs()) {
+      const names = await fileSystem.readdir(dirPath);
+      for (const name of names) {
+        if (name.startsWith(".")) continue;
+        const filePath = path.join(dirPath, name);
+        const stats = await readFileStats(filePath);
+        if (!stats) continue;
+        const absolutePath = path.resolve(filePath);
+        const uploadedMetadata =
+          metadataMap.get(absolutePath) ||
+          metadataByMd5.get(extractMd5FromHashedFilename(name));
+        const displayName = uploadedMetadata?.fileName || name;
+
+        const cacheEntry = await buildCacheEntry(filePath, stats, {
+          displayName,
+          md5: uploadedMetadata?.md5 || undefined,
+        });
+        files.push({
+          id: cacheEntry.fileId,
+          fileName: displayName,
+          fileSize: stats.size,
+          fileType: uploadedMetadata?.fileType || getFileType(displayName),
+          fileExt:
+            uploadedMetadata?.fileExt ||
+            path.extname(displayName).replace(".", ""),
+          url: `/api/file/download/${cacheEntry.fileId}`,
+          thumbnailUrl: uploadedMetadata?.thumbnailUrl || null,
+          createdAt: uploadedMetadata?.createdAt || stats.birthtime,
+          md5: cacheEntry.md5,
+          filePath,
+        });
+      }
+    }
+
+    // TTL 从扫描完成时刻起算，避免大目录扫描耗时挤占有效期
+    listCache = { at: Date.now(), files, signature };
+    return files;
+  })().finally(() => {
+    listRefresh = null;
+  });
+
+  return listRefresh;
 };
 
 const findFileById = async (fileId) => {
@@ -262,7 +279,7 @@ exports.getFileList = async (req, res) => {
     if (search) {
       const keyword = String(search).toLowerCase();
       files = files.filter((file) =>
-        file.fileName.toLowerCase().includes(keyword)
+        file.fileName.toLowerCase().includes(keyword),
       );
     }
 
@@ -271,10 +288,12 @@ exports.getFileList = async (req, res) => {
     const parsedPage = Number.parseInt(page, 10);
     const parsedPageSize = Number.parseInt(pageSize, 10);
     if (Number.isFinite(parsedPage) || Number.isFinite(parsedPageSize)) {
-      const safePageSize = Number.isFinite(parsedPageSize) && parsedPageSize > 0
-        ? Math.min(parsedPageSize, 200)
-        : 50;
-      const safePage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+      const safePageSize =
+        Number.isFinite(parsedPageSize) && parsedPageSize > 0
+          ? Math.min(parsedPageSize, 200)
+          : 50;
+      const safePage =
+        Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
       const start = (safePage - 1) * safePageSize;
       files = files.slice(start, start + safePageSize);
 
@@ -343,7 +362,7 @@ exports.downloadFile = async (req, res) => {
       res.setHeader("Content-Type", fileType);
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
+        `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
       );
       // 客户端中断下载时销毁流，避免 fd 泄漏（P1-13e）
       const rangeStream = fs.createReadStream(filePath, { start, end });
@@ -359,7 +378,7 @@ exports.downloadFile = async (req, res) => {
     res.setHeader("Last-Modified", stats.mtime.toUTCString());
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
+      `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
     );
 
     // 客户端中断下载时销毁流，避免 fd 泄漏（P1-13e）
