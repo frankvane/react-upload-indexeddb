@@ -5,7 +5,6 @@ import type { BatchUploaderActions } from "../hooks/useBatchUploader";
 import type { FileOperationsActions } from "../hooks/useFileOperations";
 import { useEffectiveUploadConfig } from "../hooks/useEffectiveConfig";
 import { useUploadStore } from "../store/upload";
-import { UploadStatus } from "../types/upload";
 import { useShallow } from "zustand/react/shallow";
 import { NetworkStatusBadge, ProcessProgressDisplay } from "./";
 
@@ -76,18 +75,6 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
     [files]
   );
 
-  // simple 模式：排队中文件缺少手动触发入口（无「上传文件」按钮），
-  // 批次结束后会一直停在「排队中」，这里统计后按需显示启动按钮。
-  const queuedFilesCount = useMemo(
-    () =>
-      files.filter(
-        (file) =>
-          file.status === UploadStatus.QUEUED ||
-          file.status === UploadStatus.QUEUED_FOR_UPLOAD
-      ).length,
-    [files]
-  );
-
   const retryButtonTitle =
     errorFilesCount > 0 ? `批量重试 (${errorFilesCount})` : "批量重试";
 
@@ -130,37 +117,6 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
         >
           选择文件
         </Button>
-
-        {isSimpleMode && queuedFilesCount > 0 && (
-          <Button
-            type="primary"
-            onClick={uploadAll}
-            disabled={isUploading || isRetryingAll || isNetworkOffline}
-            title={isNetworkOffline ? "网络已断开，无法上传" : ""}
-          >
-            上传文件
-          </Button>
-        )}
-
-        {isSimpleMode && errorFilesCount > 0 && (
-          <Tooltip
-            title={
-              isNetworkOffline
-                ? "网络已断开，无法重试"
-                : `重试 ${errorFilesCount} 个失败文件`
-            }
-          >
-            <Button
-              type="primary"
-              danger
-              onClick={handleRetryAllUpload}
-              disabled={isUploading || isRetryingAll || isNetworkOffline}
-              loading={isRetryingAll}
-            >
-              重试失败文件
-            </Button>
-          </Tooltip>
-        )}
 
         {!isSimpleMode && (
           <>
