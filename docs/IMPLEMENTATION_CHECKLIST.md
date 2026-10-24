@@ -14,7 +14,7 @@
 | 4 | 可关闭 debug logger 替换 console.* | 二·中 | M | ✅ 已实施 |
 | 5 | 修正 vite.lib.config.ts 过时注释 | 二·中 | S | ✅ 已实施 |
 | 6 | 列表行 memo + 派生布尔选择器 | 三·低 | S | ✅ 已实施 |
-| 7 | 收敛文件列表刷新入口去重拉取 | 三·低 | M | ☐ |
+| 7 | 收敛文件列表刷新入口去重拉取 | 三·低 | M | ✅ 已实施（api.client 并发去重 + 2 测试） |
 | 8 | server auth 默认安全 + README 提示 | 三·低 | S | ✅ 已实施（README 安全提示；server 默认 fail-closed 变更待用户确认） |
 | 9 | vitest 提速（--no-isolate） | 三·低 | S | ✅ 已实施 |
 

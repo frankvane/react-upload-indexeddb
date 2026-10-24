@@ -143,22 +143,40 @@ export const createDownloadApiClient = (): DownloadApiClient => {
     });
   };
 
+  // 并发去重：同一参数签名的在途请求只发一次网络，其余调用共享同一 Promise。
+  // 解决 store.fetchDownloadFiles 的 isFetchingFileList 守卫存在的 TOCTOU 竞态
+  // （同一 tick 内并发调用各自读到 false → 重复发 /api/file/list）。与 store 的
+  // 5s 节流守卫互补，且不改变任何对外 API。per-instance 存储以尊重多实例隔离。
+  const pendingFileList = new Map<string, Promise<FileListResponse>>();
+
   const getFileList = async (
     params: Record<string, unknown> = {}
   ): Promise<FileListResponse> => {
-    try {
-      const response = await apiClient.get<ApiEnvelope<FileListResponse>>(
-        runtimeConfig.listApi,
-        { params }
-      );
-      if (response.data.code === 200) {
-        return response.data.data;
-      }
-      throw new Error(response.data.message || "获取文件列表失败");
-    } catch (error) {
-      debugError("获取文件列表失败:", error);
-      throw error;
+    const key = JSON.stringify(params ?? {});
+    const existing = pendingFileList.get(key);
+    if (existing) {
+      return existing;
     }
+    const request = (async () => {
+      try {
+        const response = await apiClient.get<ApiEnvelope<FileListResponse>>(
+          runtimeConfig.listApi,
+          { params }
+        );
+        if (response.data.code === 200) {
+          return response.data.data;
+        }
+        throw new Error(response.data.message || "获取文件列表失败");
+      } catch (error) {
+        debugError("获取文件列表失败:", error);
+        throw error;
+      } finally {
+        // 无论成功失败都清除，避免悬挂的失败 Promise 永久阻塞后续请求
+        pendingFileList.delete(key);
+      }
+    })();
+    pendingFileList.set(key, request);
+    return request;
   };
 
   const createDownloadUrl = (fileId: string): string => {
