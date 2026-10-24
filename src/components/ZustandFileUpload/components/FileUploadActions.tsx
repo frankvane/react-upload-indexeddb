@@ -95,11 +95,21 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
         marginBottom: 16,
         display: "flex",
         alignItems: "center",
+        flexWrap: "wrap",
+        rowGap: 8,
         gap: 8,
         justifyContent: isSimpleMode ? "flex-start" : "space-between",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          rowGap: 8,
+          gap: 8,
+        }}
+      >
         <Button
           onClick={triggerFileInput}
           disabled={isNetworkOffline}
@@ -169,7 +179,15 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
       </div>
 
       {!isSimpleMode && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            rowGap: 8,
+            gap: 12,
+          }}
+        >
           <NetworkStatusBadge
             networkType={networkType}
             chunkSize={chunkSize}
@@ -192,13 +210,20 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
                 setNetworkDisplayMode(checked ? "direct" : "tooltip")
               }
               size="small"
-              style={{ marginLeft: 8 }}
             />
           </Tooltip>
 
           <Tooltip title={`${uploadConfig.autoUpload ? "关闭" : "开启"}自动上传`}>
-            <div style={{ display: "flex", alignItems: "center", fontSize: 12 }}>
-              <span style={{ marginRight: 4 }}>自动上传:</span>
+            <div style={{ display: "flex", alignItems: "center", fontSize: 13 }}>
+              <span
+                style={{
+                  marginRight: 6,
+                  color: "var(--rui-text-secondary)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                自动上传
+              </span>
               <Switch
                 checked={uploadConfig.autoUpload}
                 onChange={(checked) => setAutoUpload(checked)}
@@ -208,8 +233,16 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
           </Tooltip>
 
           <Tooltip title={`${uploadConfig.autoCleanup ? "关闭" : "开启"}自动清理`}>
-            <div style={{ display: "flex", alignItems: "center", fontSize: 12 }}>
-              <span style={{ marginRight: 4 }}>自动清理:</span>
+            <div style={{ display: "flex", alignItems: "center", fontSize: 13 }}>
+              <span
+                style={{
+                  marginRight: 6,
+                  color: "var(--rui-text-secondary)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                自动清理
+              </span>
               <Switch
                 checked={uploadConfig.autoCleanup}
                 onChange={(checked) => setAutoCleanup(checked)}
@@ -219,8 +252,16 @@ const FileUploadActions: React.FC<FileUploadActionsProps> = ({
           </Tooltip>
 
           <Tooltip title="设置清理延时（秒）">
-            <div style={{ display: "flex", alignItems: "center", fontSize: 12 }}>
-              <span style={{ marginRight: 4 }}>延时(秒):</span>
+            <div style={{ display: "flex", alignItems: "center", fontSize: 13 }}>
+              <span
+                style={{
+                  marginRight: 6,
+                  color: "var(--rui-text-secondary)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                延时(秒)
+              </span>
               <InputNumber
                 min={1}
                 max={60}

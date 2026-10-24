@@ -464,7 +464,7 @@ export interface SwitchProps {
   disabled?: boolean;
   checkedChildren?: React.ReactNode;
   unCheckedChildren?: React.ReactNode;
-  /** 与 antd 对齐的尺寸参数（当前仅影响文字间距，视觉保持一致） */
+  /** small：28×16 迷你开关（设置行内嵌场景）；default：44×22 */
   size?: "small" | "default";
   onChange?: (checked: boolean) => void;
   style?: React.CSSProperties;
@@ -476,12 +476,14 @@ export const Switch: React.FC<SwitchProps> = ({
   disabled,
   checkedChildren,
   unCheckedChildren,
+  size,
   onChange,
   style,
 }) => {
   const [inner, setInner] = React.useState(defaultChecked ?? false);
   const isControlled = checked !== undefined;
   const value = isControlled ? checked : inner;
+  const hasText = Boolean(checkedChildren || unCheckedChildren);
   return (
     <button
       type="button"
@@ -491,6 +493,8 @@ export const Switch: React.FC<SwitchProps> = ({
       className={[
         "rui-switch",
         value ? "rui-switch-checked" : "",
+        size === "small" ? "rui-switch-sm" : "",
+        hasText ? "rui-switch-has-text" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -608,7 +612,12 @@ export const InputNumber: React.FC<InputNumberProps> = ({
   const display = value !== undefined ? String(value) : inner;
   const input = (
     <input
-      className="rui-input-number"
+      className={[
+        "rui-input-number",
+        size === "small" ? "rui-input-number-sm" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       style={style}
       inputMode="numeric"
       disabled={disabled}

@@ -49,12 +49,19 @@ const Paragraph: React.FC<React.HTMLAttributes<HTMLParagraphElement>> = ({
 
 const Title: React.FC<
   React.HTMLAttributes<HTMLHeadingElement> & { level?: 1 | 2 | 3 | 4 | 5 }
-> = ({ level = 1, className, children, ...rest }) => {
+> = ({ level = 1, className, children, style, ...rest }) => {
   const size = [28, 24, 20, 18, 16][level - 1];
   return (
     <h1
       className={["rui-text", className || ""].filter(Boolean).join(" ")}
-      style={{ fontSize: size, fontWeight: 600, margin: 0 }}
+      // style 必须放在内部默认值之后合并：此前 {...rest} 在内部 style 之后展开，
+      // 传入 style={{marginTop:24}} 会整体覆盖，导致字号/去边距丢失（h1 回退 2em）。
+      style={{
+        fontSize: size,
+        fontWeight: 600,
+        margin: "0 0 12px",
+        ...style,
+      }}
       {...rest}
     >
       {children}

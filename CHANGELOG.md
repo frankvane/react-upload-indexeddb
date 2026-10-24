@@ -11,11 +11,17 @@
 - **内置 UI 套件视觉升级（现代卡片风）**：`src/ui/ui.css` 全面 token 化重写（保留全部 `rui-` 类名，消费方覆盖不受影响）：
   - 设计令牌收敛到 `:root`（品牌蓝 `#2f6bff` 单一主色、三级蓝调阴影、hairline 边框、圆角层级、缓动曲线）；因 Drawer/Modal/message/Tooltip/Popover 等 portal 弹层挂在 `body` 下、不在 `.rui-root` 内，令牌必须定义在 `:root` 才能穿透到弹层
   - 卡片（hairline + 三级阴影层次）、渐变进度条、胶囊状态 pill、等宽数字（tabular-nums，尺寸/进度列天然对齐）、细滚动条；`prefers-reduced-motion` 下全部动效降级
-  - `dist/style.css` 体积 15.25 kB → 21.30 kB（gzip 3.41 → 4.44 kB）
+  - `dist/style.css` 体积 15.25 kB → 22.15 kB（gzip 3.41 → 4.59 kB）
 
 ### Fixed
 - **demo/dev 直引组件导致整页裸奔**：`src/ui/index.ts` 此前未引入 `ui.css`（仅 `src/index.ts` 引入），demo 经 `../../../ui` 直引组件时 `rui-*` 类全部无样式、空态 SVG 撑满容器。现 `src/ui/index.ts` 顶部补 `import "./ui.css"`，样式随组件走；lib 构建下同一文件去重，仍只产出一份 `dist/style.css`
 - **portal 弹层衬线字体回退**：Drawer/Modal/message/Tooltip/Popover 挂在 `body` 下丢失 `--rui-font-sans` 字体栈，弹层内数字/文字回退到浏览器衬线默认字体。字体规则现扩展覆盖 `.rui-drawer/.rui-modal/.rui-message-notice/.rui-tooltip/.rui-popover`
+- **portal 弹层缺 `box-sizing: border-box`**：`box-sizing` 此前只作用于 `.rui-root *`，Drawer/Modal 等 portal 弹层内全部按浏览器默认 `content-box` 计算——统计抽屉两列 `Col span=12`（50% + 左右 padding 8px）超出 100% 被挤成竖排堆叠。`border-box` 现同步覆盖 `.rui-drawer/.rui-modal/.rui-message-notice/.rui-tooltip/.rui-popover`
+- **Switch 文字叠滑块**：`.rui-switch-text` 的左右定位规则错误地挂在 `.rui-switch-checked` 下，未选中态文字无定位直接叠在滑块上（「简洁/详细」开关乱成一团）；且 44px 开关塞 2 个汉字 + 18px 滑块必然重叠。现文字与滑块分居两侧（checked 文字在左/unchecked 在右），带文字时开关自动加宽（44px 默认 / 56px 带文字），`size="small"` 真正生效（28×16 迷你尺寸）
+- **InputNumber 忽略 `size="small"`**：单独使用（无 addonAfter）时 size 被丢弃，设置行「延时(秒)」输入框仍是大尺寸。新增 `rui-input-number-sm`（24px 高）
+- **Title 透传 style 被覆盖**：`{...rest}` 在内部 `style` 之后展开，传入 `style={{marginTop:24}}` 会整体覆盖内部样式（字号丢失回退 14px、边距丢失标题贴内容）。改为内部默认值与透传 style 合并，并给 Title 默认 `margin: 0 0 12px`
+- **存储统计抽屉空态悬空标题**：0 文件时「状态分布」标题仍渲染、下方空白。现无文件时渲染 Empty 空态
+- **操作行溢出**：上传操作行（按钮 + 网络状态 + 设置项）在窄容器下溢出产生横向滚动。外层/左右分组均加 `flex-wrap: wrap`
 
 ## [2.0.0] - 2026-10-24
 

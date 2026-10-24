@@ -88,7 +88,22 @@
 }
 .rui-root *,
 .rui-root *::before,
-.rui-root *::after {
+.rui-root *::after,
+.rui-drawer *,
+.rui-drawer *::before,
+.rui-drawer *::after,
+.rui-modal *,
+.rui-modal *::before,
+.rui-modal *::after,
+.rui-message-notice *,
+.rui-message-notice *::before,
+.rui-message-notice *::after,
+.rui-tooltip *,
+.rui-tooltip *::before,
+.rui-tooltip *::after,
+.rui-popover *,
+.rui-popover *::before,
+.rui-popover *::after {
   box-sizing: border-box;
 }
 
@@ -639,10 +654,13 @@
 }
 
 /* ---------- Switch ---------- */
+/* 文字与滑块分居两侧：checked 滑块在右/文字在左（.rui-switch-text-inner），
+   unchecked 滑块在左/文字在右（.rui-switch-text-unchecked）。
+   带文字时加宽（.rui-switch-has-text），避免文字叠进滑块。 */
 .rui-switch {
   position: relative;
   display: inline-block;
-  width: 44px;
+  min-width: 44px;
   height: 22px;
   border-radius: 11px;
   background: var(--rui-border-strong);
@@ -651,6 +669,7 @@
   transition: background var(--rui-dur-fast) ease-out;
   padding: 0;
   flex: none;
+  vertical-align: middle;
 }
 .rui-switch:hover {
   background: var(--rui-text-tertiary);
@@ -674,7 +693,8 @@
   transition: left var(--rui-dur-fast) var(--rui-ease);
 }
 .rui-switch-checked::after {
-  left: 24px;
+  /* calc 锚定右侧（带文字加宽时滑块仍贴右），保持 left 过渡动画 */
+  left: calc(100% - 20px);
 }
 .rui-switch:focus-visible {
   outline: 2px solid var(--rui-brand-ring);
@@ -684,19 +704,52 @@
   cursor: not-allowed;
   opacity: 0.4;
 }
+.rui-switch-has-text {
+  min-width: 56px;
+}
 .rui-switch-text {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
   font-size: 12px;
+  line-height: 1;
   color: #fff;
   pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
 }
-.rui-switch-checked .rui-switch-text-inner {
+.rui-switch-text-inner {
   left: 8px;
 }
-.rui-switch-checked .rui-switch-text-unchecked {
+.rui-switch-text-unchecked {
   right: 8px;
+}
+/* small：28×16 迷你开关；带文字时加宽到 44 并缩小字号 */
+.rui-switch-sm {
+  min-width: 28px;
+  height: 16px;
+  border-radius: 8px;
+}
+.rui-switch-sm::after {
+  width: 12px;
+  height: 12px;
+  top: 2px;
+  left: 2px;
+}
+.rui-switch-sm.rui-switch-checked::after {
+  left: calc(100% - 14px);
+}
+.rui-switch-sm.rui-switch-has-text {
+  min-width: 44px;
+}
+.rui-switch-sm .rui-switch-text {
+  font-size: 11px;
+}
+.rui-switch-sm .rui-switch-text-inner {
+  left: 6px;
+}
+.rui-switch-sm .rui-switch-text-unchecked {
+  right: 6px;
 }
 
 /* ---------- InputNumber ---------- */
@@ -729,6 +782,11 @@
   background: var(--rui-surface-muted);
   color: var(--rui-text-disabled);
   cursor: not-allowed;
+}
+.rui-input-number-sm {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 13px;
 }
 .rui-input-number-group {
   display: inline-flex;

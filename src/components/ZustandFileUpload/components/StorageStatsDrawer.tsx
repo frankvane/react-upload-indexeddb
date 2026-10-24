@@ -1,4 +1,4 @@
-import { Card, Col, Drawer, Progress, Row, Statistic, Typography } from "../../../ui";
+import { Card, Col, Drawer, Empty, Progress, Row, Statistic, Typography } from "../../../ui";
 import React, { useEffect, useState } from "react";
 
 import { ByteConvert } from "../utils";
@@ -145,10 +145,19 @@ const StorageStatsDrawer: React.FC = () => {
         </Col>
       </Row>
 
-      <Title level={4} style={{ marginTop: 24 }}>
-        状态分布
-      </Title>
-      {renderStatusCards()}
+      {stats.totalFiles > 0 ? (
+        <>
+          <Title level={4} style={{ marginTop: 24 }}>
+            状态分布
+          </Title>
+          {renderStatusCards()}
+        </>
+      ) : (
+        // 无文件时渲染空态，避免悬空的「状态分布」标题贴着上一节内容
+        <div style={{ marginTop: 24 }}>
+          <Empty description="暂无文件，状态分布为空" />
+        </div>
+      )}
     </Drawer>
   );
 };
