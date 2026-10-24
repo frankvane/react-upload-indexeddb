@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="700" viewBox="0 0 1080 700" role="img" aria-label="下载链路时序图">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .hdr{fill:#eef4ff;stroke:#8fb3e8;stroke-width:1.2}
+      .t{font:13px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#1f2328;text-anchor:middle}
+      .m{stroke:#57606a;stroke-width:1.3;fill:none;marker-end:url(#a)}
+      .r{stroke:#8c959f;stroke-width:1.2;fill:none;stroke-dasharray:5 4;marker-end:url(#a)}
+      .life{stroke:#d0d7de;stroke-width:1.2;stroke-dasharray:4 5}
+      .lb{font:11.5px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#1f2328;text-anchor:middle}
+      .note{fill:#fff8e6;stroke:#d4a72c;stroke-width:1}
+      .nt{font:11.5px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#7d4e00}
+    </style>
+  </defs>
+  <rect width="1080" height="700" fill="#ffffff"/>
+
+  <rect class="hdr" x="30" y="16" width="140" height="40"/>
+  <text class="t" x="100" y="41">用户</text>
+  <rect class="hdr" x="250" y="16" width="140" height="40"/>
+  <text class="t" x="320" y="41">前端模块</text>
+  <rect class="hdr" x="470" y="16" width="140" height="40"/>
+  <text class="t" x="540" y="41">Download Worker</text>
+  <rect class="hdr" x="690" y="16" width="140" height="40"/>
+  <text class="t" x="760" y="41">IndexedDB</text>
+  <rect class="hdr" x="910" y="16" width="140" height="40"/>
+  <text class="t" x="980" y="41">服务端 API</text>
+
+  <line class="life" x1="100" y1="56" x2="100" y2="660"/>
+  <line class="life" x1="320" y1="56" x2="320" y2="660"/>
+  <line class="life" x1="540" y1="56" x2="540" y2="660"/>
+  <line class="life" x1="760" y1="56" x2="760" y2="660"/>
+  <line class="life" x1="980" y1="56" x2="980" y2="660"/>
+
+  <!-- 1 -->
+  <text class="lb" x="210" y="104">打开下载页</text>
+  <path class="m" d="M100 110 L316 110"/>
+  <!-- 2 -->
+  <text class="lb" x="650" y="148">GET /list</text>
+  <path class="m" d="M320 154 L976 154"/>
+  <!-- 3 -->
+  <text class="lb" x="650" y="192">文件清单（名称 / 大小 / 分片信息）</text>
+  <path class="r" d="M980 198 L324 198"/>
+  <!-- 4 -->
+  <text class="lb" x="210" y="236">点击下载</text>
+  <path class="m" d="M100 242 L316 242"/>
+  <!-- 5 -->
+  <text class="lb" x="540" y="280">读取历史下载进度</text>
+  <path class="m" d="M320 286 L756 286"/>
+  <!-- 6 -->
+  <text class="lb" x="540" y="324">返回已缓存分片</text>
+  <path class="r" d="M760 330 L324 330"/>
+  <!-- 7 -->
+  <text class="lb" x="430" y="368">创建任务 / 从断点继续</text>
+  <path class="m" d="M320 374 L536 374"/>
+  <!-- 8 -->
+  <text class="lb" x="760" y="412">GET /download/:id（Range，循环）</text>
+  <path class="m" d="M540 418 L976 418"/>
+  <!-- 9 -->
+  <text class="lb" x="650" y="456">缓存分片</text>
+  <path class="m" d="M540 462 L756 462"/>
+  <!-- 10 -->
+  <rect class="note" x="560" y="480" width="300" height="36"/>
+  <text class="nt" x="568" y="503">Worker 内合并分片，校验长度后完成</text>
+  <!-- 11 -->
+  <text class="lb" x="430" y="556">完成事件 onDownloadComplete</text>
+  <path class="r" d="M540 560 L324 560"/>
+  <!-- 12 -->
+  <text class="lb" x="210" y="600">导出本地文件</text>
+  <path class="r" d="M320 604 L104 604"/>
+</svg>

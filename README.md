@@ -209,16 +209,15 @@ configureDebug({ silent: false }); // 打开 warn/debug 级日志
 
 ## 架构
 
-![架构总览](https://raw.githubusercontent.com/frankvane/react-upload-indexeddb/main/docs/assets/readme/architecture.png)
+![架构总览](https://raw.githubusercontent.com/frankvane/react-upload-indexeddb/main/docs/assets/readme/architecture.svg)
 
 前端在"网络检测 + 自动策略 + IndexedDB 持久化"协同下执行上传/下载；后端负责分片状态、文件合并和文件列表聚合。
 
-![上传时序](https://raw.githubusercontent.com/frankvane/react-upload-indexeddb/main/docs/assets/readme/upload-sequence.png)
+![上传时序](https://raw.githubusercontent.com/frankvane/react-upload-indexeddb/main/docs/assets/readme/upload-sequence.svg)
 
-![下载时序](https://raw.githubusercontent.com/frankvane/react-upload-indexeddb/main/docs/assets/readme/download-sequence.png)
+![下载时序](https://raw.githubusercontent.com/frankvane/react-upload-indexeddb/main/docs/assets/readme/download-sequence.svg)
 
-> 图源（Mermaid）维护在 [docs/architecture.md](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/architecture.md)，
-> 由 `npm run docs:mermaid` 渲染为 PNG（npmjs.com 不渲染 Mermaid，故 README 引用 PNG）。
+> 架构与时序图为仓库内**手写 SVG**（`docs/assets/readme/*.svg`），矢量、可直接编辑，无需任何渲染工具；npmjs 与 GitHub 均可直接显示。界面截图为 PNG，由 `npm run docs:screenshot` 生成。
 
 ## 服务端 API 概览
 
@@ -252,7 +251,6 @@ npm run dev
 | `npm run test:unit`       | 前端单元测试                               |
 | `npm run verify`          | 前后端联合验证                             |
 | `npm run docs:screenshot` | 重新生成 README 界面截图                   |
-| `npm run docs:mermaid`    | 重新渲染 README 架构图 PNG                 |
 
 ## 重要版本说明（v2.0.0 起）
 

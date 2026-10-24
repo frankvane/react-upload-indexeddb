@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-label="react-upload-indexeddb 架构总览">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.2;rx:8}
+      .accent{fill:#eef4ff;stroke:#8fb3e8}
+      .t{font:13px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#1f2328;text-anchor:middle}
+      .s{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .l{stroke:#57606a;stroke-width:1.3;fill:none;marker-end:url(#arrow)}
+      .lb{font:11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#57606a;text-anchor:middle}
+      .lane{fill:none;stroke:#d8dee4;stroke-dasharray:4 4}
+    </style>
+  </defs>
+  <rect width="1200" height="620" fill="#ffffff"/>
+
+  <!-- 泳道分隔 -->
+  <line class="lane" x1="300" y1="20" x2="300" y2="600"/>
+  <line class="lane" x1="600" y1="20" x2="600" y2="600"/>
+  <line class="lane" x1="900" y1="20" x2="900" y2="600"/>
+  <text class="s" x="160" y="34">客户端</text>
+  <text class="s" x="450" y="34">上传 / 下载链路</text>
+  <text class="s" x="750" y="34">持久化与网络</text>
+  <text class="s" x="1050" y="34">服务端</text>
+
+  <!-- 第 1 行 -->
+  <rect class="box" x="40" y="50" width="240" height="54"/>
+  <text class="t" x="160" y="74">用户操作</text>
+  <text class="s" x="160" y="92">选择文件 / 点击下载</text>
+
+  <rect class="box accent" x="330" y="50" width="240" height="54"/>
+  <text class="t" x="450" y="74">React 页面</text>
+  <text class="s" x="450" y="92">ZustandFileUpload / Download（uiMode / showXxx）</text>
+
+  <rect class="box" x="630" y="50" width="240" height="54"/>
+  <text class="t" x="750" y="74">网络状态检测</text>
+  <text class="s" x="750" y="92">online / rtt / downlink</text>
+
+  <rect class="box" x="930" y="50" width="240" height="54"/>
+  <text class="t" x="1050" y="74">自动策略引擎</text>
+  <text class="s" x="1050" y="92">chunkSize + 文件 / 分片并发</text>
+
+  <path class="l" d="M280 77 L326 77"/>
+  <path class="l" d="M570 77 L626 77"/>
+  <path class="l" d="M870 77 L926 77"/>
+
+  <!-- 第 2 行 -->
+  <rect class="box" x="40" y="170" width="240" height="54"/>
+  <text class="t" x="160" y="194">Upload 模块</text>
+  <text class="s" x="160" y="212">自动上传 / 秒传 / 续传</text>
+
+  <rect class="box" x="330" y="170" width="240" height="54"/>
+  <text class="t" x="450" y="194">Upload Workers</text>
+  <text class="s" x="450" y="212">预处理哈希 / 分片上传 / 合并</text>
+
+  <rect class="box" x="630" y="170" width="240" height="54"/>
+  <text class="t" x="750" y="194">Download 模块</text>
+  <text class="s" x="750" y="212">断点下载 / 暂停恢复 / 导出</text>
+
+  <rect class="box" x="930" y="170" width="240" height="54"/>
+  <text class="t" x="1050" y="194">Download Workers</text>
+  <text class="s" x="1050" y="212">Range 拉取 / 分片合并</text>
+
+  <path class="l" d="M160 104 L160 166"/>
+  <path class="l" d="M160 224 L326 197"/>
+  <path class="l" d="M750 104 L750 166"/>
+  <path class="l" d="M750 224 L926 197"/>
+  <path class="l" d="M570 224 L626 197"/>
+
+  <!-- 第 3 行 -->
+  <rect class="box" x="40" y="290" width="240" height="54"/>
+  <text class="t" x="160" y="314">Upload IndexedDB</text>
+  <text class="s" x="160" y="332">队列 / 分片状态 / 进度</text>
+
+  <rect class="box" x="330" y="290" width="240" height="54"/>
+  <text class="t" x="450" y="314">/api/file/*</text>
+  <text class="s" x="450" y="332">instant / upload / merge / list / download</text>
+
+  <rect class="box" x="630" y="290" width="240" height="54"/>
+  <text class="t" x="750" y="314">Download IndexedDB</text>
+  <text class="s" x="750" y="332">分片缓存 / 下载进度</text>
+
+  <rect class="box" x="930" y="290" width="240" height="54"/>
+  <text class="t" x="1050" y="314">Express + Sequelize</text>
+  <text class="s" x="1050" y="332">分片状态 / 文件合并 / 清单聚合</text>
+
+  <path class="l" d="M160 224 L160 286"/>
+  <path class="l" d="M160 290 L330 314"/>
+  <path class="l" d="M750 224 L750 286"/>
+  <path class="l" d="M750 290 L630 314"/>
+  <path class="l" d="M1050 224 L1050 286"/>
+  <path class="l" d="M450 290 L930 300"/>
+
+  <!-- 第 4 行 -->
+  <rect class="box" x="330" y="430" width="240" height="54"/>
+  <text class="t" x="450" y="454">SQLite</text>
+  <text class="s" x="450" y="472">files / chunks</text>
+
+  <rect class="box" x="630" y="430" width="240" height="54"/>
+  <text class="t" x="750" y="454">文件系统</text>
+  <text class="s" x="750" y="472">uploads / download / tmp</text>
+
+  <path class="l" d="M1050 344 L1050 405 L480 405 L480 426"/>
+  <path class="l" d="M1050 344 L1050 405 L740 405 L740 426"/>
+
+  <!-- 说明 -->
+  <text class="s" x="160" y="470">autoCleanup 定时器</text>
+  <text class="s" x="160" y="492">按 cleanupPolicy 清理成功项</text>
+  <rect class="box" x="40" y="430" width="240" height="80" fill="#ffffff" stroke-dasharray="4 4"/>
+  <text class="t" x="160" y="454">自动清理</text>
+  <text class="s" x="160" y="472">失败项保留供重试</text>
+</svg>

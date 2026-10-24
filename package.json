@@ -61,7 +61,6 @@
     "verify:encoding": "node scripts/verify-encoding-clean.mjs",
     "metrics:collect": "node scripts/collect-refactor-metrics.mjs",
     "docs:screenshot": "node scripts/capture-readme-screenshots.mjs",
-    "docs:mermaid": "node scripts/render-mermaid.mjs",
     "verify": "npm run verify:client && npm run verify:server"
   },
   "dependencies": {
@@ -89,7 +88,6 @@
     "fake-indexeddb": "^6.2.6",
     "globals": "^15.9.0",
     "jsdom": "^24.1.3",
-    "mermaid": "^11.17.2",
     "playwright": "^1.54.1",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
