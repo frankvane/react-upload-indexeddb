@@ -5,6 +5,18 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.0.1] - 2026-10-24
+
+### Changed
+- **内置 UI 套件视觉升级（现代卡片风）**：`src/ui/ui.css` 全面 token 化重写（保留全部 `rui-` 类名，消费方覆盖不受影响）：
+  - 设计令牌收敛到 `:root`（品牌蓝 `#2f6bff` 单一主色、三级蓝调阴影、hairline 边框、圆角层级、缓动曲线）；因 Drawer/Modal/message/Tooltip/Popover 等 portal 弹层挂在 `body` 下、不在 `.rui-root` 内，令牌必须定义在 `:root` 才能穿透到弹层
+  - 卡片（hairline + 三级阴影层次）、渐变进度条、胶囊状态 pill、等宽数字（tabular-nums，尺寸/进度列天然对齐）、细滚动条；`prefers-reduced-motion` 下全部动效降级
+  - `dist/style.css` 体积 15.25 kB → 21.30 kB（gzip 3.41 → 4.44 kB）
+
+### Fixed
+- **demo/dev 直引组件导致整页裸奔**：`src/ui/index.ts` 此前未引入 `ui.css`（仅 `src/index.ts` 引入），demo 经 `../../../ui` 直引组件时 `rui-*` 类全部无样式、空态 SVG 撑满容器。现 `src/ui/index.ts` 顶部补 `import "./ui.css"`，样式随组件走；lib 构建下同一文件去重，仍只产出一份 `dist/style.css`
+- **portal 弹层衬线字体回退**：Drawer/Modal/message/Tooltip/Popover 挂在 `body` 下丢失 `--rui-font-sans` 字体栈，弹层内数字/文字回退到浏览器衬线默认字体。字体规则现扩展覆盖 `.rui-drawer/.rui-modal/.rui-message-notice/.rui-tooltip/.rui-popover`
+
 ## [2.0.0] - 2026-10-24
 
 ### Added

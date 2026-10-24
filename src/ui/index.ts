@@ -4,6 +4,13 @@
  * 导出面与调用点对齐：精减模式下不提供 antd 全量组件，
  * 只保留 src 实际使用的 19 类组件 + 19 个图标。
  */
+
+// 样式随组件走：任何模块引入本目录组件都会带上 ui.css。
+// （此前仅由 src/index.ts 引入，导致 demo/dev 直接引组件时整页裸奔——
+//  rui-* 类全部无样式、空态 SVG 撑满容器。lib 构建下同一文件去重，
+//  仍只产出一份 dist/style.css，不影响消费方。）
+import "./ui.css";
+
 export { Button } from "./primitives";
 export type { ButtonProps } from "./primitives";
 export { Tag } from "./primitives";
