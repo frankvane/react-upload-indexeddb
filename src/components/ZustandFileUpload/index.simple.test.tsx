@@ -25,6 +25,8 @@ describe("ZustandFileUpload simple mode", () => {
     expect(screen.queryByRole("button", { name: "上传文件" })).toBeNull();
     expect(screen.queryByRole("button", { name: "清除列表" })).toBeNull();
     expect(screen.queryByText("批量重试")).toBeNull();
-    expect(screen.queryByText("操作")).toBeNull();
+    expect(screen.queryByText("重试失败文件")).toBeNull();
+    // simple 模式仍保留操作列（失败可重试、可删除）
+    expect(screen.getByText("操作")).toBeInTheDocument();
   });
 });

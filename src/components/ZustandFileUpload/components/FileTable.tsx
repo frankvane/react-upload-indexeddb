@@ -141,10 +141,7 @@ const FileTable: React.FC<FileTableProps> = ({
       },
     ];
 
-    if (isSimpleMode) {
-      return baseColumns;
-    }
-
+    // simple 模式也保留操作列：失败可重试、可删除，避免死行无法处理
     return [
       ...baseColumns,
       {
