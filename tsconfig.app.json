@@ -22,5 +22,9 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitReturns": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // 测试文件由 vitest 在运行时校验（esbuild 转译，不做类型检查）；
+  // 其中包含 worker 全局 mock、vi.mock 宽松签名等测试专用写法，
+  // 放进 demo 的 tsc -b 会引入无意义的严格模式报错。
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]
 }

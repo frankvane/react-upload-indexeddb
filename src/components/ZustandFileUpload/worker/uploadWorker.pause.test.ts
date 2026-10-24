@@ -204,7 +204,7 @@ describe("uploadWorker 暂停 / 恢复（T3.3）", () => {
       eta: number;
     }>;
     expect(progressMsgs.length).toBeGreaterThan(0);
-    const last = progressMsgs[progressMsgs.length - 1];
+    const last = progressMsgs[progressMsgs.length - 1]!;
     expect(last.totalBytes).toBe(fileSize);
     expect(last.uploadedBytes).toBeGreaterThan(0);
     expect(last.uploadedBytes).toBeLessThanOrEqual(fileSize);

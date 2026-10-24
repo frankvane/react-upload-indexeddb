@@ -11,7 +11,7 @@ import {
   Typography,
 } from "../../../ui";
 import { LockOutlined } from "../../../ui";
-import { formatFileSize } from "../utils";
+import { formatFileSize } from "../../../shared/formatFileSize";
 
 const { Text } = Typography;
 

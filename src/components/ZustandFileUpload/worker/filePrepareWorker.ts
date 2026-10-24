@@ -1,21 +1,11 @@
 import SparkMD5 from "spark-md5";
 import { buildQueueId } from "../../../shared/fileId";
-import type { UploadHashMode, UploadFile } from "../types/upload";
+import {
+  UploadStatus,
+  type UploadHashMode,
+  type UploadFile,
+} from "../types/upload";
 import { debugError } from "./../../../shared/debugLogger";
-
-/**
- * @enum {string}
- */
-const UploadStatus = {
-  QUEUED: "queued",
-  QUEUED_FOR_UPLOAD: "queued-for-upload",
-  PREPARING_UPLOAD: "preparing-upload",
-  UPLOADING: "uploading",
-  PAUSED: "paused",
-  DONE: "done",
-  INSTANT: "instant",
-  ERROR: "error",
-};
 
 /** 全量流式哈希的读取块大小：内存驻留上限，与文件大小无关 */
 const FULL_HASH_READ_BLOCK = 1024 * 1024; // 1MB
@@ -100,14 +90,19 @@ async function hashFileSample(file: File): Promise<string> {
   } else {
     await appendRange(0, SAMPLE_BLOCK);
     for (let point = 1; point <= SAMPLE_MIDDLE_POINTS; point++) {
-      const center = Math.floor((file.size * point) / (SAMPLE_MIDDLE_POINTS + 1));
+      const center = Math.floor(
+        (file.size * point) / (SAMPLE_MIDDLE_POINTS + 1),
+      );
       await appendRange(center - SAMPLE_BLOCK / 2, center + SAMPLE_BLOCK / 2);
     }
     await appendRange(file.size - SAMPLE_BLOCK, file.size);
   }
 
   // size 参与哈希：不同大小的文件即使采样区一致也不碰撞
-  spark.append(`size:${file.size}`);
+  // 注意：ArrayBuffer 版 append 只接受 ArrayBuffer，字符串需先编码为字节
+  spark.append(
+    new TextEncoder().encode(`size:${file.size}`).buffer as ArrayBuffer,
+  );
   return spark.end();
 }
 
@@ -120,7 +115,8 @@ self.onmessage = async (e: MessageEvent<FilePrepareRequest>) => {
   const networkParams = e.data.networkParams || {};
   const CHUNK_SIZE = networkParams.chunkSize || 1024 * 1024; // 默认1MB
   // 哈希模式：默认全量流式（T3.1）
-  const hashMode: UploadHashMode = e.data.hashMode === "sample" ? "sample" : "full";
+  const hashMode: UploadHashMode =
+    e.data.hashMode === "sample" ? "sample" : "full";
 
   // 记录处理进度
   let processed = 0;
@@ -132,7 +128,7 @@ self.onmessage = async (e: MessageEvent<FilePrepareRequest>) => {
   const uploadFiles: Array<UploadFile & { fileRef: File }> = [];
   for (let i = 0; i < files.length; i++) {
     try {
-      const file = files[i];
+      const file = files[i]!;
       const chunkSize = CHUNK_SIZE;
       const chunkCount = Math.ceil(file.size / chunkSize);
 
@@ -158,8 +154,7 @@ self.onmessage = async (e: MessageEvent<FilePrepareRequest>) => {
       // 队列 id 含随机后缀：同内容文件不再互相覆盖（P1-7）
       const id = buildQueueId(hash, file.size, file.lastModified);
 
-      /** @type {UploadFile} */
-      const uploadFile = {
+      const uploadFile: UploadFile & { fileRef: File } = {
         id,
         fileName: file.name,
         fileSize: file.size,
@@ -186,7 +181,8 @@ self.onmessage = async (e: MessageEvent<FilePrepareRequest>) => {
       failed++;
 
       // 发送错误文件的信息
-      if (files[i]) {
+      const failedFile = files[i];
+      if (failedFile) {
         self.postMessage({
           type: "progress",
           processed,
@@ -195,9 +191,9 @@ self.onmessage = async (e: MessageEvent<FilePrepareRequest>) => {
           failed,
           oversized,
           fileDetails: {
-            fileName: files[i].name,
-            fileSize: files[i].size,
-            fileType: files[i].type,
+            fileName: failedFile.name,
+            fileSize: failedFile.size,
+            fileType: failedFile.type,
             index: i + 1,
             total: files.length,
             error: true,

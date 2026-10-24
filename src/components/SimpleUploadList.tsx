@@ -9,6 +9,7 @@ import { removeUploadFilesByIds } from "./ZustandFileUpload/services/uploadStora
 import { createUploadStorage } from "./ZustandFileUpload/services/uploadStorageInstance";
 import { createFileRegistry } from "./ZustandFileUpload/services/fileRegistry";
 import { debugError } from "./../shared/debugLogger";
+import { formatFileSize } from "../shared/formatFileSize";
 
 const normalizePath = (path: string | undefined, fallback: string) => {
   if (!path) {
@@ -21,20 +22,6 @@ const normalizePath = (path: string | undefined, fallback: string) => {
 // fileRegistry 仅用于释放主线程 File 引用（已上传完成的记录引用早已释放，此处为空操作）。
 const cleanupStorage = createUploadStorage();
 const cleanupRegistry = createFileRegistry();
-
-const formatFileSize = (size: number) => {
-  if (!Number.isFinite(size) || size < 0) {
-    return "-";
-  }
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = size;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-};
 
 const formatCreatedAt = (value?: string | number) => {
   if (value === undefined || value === null) {

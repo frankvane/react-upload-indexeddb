@@ -1,15 +1,11 @@
 import { Badge, Tooltip } from "../../../ui";
 import React, { useRef } from "react";
+import {
+  resolveNetworkBadgeInfo,
+  type NetworkBadgeStatus,
+} from "../../../shared/networkStrategy";
 
 import { ByteConvert } from "../utils";
-
-// Badge状态类型
-type BadgeStatusType =
-  | "success"
-  | "processing"
-  | "default"
-  | "error"
-  | "warning";
 
 interface NetworkStatusBadgeProps {
   networkType: string;
@@ -23,7 +19,7 @@ interface NetworkStatusBadgeProps {
 // 创建一个包装Badge的组件
 const BadgeWrapper = React.forwardRef<
   HTMLSpanElement,
-  { status: BadgeStatusType; text: string }
+  { status: NetworkBadgeStatus; text: string }
 >((props, ref) => {
   return (
     <span ref={ref}>
@@ -45,63 +41,7 @@ const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = ({
   // 创建一个引用
   const badgeRef = useRef<HTMLSpanElement>(null);
 
-  // 网络类型对应的颜色和文本
-  const getNetworkInfo = () => {
-    if (isOffline) {
-      return {
-        color: "red",
-        text: "离线",
-        status: "error" as BadgeStatusType,
-      };
-    }
-
-    switch (networkType) {
-      case "4g":
-        return {
-          color: "green",
-          text: "4G",
-          status: "success" as BadgeStatusType,
-        };
-      case "3g":
-        return {
-          color: "cyan",
-          text: "3G",
-          status: "processing" as BadgeStatusType,
-        };
-      case "2g":
-        return {
-          color: "orange",
-          text: "2G",
-          status: "warning" as BadgeStatusType,
-        };
-      case "slow-2g":
-        return {
-          color: "red",
-          text: "慢2G",
-          status: "error" as BadgeStatusType,
-        };
-      case "wifi":
-        return {
-          color: "green",
-          text: "WiFi",
-          status: "success" as BadgeStatusType,
-        };
-      case "ethernet":
-        return {
-          color: "green",
-          text: "有线",
-          status: "success" as BadgeStatusType,
-        };
-      default:
-        return {
-          color: "blue",
-          text: networkType || "未知",
-          status: "default" as BadgeStatusType,
-        };
-    }
-  };
-
-  const networkInfo = getNetworkInfo();
+  const networkInfo = resolveNetworkBadgeInfo(networkType, isOffline);
 
   // 网络参数详情
   const networkDetails = (

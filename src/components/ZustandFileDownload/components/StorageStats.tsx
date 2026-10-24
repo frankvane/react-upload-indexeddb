@@ -2,7 +2,7 @@ import { Button, Card, Modal, Space, Spin, Typography } from "../../../ui";
 import { DeleteOutlined, ReloadOutlined } from "../../../ui";
 import React, { useMemo } from "react";
 
-import { formatFileSize } from "../utils";
+import { formatFileSize } from "../../../shared/formatFileSize";
 import { useStorageManager } from "../hooks/useStorageManager";
 
 const { Text } = Typography;

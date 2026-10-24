@@ -31,7 +31,9 @@ export default defineConfig({
       // 内置 UI 套件样式输出为统一 dist/style.css（各入口共享，消费方按需引入）
       cssFileName: "style",
     },
-    sourcemap: true,
+    // 不产出 sourcemap：dist 会整包发布到 npm，.map 占比超过 70%。
+    // 需要在本地调试构建产物时，可临时改为 true（不要提交）。
+    sourcemap: false,
     rollupOptions: {
       // 框架级 / 单例依赖交给消费方提供，避免重复实例与体积膨胀。
       // antd 已于 T4.3 移除（内置 rui-ui 替代），不再 external。

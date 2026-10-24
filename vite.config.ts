@@ -73,6 +73,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
+      // demo 站点独立输出，避免与库构建产物（dist）混在一起被一起发布。
+      outDir: "demo-dist",
       rollupOptions: {
         output: {
           manualChunks(id) {

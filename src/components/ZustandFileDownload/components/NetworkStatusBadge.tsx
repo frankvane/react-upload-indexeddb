@@ -1,28 +1,16 @@
 import React, { useCallback, useRef, useState } from "react";
-import {
-  Badge,
-  Button,
-  Space,
-  Tooltip,
-  message,
-} from "../../../ui";
+import { Badge, Button, Space, Tooltip, message } from "../../../ui";
 import {
   LockOutlined,
   SettingOutlined,
   SwapOutlined,
   UnlockOutlined,
 } from "../../../ui";
-import { formatFileSize } from "../utils";
+import { formatFileSize } from "../../../shared/formatFileSize";
+import { resolveNetworkBadgeInfo } from "../../../shared/networkStrategy";
 import { useDownloadStore } from "../store";
 import { useShallow } from "zustand/react/shallow";
 import { NetworkStatusPanel, type NetworkSettings } from "./NetworkStatusPanel";
-
-type BadgeStatusType =
-  | "success"
-  | "processing"
-  | "default"
-  | "error"
-  | "warning";
 
 interface NetworkStatusBadgeProps {
   isOffline: boolean;
@@ -57,7 +45,7 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
         updateNetworkStatus: state.updateNetworkStatus,
         resetManualFlag: state.resetManualFlag,
         toggleDisplayMode: state.toggleDisplayMode,
-      }))
+      })),
     );
 
     const [isSettingsVisible, setIsSettingsVisible] = useState(false);
@@ -83,49 +71,23 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
             fileConcurrency: values.fileConcurrency,
             chunkConcurrency: values.chunkConcurrency,
           },
-          true
+          true,
         );
         message.success(
           `已应用设置：分片 ${formatFileSize(
-            values.chunkSize
-          )}，文件并发 ${values.fileConcurrency}，分片并发 ${values.chunkConcurrency}`
+            values.chunkSize,
+          )}，文件并发 ${values.fileConcurrency}，分片并发 ${values.chunkConcurrency}`,
         );
         if (chunkSizeChanged) {
           await onRefreshFiles(true);
         }
         setIsSettingsVisible(false);
       },
-      [chunkSize, updateNetworkStatus, onRefreshFiles]
+      [chunkSize, updateNetworkStatus, onRefreshFiles],
     );
 
-    const getNetworkInfo = useCallback(() => {
-      if (isOffline) {
-        return { text: "离线", status: "error" as BadgeStatusType };
-      }
-      switch (networkType) {
-        case "4g":
-          return { text: "4G", status: "success" as BadgeStatusType };
-        case "3g":
-          return { text: "3G", status: "processing" as BadgeStatusType };
-        case "2g":
-          return { text: "2G", status: "warning" as BadgeStatusType };
-        case "slow-2g":
-          return { text: "慢速 2G", status: "error" as BadgeStatusType };
-        case "wifi":
-          return { text: "WiFi", status: "success" as BadgeStatusType };
-        case "ethernet":
-          return { text: "有线网络", status: "success" as BadgeStatusType };
-        default:
-          return {
-            text: networkType || "未知",
-            status: "default" as BadgeStatusType,
-          };
-      }
-    }, [isOffline, networkType]);
-
-    const networkInfo = getNetworkInfo();
-
     const renderContent = useCallback(() => {
+      const networkInfo = resolveNetworkBadgeInfo(networkType, isOffline, true);
       const networkDetails = (
         <>
           <div>网络: {networkInfo.text}</div>
@@ -143,8 +105,8 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
           >
             <Badge status={networkInfo.status} text={networkInfo.text} />
             <span style={{ marginLeft: 8 }}>
-              {formatFileSize(chunkSize)} | 文件并发 {fileConcurrency} | 分片并发{" "}
-              {chunkConcurrency}
+              {formatFileSize(chunkSize)} | 文件并发 {fileConcurrency} |
+              分片并发 {chunkConcurrency}
             </span>
           </div>
         );
@@ -163,7 +125,8 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
       );
     }, [
       displayMode,
-      networkInfo,
+      networkType,
+      isOffline,
       chunkSize,
       fileConcurrency,
       chunkConcurrency,
@@ -212,5 +175,5 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
         />
       </>
     );
-  }
+  },
 );

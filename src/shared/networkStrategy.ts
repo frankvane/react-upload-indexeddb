@@ -1,3 +1,47 @@
+export type NetworkBadgeStatus =
+  | "success"
+  | "processing"
+  | "default"
+  | "error"
+  | "warning";
+
+export interface NetworkBadgeInfo {
+  text: string;
+  status: NetworkBadgeStatus;
+}
+
+/**
+ * 网络类型 → 徽章文案/状态（上传、下载两条链路共用的展示映射）。
+ * verbose=true 使用完整文案（「慢速 2G」「有线网络」），默认使用紧凑文案
+ * （「慢2G」「有线」）。
+ */
+export const resolveNetworkBadgeInfo = (
+  networkType: string,
+  isOffline: boolean,
+  verbose = false
+): NetworkBadgeInfo => {
+  if (isOffline) {
+    return { text: "离线", status: "error" };
+  }
+
+  switch (networkType) {
+    case "4g":
+      return { text: "4G", status: "success" };
+    case "3g":
+      return { text: "3G", status: "processing" };
+    case "2g":
+      return { text: "2G", status: "warning" };
+    case "slow-2g":
+      return { text: verbose ? "慢速 2G" : "慢2G", status: "error" };
+    case "wifi":
+      return { text: "WiFi", status: "success" };
+    case "ethernet":
+      return { text: verbose ? "有线网络" : "有线", status: "success" };
+    default:
+      return { text: networkType || "未知", status: "default" };
+  }
+};
+
 export interface NetworkProbe {
   rtt?: number;
   online?: boolean;

@@ -10,7 +10,7 @@ import {
 } from "../../../ui";
 import React, { useCallback, useMemo, useState } from "react";
 
-import { formatFileSize } from "../utils";
+import { formatFileSize } from "../../../shared/formatFileSize";
 import { useFileDownloader } from "../hooks/useFileDownloader";
 import { useDownloadStore } from "../store";
 import { useShallow } from "zustand/react/shallow";

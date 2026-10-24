@@ -108,7 +108,7 @@ describe("uploadWorker CANCEL 协议（T2.3）", () => {
       expect(uploadCalls.length).toBeGreaterThan(0);
     });
 
-    const inFlightSignal = capturedSignals.at(-1);
+    const inFlightSignal = capturedSignals[capturedSignals.length - 1];
     expect(inFlightSignal?.aborted).toBeFalsy();
 
     // 发送 CANCEL

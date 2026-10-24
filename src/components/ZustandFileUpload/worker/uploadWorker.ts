@@ -1,8 +1,9 @@
+import { debugError, debugLog } from "./../../../shared/debugLogger";
+
 import SparkMD5 from "spark-md5";
-import { joinUrl } from "../../../shared/url";
 import type { UploadHashMode } from "../types/upload";
 import { computeUploadProgress } from "../services/uploadProgress";
-import { debugError, debugLog } from "./../../../shared/debugLogger";
+import { joinUrl } from "../../../shared/url";
 
 // Worker消息类型定义
 type UploadWorkerMessage =
@@ -65,17 +66,17 @@ const taskPauseState = new Map<
   string,
   { paused: boolean; resumeResolver: (() => void) | null }
 >();
-const taskStats = new Map<string, { uploadedChunks: number; totalChunks: number }>();
+const taskStats = new Map<
+  string,
+  { uploadedChunks: number; totalChunks: number }
+>();
 
 /**
  * 分片边界安全暂停的挂起原语（T3.3）：在分片任务开始处 await 本函数，
  * pause 消息抵达后本调用将挂起，直到 resume 消息触发 resumeResolver 解除；
  * 暂停期间若收到 cancel（taskSignal abort），同样解除挂起，交由上层以取消收场。
  */
-function waitWhilePaused(
-  fileId: string,
-  signal?: AbortSignal
-): Promise<void> {
+function waitWhilePaused(fileId: string, signal?: AbortSignal): Promise<void> {
   const st = taskPauseState.get(fileId);
   if (!st || !st.paused) {
     return Promise.resolve();
@@ -94,7 +95,7 @@ function waitWhilePaused(
             resolve();
           }
         },
-        { once: true }
+        { once: true },
       );
     }
   });
@@ -112,7 +113,7 @@ let lastRoutineDebugAt = 0;
 function debug(
   message: string,
   data?: Record<string, unknown>,
-  urgent = false
+  urgent = false,
 ): void {
   if (!DEBUG_ENABLED) {
     return;
@@ -164,7 +165,7 @@ async function fetchWithRetry(
     credentials?: RequestCredentials;
     /** 外部取消信号（任务级 AbortController）：abort 时中断在途 fetch 与重试 */
     signal?: AbortSignal;
-  } = {}
+  } = {},
 ): Promise<Response> {
   // 默认 same-origin：跨域 Bearer 头鉴权时不携带 Cookie，也不会触发 preflight
   // 对 Access-Control-Allow-Credentials:true 的强校验；仅当显式传入 'include' 时才携带 Cookie。
@@ -193,7 +194,11 @@ async function fetchWithRetry(
       // 如果超过最大重试次数，则拒绝
       if (attempts >= maxRetries) {
         const error = new Error(`已达到最大重试次数: ${maxRetries}`);
-        debug(`请求最终失败: ${url}`, { error: error.message, maxRetries }, true);
+        debug(
+          `请求最终失败: ${url}`,
+          { error: error.message, maxRetries },
+          true,
+        );
         self.postMessage({
           type: "retry",
           error: error.message,
@@ -273,14 +278,18 @@ async function fetchWithRetry(
           const error = new Error(
             apiMessage
               ? `HTTP 错误 ${response.status}: ${apiMessage}`
-              : `HTTP 错误 ${response.status}: ${response.statusText}`
+              : `HTTP 错误 ${response.status}: ${response.statusText}`,
           );
-          debug(`请求失败: ${url} (尝试 ${currentAttempt}/${maxRetries})`, {
-            status: response.status,
-            statusText: response.statusText,
-            errorText: errorText.substring(0, 200),
-            apiMessage,
-          }, true);
+          debug(
+            `请求失败: ${url} (尝试 ${currentAttempt}/${maxRetries})`,
+            {
+              status: response.status,
+              statusText: response.statusText,
+              errorText: errorText.substring(0, 200),
+              apiMessage,
+            },
+            true,
+          );
 
           // 判断是否需要重试
           const isServerError = response.status >= 500;
@@ -301,9 +310,13 @@ async function fetchWithRetry(
       } catch (error) {
         const wrappedError =
           error instanceof Error ? error : new Error(String(error));
-        debug(`请求异常: ${url} (尝试 ${currentAttempt}/${maxRetries})`, {
-          error: wrappedError.message,
-        }, true);
+        debug(
+          `请求异常: ${url} (尝试 ${currentAttempt}/${maxRetries})`,
+          {
+            error: wrappedError.message,
+          },
+          true,
+        );
 
         // 判断是否需要重试
         const isNetworkError =
@@ -391,9 +404,11 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
       return;
     }
 
-    // 只处理上传类型的消息
+    // 只处理上传类型的消息（类型层已被穷尽，运行时仍可能收到未知消息）
     if (event.data.type !== "upload") {
-      debug("未知的消息类型", { type: event.data.type });
+      debug("未知的消息类型", {
+        type: (event.data as { type?: string }).type,
+      });
       return;
     }
 
@@ -516,7 +531,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           authHeaders,
           credentials: credentialsMode,
           signal: taskSignal,
-        }
+        },
       );
 
       debug("秒传确认响应", { status: instantRes.status });
@@ -547,7 +562,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         for (let i = 0; i < chunkCount; i++) {
           const chunkResult = instantData.data.chunkCheckResult.find(
             (c: { index: number; exist: boolean; match?: boolean }) =>
-              c.index === i
+              c.index === i,
           );
           const reusable = Boolean(chunkResult?.exist && chunkResult?.match);
           if (!reusable) needUploadChunks.push(i);
@@ -591,7 +606,10 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
             }
 
             const formData = new FormData();
-            formData.append("file_id", fileInfo.chunkKey || fileInfo.hash || "");
+            formData.append(
+              "file_id",
+              fileInfo.chunkKey || fileInfo.hash || "",
+            );
             formData.append("index", i.toString());
             formData.append("chunk", new Blob([chunkBuf]));
             formData.append("total", chunkCount.toString());
@@ -611,11 +629,11 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
                   body: formData,
                 },
                 {
-          ...retryOptions,
-          authHeaders,
-          credentials: credentialsMode,
-          signal: taskSignal,
-        }
+                  ...retryOptions,
+                  authHeaders,
+                  credentials: credentialsMode,
+                  signal: taskSignal,
+                },
               );
 
               // 更新进度
@@ -626,7 +644,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
               }
               const uploadedBytes = Math.min(
                 totalUploadedChunks * chunkSize,
-                fileRef.size
+                fileRef.size,
               );
               const elapsedMs = Math.max(1, Date.now() - uploadStartTime);
               const detail = computeUploadProgress({
@@ -648,9 +666,13 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
             } catch (error) {
               // 记录失败的分片
               failedChunks.push(i);
-              debug(`分片 ${i + 1} 上传失败`, {
-                error: error instanceof Error ? error.message : String(error),
-              }, true);
+              debug(
+                `分片 ${i + 1} 上传失败`,
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                true,
+              );
               debugError(`分片 ${i + 1} 上传失败:`, error);
               throw error;
             }
@@ -680,10 +702,14 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
 
         // 如果有失败的分片，报告错误
         if (failedChunks.length > 0) {
-          debug("有分片上传失败", {
-            count: failedChunks.length,
-            chunks: failedChunks,
-          }, true);
+          debug(
+            "有分片上传失败",
+            {
+              count: failedChunks.length,
+              chunks: failedChunks,
+            },
+            true,
+          );
           self.postMessage({
             type: "error",
             message: `有 ${failedChunks.length} 个分片上传失败，请重试上传`,
@@ -709,7 +735,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
 
       const mergeUrl = joinUrl(
         baseURL,
-        uploadConfig?.mergeApi || "/api/file/merge"
+        uploadConfig?.mergeApi || "/api/file/merge",
       );
       debug(`合并文件URL: ${mergeUrl}`);
 
@@ -725,7 +751,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           authHeaders,
           credentials: credentialsMode,
           signal: taskSignal,
-        }
+        },
       );
       debug("文件合并成功");
 
@@ -739,14 +765,14 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         type: "error",
         message: errorMessage,
       });
-  } finally {
-    // 任务结束（成功/失败/取消）后释放 AbortController 与暂停状态，避免 Map 残留
-    if (fileId) {
-      taskAbortControllers.delete(fileId);
-      taskPauseState.delete(fileId);
-      taskStats.delete(fileId);
+    } finally {
+      // 任务结束（成功/失败/取消）后释放 AbortController 与暂停状态，避免 Map 残留
+      if (fileId) {
+        taskAbortControllers.delete(fileId);
+        taskPauseState.delete(fileId);
+        taskStats.delete(fileId);
+      }
     }
-  }
   } catch (error) {
     // Worker 执行过程中的全局错误处理
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -761,7 +787,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
 // 简单的并发控制函数
 async function runWithConcurrency(
   tasks: (() => Promise<void>)[],
-  concurrency: number
+  concurrency: number,
 ): Promise<{ completed: number; failed: number; failedIndices: number[] }> {
   // 当前运行的任务数
   let running = 0;
@@ -794,7 +820,7 @@ async function runWithConcurrency(
         }
         running++;
         debug(
-          `启动任务 ${currentIndex + 1}/${tasks.length}，当前运行: ${running}`
+          `启动任务 ${currentIndex + 1}/${tasks.length}，当前运行: ${running}`,
         );
 
         currentTask()
@@ -804,7 +830,7 @@ async function runWithConcurrency(
             debug(
               `任务 ${
                 currentIndex + 1
-              } 完成，剩余运行: ${running}，完成: ${completed}，失败: ${failed}`
+              } 完成，剩余运行: ${running}，完成: ${completed}，失败: ${failed}`,
             );
             startNext(); // 任务完成后，尝试启动下一个任务
           })
@@ -815,7 +841,7 @@ async function runWithConcurrency(
             debug(
               `任务 ${
                 currentIndex + 1
-              } 失败，剩余运行: ${running}，完成: ${completed}，失败: ${failed}`
+              } 失败，剩余运行: ${running}，完成: ${completed}，失败: ${failed}`,
             );
             startNext(); // 即使失败也尝试启动下一个任务
           });
