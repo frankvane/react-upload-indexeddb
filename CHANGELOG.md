@@ -5,6 +5,23 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.0.2] - 2026-10-24
+
+### Added
+- **可关闭 debug logger**：新增 `src/shared/debugLogger.ts`，提供 `configureDebug({ silent })` 与 `debugLog/debugWarn/debugError`；库默认 `silent=true`（生产零噪声），消费方 `configureDebug({ silent:false })` 可恢复全部 `[rui]` 日志。随包发布的 12 个库文件 `console.*` 全部替换，`configureDebug` 从 `src/index.ts` 导出，README 新增「调试」小节
+
+### Changed
+- **长列表渲染优化**：`src/ui/table.tsx` 行加 `content-visibility:auto` + `contain-intrinsic-size`，超长文件/分片列表屏外行跳过布局与绘制（Firefox/Safari 自动降级）
+- **NetworkStatusBadge 拆分瘦身**：约 135 行"网络设置"Modal 抽至独立 `NetworkStatusPanel.tsx`（本地编辑态自管，`onApply` 回交徽章侧），徽章本体聚焦状态点 + 紧凑/tooltip 两种展示 + 三工具栏按钮，导出名与 props 不变
+- **上传/下载 Controller 编排/业务策略拆分**：生命周期（worker 会话/刷新调度/卸载销毁）与业务策略（状态聚合/结果判别/文件归一化/消息构造）解耦为 `uploadPolicy`/`useUploaderLifecycle`/`downloadPolicy`/`useDownloaderLifecycle`，原 hook 退化为编排薄壳；**公开签名与返回值 100% 不变**（经 `verify:client` + client-contract 双重校验）
+- **列表行 memo + 派生布尔选择器**：列表行组件包 `React.memo`，可见性开关改为直接订阅派生布尔，减少无关重渲染
+- **文件列表刷新入口去重**：`api.client` 的 `getFileList` 按参数签名去重在途请求（`pendingFileList` Map，per-instance 隔离），修复并发 TOCTOU 竞态；新增 2 用例（客户端测试总计 130）
+- **vitest 提速**：`test:unit` 改 `vitest run --no-isolate`，24 文件 130 用例约 10s（此前 ~18s）
+- **修正 `vite.lib.config.ts` 过时注释**：注释声称 worker 用 `new URL(...)` 实际已为 `?worker&inline`
+
+### Fixed
+- **server 鉴权默认 fail-closed（拒绝优先）**：`server/src/middleware/auth.js` 的 `createAuthMiddleware` 新增 `requireAuth`（默认 `true`），移除"已挂载却未配置凭据即静默放行"的 fail-open 分支——挂载即要求鉴权，未拿到有效凭据一律 401；`app.js` 在 `REQUIRE_FILE_AUTH=true` 时永远以 `requireAuth:true` 挂载，若开了开关却未配 `FILE_AUTH_TOKEN`/`FILE_AUTH_COOKIE` 则打印 `FATAL` 告警且所有 `/api/file` 请求返回 401，杜绝"本应受保护却 silent open"。默认关闭（无 `REQUIRE_FILE_AUTH`）时行为不变，demo / 集成测试不受影响；新增 `auth-middleware.test.js` + `auth-app.test.js` 回归测试（server 测试 39/39 全绿）。`server/README.md` 新增「鉴权」小节
+
 ## [2.0.1] - 2026-10-24
 
 ### Added
