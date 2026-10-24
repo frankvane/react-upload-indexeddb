@@ -127,7 +127,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
       missingFileRefCount: 0,
     });
     expect(setItemMock).toHaveBeenCalledTimes(1);
-    const [, saved] = setItemMock.mock.calls[0];
+    const [, saved] = setItemMock.mock.calls[0]!;
     expect(saved.status).toBe(UploadStatus.QUEUED);
     expect(saved.errorMessage).toBeUndefined();
   });
@@ -147,7 +147,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
       recoveredCount: 0,
       missingFileRefCount: 1,
     });
-    const [, saved] = setItemMock.mock.calls[0];
+    const [, saved] = setItemMock.mock.calls[0]!;
     expect(saved.status).toBe(UploadStatus.ERROR);
     expect(saved.progress).toBe(0);
     expect(saved.errorMessage).toContain("上传中断");

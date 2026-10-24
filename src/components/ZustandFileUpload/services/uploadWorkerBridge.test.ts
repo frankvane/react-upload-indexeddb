@@ -97,7 +97,7 @@ describe("runUploadTask uploadConfig 贯通（T2.1 mergeApi）", () => {
     });
 
     expect(FakeUploadWorker.instances).toHaveLength(1);
-    const posted = FakeUploadWorker.instances[0].posted[0];
+    const posted = FakeUploadWorker.instances[0]!.posted[0]!;
     expect(posted.type).toBe("upload");
     expect(posted.uploadConfig).toMatchObject({
       baseURL: "https://upload.example.com",
@@ -118,7 +118,7 @@ describe("runUploadTask uploadConfig 贯通（T2.1 mergeApi）", () => {
       },
     });
 
-    const posted = FakeUploadWorker.instances[0].posted[0];
+    const posted = FakeUploadWorker.instances[0]!.posted[0]!;
     expect(posted.uploadConfig?.mergeApi).toBe("/custom/merge-endpoint");
   });
 
@@ -136,7 +136,7 @@ describe("runUploadTask uploadConfig 贯通（T2.1 mergeApi）", () => {
     // 第二个任务复用空闲 Worker，不新建实例
     expect(FakeUploadWorker.instances).toHaveLength(1);
     pool.dispose();
-    expect(FakeUploadWorker.instances[0].terminated).toBe(true);
+    expect(FakeUploadWorker.instances[0]!.terminated).toBe(true);
   });
 });
 
@@ -159,7 +159,7 @@ describe("cancelUploadTask（T2.3 Worker CANCEL 协议）", () => {
       uploadConfig: apiConfig,
     });
 
-    const worker = FakeUploadWorker.instances[0];
+    const worker = FakeUploadWorker.instances[0]!;
     expect(worker).toBeTruthy();
 
     pool.cancelUploadTask("file-1");
@@ -188,7 +188,7 @@ describe("cancelUploadTask（T2.3 Worker CANCEL 协议）", () => {
         uploadConfig: apiConfig,
       });
 
-      const worker = FakeUploadWorker.instances[0];
+      const worker = FakeUploadWorker.instances[0]!;
       pool.cancelUploadTask("file-1");
       expect(worker.terminated).toBe(false);
 
@@ -299,7 +299,7 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
       uploadConfig: apiConfig,
     });
 
-    const worker = FakeUploadWorker.instances[0];
+    const worker = FakeUploadWorker.instances[0]!;
     worker.onerror?.({ message: "worker crashed" } as unknown as Event);
 
     const result = await taskPromise;
@@ -331,7 +331,7 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
       signal: controller.signal,
     });
 
-    const worker = FakeUploadWorker.instances[0];
+    const worker = FakeUploadWorker.instances[0]!;
     controller.abort();
 
     const result = await taskPromise;
@@ -358,7 +358,7 @@ describe("pauseUploadTask / resumeUploadTask（T3.3）", () => {
       uploadConfig: apiConfig,
     });
 
-    const worker = FakeUploadWorker.instances[0];
+    const worker = FakeUploadWorker.instances[0]!;
     expect(worker).toBeTruthy();
 
     pool.pauseUploadTask("file-1");
@@ -391,7 +391,7 @@ describe("pauseUploadTask / resumeUploadTask（T3.3）", () => {
       uploadConfig: apiConfig,
     });
 
-    const worker = FakeUploadWorker.instances[0];
+    const worker = FakeUploadWorker.instances[0]!;
 
     const alive = pool.resumeUploadTask("file-1");
     expect(alive).toBe(true);
@@ -424,7 +424,7 @@ describe("pauseUploadTask / resumeUploadTask（T3.3）", () => {
       uploadConfig: apiConfig,
     });
 
-    const worker = FakeUploadWorker.instances[0];
+    const worker = FakeUploadWorker.instances[0]!;
     pool.pauseUploadTask("file-1");
     worker.onmessage?.({
       data: {

@@ -2,11 +2,9 @@
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     /* 测试文件只由 vitest 在运行时执行（esbuild 转译，无类型门禁），
-       这里用宽松选项让编辑器/Problems 面板不误报，真实类型约束仍由 src 的严格项目保证。 */
+       这里放宽未使用变量检查；其余严格选项与 src 保持一致，避免 IDE 误报。 */
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vitest/globals", "node"],
-    "strict": false,
-    "noUncheckedIndexedAccess": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitReturns": false
