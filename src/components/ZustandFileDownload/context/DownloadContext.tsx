@@ -5,6 +5,7 @@ import {
   DownloadFile,
   StorageStats,
   DownloadConfig,
+  DownloadColumnKey,
 } from "../types/download";
 import { API_BASE_URL, API_PATHS } from "../../../config/api";
 
@@ -27,6 +28,8 @@ export interface DownloadContextType {
   showStorageStats: boolean;
   showNetworkStatus: boolean;
   showBatchInfo: boolean;
+  /** 下载表格可见列（key 数组）；缺省显示全部内置列 */
+  visibleColumns?: DownloadColumnKey[];
   onDownloadStart?: (file: DownloadFile) => void;
   onDownloadProgress?: (file: DownloadFile, progress: number) => void;
   onDownloadComplete?: (file: DownloadFile, success: boolean) => void;
@@ -71,6 +74,7 @@ export const DownloadProvider: React.FC<DownloadProviderProps> = ({
   showStorageStats = true,
   showNetworkStatus = true,
   showBatchInfo = true,
+  visibleColumns,
   onDownloadStart,
   onDownloadProgress,
   onDownloadComplete,
@@ -98,6 +102,7 @@ export const DownloadProvider: React.FC<DownloadProviderProps> = ({
     showStorageStats,
     showNetworkStatus,
     showBatchInfo,
+    visibleColumns,
     onDownloadStart,
     onDownloadProgress,
     onDownloadComplete,

@@ -106,6 +106,13 @@ export interface ZustandFileDownloadProps {
   showNetworkStatus?: boolean; // 是否显示网络状态
   showBatchInfo?: boolean; // 是否显示批次汇总条（活动中/排队中/已完成/批次进度）
 
+  /**
+   * 下载表格可见列控制。传入列 key 数组，仅显示并**按数组顺序**排列这些列；
+   * 缺省（不传）显示全部内置列（文件名/大小/分片/状态/进度/操作）。
+   * 注意：隐藏「操作」列后，表格内将不再提供下载/暂停/继续/导出/删除按钮。
+   */
+  visibleColumns?: DownloadColumnKey[];
+
   // 回调事件
   onDownloadStart?: (file: DownloadFile) => void;
   onDownloadProgress?: (file: DownloadFile, progress: number) => void;
@@ -125,6 +132,15 @@ export interface ZustandFileDownloadProps {
   ) => Promise<boolean>;
   customProgressHandler?: (file: DownloadFile, progress: number) => void;
 }
+
+// 下载表格列 key（供 {@link ZustandFileDownloadProps.visibleColumns} 使用）
+export type DownloadColumnKey =
+  | "fileName"
+  | "fileSize"
+  | "chunks"
+  | "status"
+  | "progress"
+  | "action";
 
 // 下载配置接口
 export interface DownloadConfig {

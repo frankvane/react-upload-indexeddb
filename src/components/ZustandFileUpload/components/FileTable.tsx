@@ -66,6 +66,8 @@ const FileTable: React.FC<FileTableProps> = ({
     [files, progressMap, speedMap, etaMap]
   );
 
+  const visibleColumns = uploadConfig.visibleColumns;
+
   const columns = useMemo(() => {
     const baseColumns = [
       {
@@ -142,69 +144,76 @@ const FileTable: React.FC<FileTableProps> = ({
     ];
 
     // simple 模式也保留操作列：失败可重试、可删除，避免死行无法处理
-    return [
-      ...baseColumns,
-      {
-        title: "操作",
-        dataIndex: "action",
-        key: "action",
-        render: (_: unknown, record: UploadFile) => {
-          const { status, id } = record;
-          const isRetrying = retryingFiles[id] || false;
-          const isActionDisabled = isUploading || isRetrying || isNetworkOffline;
+    const actionColumn = {
+      title: "操作",
+      dataIndex: "action",
+      key: "action",
+      render: (_: unknown, record: UploadFile) => {
+        const { status, id } = record;
+        const isRetrying = retryingFiles[id] || false;
+        const isActionDisabled = isUploading || isRetrying || isNetworkOffline;
 
-          return (
-            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              {status === UploadStatus.UPLOADING && (
-                <Button
-                  size="small"
-                  onClick={() => pauseUploadFile(record)}
-                  disabled={isRetrying || isNetworkOffline}
-                  title={isNetworkOffline ? "网络已断开，无法暂停" : "暂停上传"}
-                >
-                  暂停
-                </Button>
-              )}
-              {status === UploadStatus.PAUSED && (
-                <Button
-                  size="small"
-                  type="primary"
-                  onClick={() => resumeUploadFile(record)}
-                  disabled={isRetrying || isNetworkOffline}
-                  title={
-                    isNetworkOffline ? "网络已断开，无法继续" : "从断点继续上传"
-                  }
-                >
-                  继续
-                </Button>
-              )}
-              {status === UploadStatus.ERROR && (
-                <Button
-                  size="small"
-                  type="primary"
-                  onClick={() => handleRetryUpload(record)}
-                  loading={isRetrying}
-                  disabled={isActionDisabled}
-                  title={isNetworkOffline ? "网络已断开，无法重试" : ""}
-                >
-                  {isRetrying ? "重试中" : "重试"}
-                </Button>
-              )}
+        return (
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            {status === UploadStatus.UPLOADING && (
               <Button
                 size="small"
-                danger
-                onClick={() => handleDeleteFile(id)}
-                disabled={isRetrying || isUploading}
+                onClick={() => pauseUploadFile(record)}
+                disabled={isRetrying || isNetworkOffline}
+                title={isNetworkOffline ? "网络已断开，无法暂停" : "暂停上传"}
               >
-                删除
+                暂停
               </Button>
-            </div>
-          );
-        },
-        align: "center" as AlignItem,
-        width: "15%",
+            )}
+            {status === UploadStatus.PAUSED && (
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => resumeUploadFile(record)}
+                disabled={isRetrying || isNetworkOffline}
+                title={
+                  isNetworkOffline ? "网络已断开，无法继续" : "从断点继续上传"
+                }
+              >
+                继续
+              </Button>
+            )}
+            {status === UploadStatus.ERROR && (
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => handleRetryUpload(record)}
+                loading={isRetrying}
+                disabled={isActionDisabled}
+                title={isNetworkOffline ? "网络已断开，无法重试" : ""}
+              >
+                {isRetrying ? "重试中" : "重试"}
+              </Button>
+            )}
+            <Button
+              size="small"
+              danger
+              onClick={() => handleDeleteFile(id)}
+              disabled={isRetrying || isUploading}
+            >
+              删除
+            </Button>
+          </div>
+        );
       },
-    ];
+      align: "center" as AlignItem,
+      width: "15%",
+    };
+
+    // visibleColumns：仅显示并按下标顺序排序列 key；缺省显示全部内置列
+    const allColumns = [...baseColumns, actionColumn];
+    const columnByKey = new Map(allColumns.map((c) => [c.key, c]));
+    const orderedKeys = visibleColumns ?? allColumns.map((c) => c.key);
+    return orderedKeys
+      .map((key) => columnByKey.get(key))
+      .filter(
+        (c): c is (typeof allColumns)[number] => c !== undefined
+      );
   }, [
     rowIndexById,
     isSimpleMode,
@@ -215,6 +224,7 @@ const FileTable: React.FC<FileTableProps> = ({
     resumeUploadFile,
     handleRetryUpload,
     handleDeleteFile,
+    visibleColumns,
   ]);
 
   return (

@@ -1,4 +1,4 @@
-import { CHUNK_SIZE, DownloadFile, DownloadStatus } from "../types";
+import { CHUNK_SIZE, DownloadColumnKey, DownloadFile, DownloadStatus } from "../types";
 import { Button, Card, Empty, Progress, Space, Spin, Table, Tag, Tooltip, Typography, message } from "../../../ui";
 import {
   DeleteOutlined,
@@ -19,6 +19,8 @@ const { Text } = Typography;
 
 interface FileListProps {
   onRefreshFiles: (forceUpdate?: boolean) => Promise<void>;
+  /** 下载表格可见列（key 数组）；缺省显示全部内置列 */
+  visibleColumns?: DownloadColumnKey[];
 }
 
 const isDownloadableStatus = (status: DownloadFile["status"]) =>
@@ -29,7 +31,10 @@ const isDownloadableStatus = (status: DownloadFile["status"]) =>
 const isDeletableStatus = (status: DownloadFile["status"]) =>
   status === DownloadStatus.IDLE || status === DownloadStatus.COMPLETED;
 
-export const FileList: React.FC<FileListProps> = ({ onRefreshFiles }) => {
+export const FileList: React.FC<FileListProps> = ({
+  onRefreshFiles,
+  visibleColumns,
+}) => {
   const { files, fetchingFiles } = useDownloadStore(
     useShallow((state) => ({
       files: state.files,
@@ -291,7 +296,8 @@ export const FileList: React.FC<FileListProps> = ({ onRefreshFiles }) => {
   );
 
   const columns = useMemo(
-    () => [
+    () => {
+    const allColumns = [
       {
         title: "文件名",
         dataIndex: "fileName",
@@ -497,7 +503,16 @@ export const FileList: React.FC<FileListProps> = ({ onRefreshFiles }) => {
           );
         },
       },
-    ],
+    ];
+
+    // visibleColumns：仅显示并按下标顺序排序列 key；缺省显示全部内置列
+    const columnByKey = new Map(allColumns.map((c) => [c.key, c]));
+    const orderedKeys = visibleColumns ?? allColumns.map((c) => c.key);
+    const ordered = orderedKeys
+      .map((key) => columnByKey.get(key))
+      .filter((c): c is (typeof allColumns)[number] => c !== undefined);
+    return ordered;
+  },
     [
       startDownload,
       pauseDownload,
@@ -505,6 +520,7 @@ export const FileList: React.FC<FileListProps> = ({ onRefreshFiles }) => {
       cancelDownload,
       deleteFile,
       exportFile,
+      visibleColumns,
     ]
   );
 

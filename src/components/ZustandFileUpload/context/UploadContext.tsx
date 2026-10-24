@@ -5,6 +5,7 @@ import {
   UploadSettingsSource,
   UploadUIMode,
   UploadAuthConfig,
+  UploadColumnKey,
   ZustandFileUploadProps,
 } from "../types/upload";
 import { API_BASE_URL, API_PATHS } from "../../../config/api";
@@ -44,6 +45,8 @@ export interface UploadContextType extends UploadConfig, UploadAuthConfig {
   networkDisplayMode: "tooltip" | "direct";
   uiMode: UploadUIMode;
   settingsSource: UploadSettingsSource;
+  /** 上传表格可见列（key 数组）；缺省显示全部内置列 */
+  visibleColumns?: UploadColumnKey[];
 }
 
 export const UploadContext = createContext<UploadContextType | undefined>(
@@ -75,6 +78,7 @@ export const UploadProvider: React.FC<UploadProviderProps> = ({
   uiMode = "full",
   settingsSource = "localStorage",
   debug = false,
+  visibleColumns,
   onUploadStart,
   onUploadProgress,
   onUploadProgressDetail,
@@ -136,6 +140,7 @@ export const UploadProvider: React.FC<UploadProviderProps> = ({
     uiMode,
     settingsSource,
     debug,
+    visibleColumns,
     onUploadStart,
     onUploadProgress,
     onUploadProgressDetail,

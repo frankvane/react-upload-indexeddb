@@ -50,6 +50,7 @@ export const useEffectiveDownloadConfig = () => {
       showStorageStats: showStorageStats ?? contextConfig.showStorageStats,
       showNetworkStatus: showNetworkStatus ?? contextConfig.showNetworkStatus,
       showBatchInfo: showBatchInfo ?? contextConfig.showBatchInfo,
+      visibleColumns: contextConfig.visibleColumns,
 
       // 回调事件（来自 Context）
       onDownloadStart: contextConfig.onDownloadStart,
@@ -76,6 +77,7 @@ export const useEffectiveDownloadConfig = () => {
       contextConfig.showStorageStats,
       contextConfig.showNetworkStatus,
       contextConfig.showBatchInfo,
+      contextConfig.visibleColumns,
       contextConfig.onDownloadStart,
       contextConfig.onDownloadProgress,
       contextConfig.onDownloadComplete,

@@ -27,12 +27,20 @@ export {
   type UploadUIMode,
   type UploadSettingsSource,
   type ZustandFileUploadProps,
+  type UploadColumnKey,
   type UploadConfig,
   type UploadAuthConfig,
   type BatchInfo,
   type ProcessProgress,
   type AlignItem,
 } from "./components/ZustandFileUpload/types/upload";
+
+export {
+  type ZustandFileDownloadProps,
+  type DownloadColumnKey,
+  type DownloadFile,
+  type DownloadStatus,
+} from "./components/ZustandFileDownload/types/download";
 
 export { resolveAuthHeaders } from "./components/ZustandFileUpload/utils/auth";
 

@@ -59,6 +59,7 @@ export const useEffectiveUploadConfig = () => {
     uiMode: contextConfig.uiMode,
     settingsSource: contextConfig.settingsSource,
     debug: contextConfig.debug,
+    visibleColumns: contextConfig.visibleColumns,
 
     // 回调函数（来自 Context）
     onUploadStart: contextConfig.onUploadStart,
@@ -97,6 +98,7 @@ export const useEffectiveUploadConfig = () => {
     contextConfig.uiMode,
     contextConfig.settingsSource,
     contextConfig.debug,
+    contextConfig.visibleColumns,
     contextConfig.authToken,
     contextConfig.getAuthToken,
     contextConfig.getAuthHeaders,

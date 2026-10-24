@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.0.4] - 2026-10-24
+
+### Added
+- **表格列控制**：上传 `ZustandFileUpload` 与下载 `ZustandFileDownload` 新增 `visibleColumns` 属性，可传入列 key 数组控制显示哪些列，并**按数组顺序**排列；缺省（不传）显示全部内置列。上传列 key：`index | fileName | fileSize | chunkCount | status | progress | action`；下载列 key：`fileName | fileSize | chunks | status | progress | action`。类型 `UploadColumnKey` / `DownloadColumnKey` 已从包入口导出。隐藏「操作」列后表格内不再提供暂停/继续/重试/删除等按钮（由消费方自行提供控制）。
+
+## [2.0.3] - 2026-10-24
+
+### Fixed
+- **simple 模式补齐失败重试与排队启动入口**（`037c9ca`）：修复 simple 模式下失败文件无法重试、排队文件无法启动的问题。
+
 ## [2.0.2] - 2026-10-24
 
 ### Added

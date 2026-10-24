@@ -41,7 +41,10 @@ const InnerDownloadComponent: React.FC = () => {
           />
         )}
         {config.showBatchInfo && <BatchInfoDisplay />}
-        <FileList onRefreshFiles={fetchFileList} />
+        <FileList
+          onRefreshFiles={fetchFileList}
+          visibleColumns={config.visibleColumns}
+        />
       </Space>
     </div>
   );

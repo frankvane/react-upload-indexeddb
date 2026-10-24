@@ -145,7 +145,24 @@ export interface ZustandFileUploadProps extends UploadAuthConfig {
    * 多实例场景传入不同 id 即可互不串数据。
    */
   instanceId?: string;
+
+  /**
+   * 上传表格可见列控制。传入列 key 数组，仅显示并**按数组顺序**排列这些列；
+   * 缺省（不传）显示全部内置列（编号/文件名/大小/分片数/状态/进度/操作）。
+   * 注意：隐藏「操作」列后，表格内将不再提供暂停/继续/重试/删除按钮。
+   */
+  visibleColumns?: UploadColumnKey[];
 }
+
+// 上传表格列 key（供 {@link ZustandFileUploadProps.visibleColumns} 使用）
+export type UploadColumnKey =
+  | "index"
+  | "fileName"
+  | "fileSize"
+  | "chunkCount"
+  | "status"
+  | "progress"
+  | "action";
 
 // Internal upload config.
 export interface UploadConfig {
