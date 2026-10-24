@@ -8,7 +8,7 @@ import React, { useEffect } from "react";
 import { configureDownloadApi } from "./api.client";
 
 import { DownloadProvider } from "./context/DownloadContext";
-import { Space } from "../../ui";
+import { Space, ErrorBoundary } from "../../ui";
 import { ZustandFileDownloadProps } from "./types/download";
 import { initializeStorage } from "./utils/storage";
 import { useDownloadStore } from "./store";
@@ -112,9 +112,11 @@ const ZustandFileDownload: React.FC<ZustandFileDownloadProps> = (props) => {
   }, [getStorageUsage]);
 
   return (
-    <DownloadProvider {...props}>
-      <InnerDownloadComponent />
-    </DownloadProvider>
+    <ErrorBoundary fallbackTitle="下载组件加载失败">
+      <DownloadProvider {...props}>
+        <InnerDownloadComponent />
+      </DownloadProvider>
+    </ErrorBoundary>
   );
 };
 

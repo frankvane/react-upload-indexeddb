@@ -93,15 +93,15 @@
 | --- | --- | --- | --- |
 | F1 | localStorage 读取无异常保护、key 无命名空间 | 集中封装 `safeStorage`（try/catch + schema 校验 + 版本号），key 加 `rui:` 前缀；上传 store 的偏好 setter 与 `initSettings` 全部经 `safeStorage`；兼容早期裸写原生字符串 | 被污染/半写入数据不再让 store 初始化抛错；多实例不互相覆盖 ✅ 已完成 |
 | F2 | Zustand persist 无版本迁移，持久化了派生字段 | `version: 1` + `migrate`（v0 数据剥离派生字段只留偏好白名单）；`partialize` 只持久化真实用户偏好（`displayMode`/`show*`/`maxRetries`） | 升级后旧结构不覆盖新的网络自适应结果 ✅ 已完成 |
-| F3 | Worker 对任意 URL 携带鉴权头（SSRF/泄漏风险） | 下载 URL 做同源/白名单校验，非白名单目标剥离鉴权头 | token 不会发往任意域名 |
-| F6 | 无 ErrorBoundary，懒加载失败整页白屏 | 外层加 `ErrorBoundary` + "刷新/重载资源"兜底 | 旧 chunk 404/网络抖动不再整页白屏 |
+| F3 | Worker 对任意 URL 携带鉴权头（SSRF/泄漏风险） | 下载 URL 做同源/白名单校验，非白名单目标剥离鉴权头 | token 不会发往任意域名 ✅ 已完成 |
+| F6 | 无 ErrorBoundary，懒加载失败整页白屏 | 外层加 `ErrorBoundary` + "刷新/重载资源"兜底 | 旧 chunk 404/网络抖动不再整页白屏 ✅ 已完成 |
 | S5 | 缺安全响应头与指纹收敛 | 引入 `helmet()`、`app.disable('x-powered-by')`、补自定义 404 | 响应带标准安全头 |
 | S10 | 缩略图 URL 无对应静态路由（功能缺陷，必然 404） | 新增受控缩略图路由（带鉴权、`Content-Disposition: inline`，仅图片）；真实生成待无 CVE thumbnailer（**不装 sharp**，因其 libvips/libheif/librsvg 高危 CVE 与 D1 门禁冲突） | 路由已就绪：实体缺失 404、非图片 403、非法 id 404 ✅ 已完成 |
 | S11 | Range 解析不完整（多段被误判单段） | 只支持单段并显式拒绝多段，补标准 `Content-Range: bytes */size` 响应头；非法 Range（越界/负数/起点>终点）同样返回标准 416 + 该头（此前走 jsonError 不带头，已对齐） | 多段 Range / 非法 Range 均返回 416 且头正确 ✅ 已完成 |
-| F7 | 调试日志无上限，生产仍 `console.log` | `useDebugLogger` 限长环形（如 500 条）；生产关闭 `console.log` | 长会话内存不再持续上涨 |
+| F7 | 调试日志无上限，生产仍 `console.log` | `useDebugLogger` 限长环形（如 500 条）；生产关闭 `console.log` | 长会话内存不再持续上涨 ✅ 已完成 |
 | F8 | 分片重试 off-by-one、文件级重试不重置 | 文件级 `>=` 改 `>`；分片级 `> MAX` 改 `> MAX+1` 并重排 requeue/`allChunksExceeded` 为 `MAX+1` 对齐：**MAX_RETRY_ATTEMPTS=3 现语义为 3 次重试 / 4 次尝试**；批次全部成功后 `retryAttempts` 归零（仅连续失败才累加） | 允许次数准确；分片前 3 次偶发失败、第 4 次成功 → 整文件 COMPLETE（修复前于第 3 次后误中止）✅ 已完成 |
-| F9 | 入口 HTML 无 CSP 等安全头 | README 提示宿主设置 CSP/`nosniff`/`frame-ancestors`，给出与 Worker(`worker-src blob:`)、内联样式兼容的示例 | 文档含可复制策略 |
-| P1 | 分片批次间固定等待拖慢吞吐 | 退避仅在有失败/限速信号时触发 | 大文件多批次吞吐不再被固定 delay 拖累 |
+| F9 | 入口 HTML 无 CSP 等安全头 | README 提示宿主设置 CSP/`nosniff`/`frame-ancestors`，给出与 Worker(`worker-src blob:`)、内联样式兼容的示例 | 文档含可复制策略 ✅ 已完成 |
+| P1 | 分片批次间固定等待拖慢吞吐 | 退避仅在有失败/限速信号时触发 | 大文件多批次吞吐不再被固定 delay 拖累 ✅ 已完成 |
 
 > React 性能专项（code-review-report §六）：**无明显性能债务**，暂不单列任务；仅 F1/F2 顺带治理本地存储，文件表虚拟滚动维持现状（受 `maxFiles`/分页约束，当前规模可接受）。
 

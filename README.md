@@ -197,6 +197,27 @@ configureDebug({ silent: false }); // 打开 warn/debug 级日志
 
 > 上传 Worker 另有**按任务**的调试开关：传 `uploadConfig.debug === true` 时，分片级日志会按 200ms 节流并经 `postMessage` 上报主线程（被 demo 的 DebugPanel 消费），不受 `configureDebug` 影响；`configureDebug` 仅控制是否同步打印到浏览器控制台。
 
+## 内容安全策略（CSP）
+
+本库使用 Web Worker 做分片上传/下载，并以 `?worker&inline` 把 Worker 整体**内联为 Blob**（规避消费方 dev 环境下 worker 资产 404）。因此宿主页面的 CSP 必须允许 `blob:` 作为 Worker 源，否则会整页白屏：
+
+```
+Content-Security-Policy:
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:;
+  worker-src 'self' blob:;
+  child-src  'self' blob:;   /* 旧浏览器回退 */
+  style-src  'self' 'unsafe-inline';   /* 库内置样式通过内联 <style> / class 注入，需允许内联样式 */
+  connect-src 'self' https://your-file-server.example.com;   /* 限制分片上传/下载的目标域名，缩小 SSRF 面 */
+```
+
+要点：
+
+- **`worker-src blob:`（或 `child-src blob:`）必选**：Worker 经 `URL.createObjectURL(blob)` 启动，缺少该源会触发 `Refused to create worker` 报错。
+- **`script-src` 需含 `blob:` 与 `wasm-unsafe-eval`**：内联 Worker 本质是从 Blob URL 执行的脚本；若上传涉及 WASM（如哈希），还需 `wasm-unsafe-eval`（或 `wasm-eval`）。
+- **`style-src 'unsafe-inline'`**：库样式以 `dist/style.css` 引入（外链），但运行时 tooltip/popover 等 portal 弹层会注入内联样式，保留 `'unsafe-inline'` 最稳妥；若必须收紧，可改为对 `dist/style.css` 外链文件做哈希放行。
+- **`connect-src` 收紧到文件服务域名**：配合前端的 **URL 白名单（F3）**——Worker 仅向白名单内域名携带鉴权头，非白名单目标不发送 `Authorization`，进一步降低 token 泄漏面。建议把 `connect-src` 限定为你的真实文件服务域名，而非 `*`。
+- 若你的接入层（CDN / 网关）统一注入 CSP，请确认上述 `blob:` 与 `unsafe-inline` 例外已就位；缺省情况下缺少它们是最常见的"本地能跑、上线白屏"根因。
+
 ## 界面示意
 
 ### 下载模式

@@ -4,6 +4,7 @@ import SparkMD5 from "spark-md5";
 import type { UploadHashMode } from "../types/upload";
 import { computeUploadProgress } from "../services/uploadProgress";
 import { joinUrl } from "../../../shared/url";
+import { getAllowedHosts, isUrlAllowed } from "../../../shared/urlSafety";
 
 // Worker消息类型定义
 type UploadWorkerMessage =
@@ -60,6 +61,9 @@ type UploadWorkerMessage =
 
 // 每个上传任务的 AbortController（按 fileId 索引），收到 CANCEL 时中断在途请求
 const taskAbortControllers = new Map<string, AbortController>();
+// 每个上传任务允许携带鉴权头的宿主白名单（F3，SSRF/token 泄漏防护），
+// 由 baseURL 推导，随任务开始解析、结束清理。
+const taskAllowedHosts = new Map<string, string[]>();
 // 每个上传任务的暂停状态（T3.3）：pause 置 paused=true，分片循环在边界 await 挂起，
 // resume 触发 resumeResolver 解除挂起；taskStats 记录续传所需的已传分片数/总分片数。
 const taskPauseState = new Map<
@@ -156,6 +160,8 @@ async function fetchWithRetry(
     retryInterval = 1000,
     authHeaders,
     credentials,
+    /** F3：允许携带鉴权头的宿主白名单；URL host 不在白名单内时不附加 authHeaders */
+    allowedHosts,
     signal,
   }: {
     maxRetries?: number;
@@ -163,6 +169,8 @@ async function fetchWithRetry(
     retryInterval?: number;
     authHeaders?: Record<string, string>;
     credentials?: RequestCredentials;
+    /** F3：允许携带鉴权头的宿主白名单；URL host 不在白名单内时不附加 authHeaders */
+    allowedHosts?: string[];
     /** 外部取消信号（任务级 AbortController）：abort 时中断在途 fetch 与重试 */
     signal?: AbortSignal;
   } = {},
@@ -173,8 +181,11 @@ async function fetchWithRetry(
   debug(`开始请求: ${url}`, { method: options.method, maxRetries });
 
   // 合并鉴权头（authHeaders 优先级低于调用方显式 headers，避免覆盖 Content-Type 等）
+  // F3：仅当目标 URL 的 host 命中白名单时才附加 authHeaders；非白名单域名
+  // （如错误的 baseURL / 外部 URL）一律不携带 Bearer，避免 token 泄漏到任意站点。
+  const sendAuth = isUrlAllowed(url, allowedHosts ?? []);
   const mergedHeaders: Record<string, string> = {
-    ...(authHeaders ?? {}),
+    ...(sendAuth ? (authHeaders ?? {}) : {}),
     ...(options.headers as Record<string, string> | undefined),
   };
 
@@ -360,6 +371,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         controller.abort();
         debug("收到取消指令，已中断上传", { fid }, true);
       }
+      taskAllowedHosts.delete(fid);
       // 若正处于暂停挂起，解除等待避免 resume 永不触发
       const pauseSt = taskPauseState.get(fid);
       if (pauseSt && pauseSt.resumeResolver) {
@@ -415,6 +427,11 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
     const { fileInfo, fileRef, networkParams, uploadConfig } = event.data;
     fileId = fileInfo.id;
     const authHeaders = uploadConfig?.authHeaders;
+    // F3：由 baseURL 推导允许携带鉴权头的宿主白名单（SSRF/token 泄漏防护）
+    taskAllowedHosts.set(
+      fileInfo.id,
+      getAllowedHosts({ baseURL: uploadConfig?.baseURL })
+    );
     // 调试日志开关由每次上传任务的配置注入（默认关闭）
     DEBUG_ENABLED = uploadConfig?.debug === true;
     // 仅当显式开启 withCredentials（Cookie 鉴权）时才带 'include'，否则 same-origin
@@ -530,6 +547,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           ...retryOptions,
           authHeaders,
           credentials: credentialsMode,
+          allowedHosts: taskAllowedHosts.get(fileInfo.id),
           signal: taskSignal,
         },
       );
@@ -632,6 +650,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
                   ...retryOptions,
                   authHeaders,
                   credentials: credentialsMode,
+                  allowedHosts: taskAllowedHosts.get(fileInfo.id),
                   signal: taskSignal,
                 },
               );
@@ -750,6 +769,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           ...retryOptions,
           authHeaders,
           credentials: credentialsMode,
+          allowedHosts: taskAllowedHosts.get(fileInfo.id),
           signal: taskSignal,
         },
       );
@@ -771,6 +791,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
         taskAbortControllers.delete(fileId);
         taskPauseState.delete(fileId);
         taskStats.delete(fileId);
+        taskAllowedHosts.delete(fileId);
       }
     }
   } catch (error) {

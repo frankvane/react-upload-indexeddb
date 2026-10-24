@@ -22,6 +22,7 @@ import { UploadProvider } from "./context/UploadContext";
 import { useUploadContext } from "./context/useUploadContext";
 import { UploadStatus, ZustandFileUploadProps } from "./types/upload";
 import { useShallow } from "zustand/react/shallow";
+import { ErrorBoundary } from "../../ui";
 
 const ZustandFileUploadCore: React.FC = () => {
   const { refreshFiles, initSettings, setConfig } = useUploadStore(
@@ -206,9 +207,11 @@ const ZustandFileUploadCore: React.FC = () => {
 
 const ZustandFileUpload: React.FC<ZustandFileUploadProps> = (props) => {
   return (
-    <UploadProvider {...props}>
-      <ZustandFileUploadCore />
-    </UploadProvider>
+    <ErrorBoundary fallbackTitle="上传组件加载失败">
+      <UploadProvider {...props}>
+        <ZustandFileUploadCore />
+      </UploadProvider>
+    </ErrorBoundary>
   );
 };
 

@@ -169,4 +169,10 @@ export interface StartDownloadPayload {
   authHeaders?: Record<string, string>;
   /** 是否携带 Cookie（credentials:'include'）。默认 false（same-origin） */
   withCredentials?: boolean;
+  /**
+   * 允许携带鉴权头的宿主白名单（F3，SSRF/token 泄漏防护）。
+   * 分片 URL 的 host 不在白名单内时，Worker 不附加 authHeaders、且不带 Cookie，
+   * 避免把 Bearer 令牌发往任意域名。为空时由调用方保证 baseURL 可信（向后兼容）。
+   */
+  allowedHosts?: string[];
 }

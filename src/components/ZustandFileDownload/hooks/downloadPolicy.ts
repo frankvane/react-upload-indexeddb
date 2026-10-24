@@ -8,7 +8,8 @@
  */
 
 import type { DownloadFile } from "../types";
-import * as apiClient from "../api.client";
+import { apiClient, createDownloadUrl } from "../api.client";
+import { getAllowedHosts } from "../../../shared/urlSafety";
 
 const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024;
 
@@ -56,15 +57,25 @@ export interface StartDownloadMessageParams {
   chunkConcurrency: number;
   authHeaders: Record<string, string>;
   withCredentials: boolean;
+  /** 可选：显式指定允许携带鉴权头的宿主白名单（F3）；不传则由 baseURL 推导 */
+  allowedHosts?: string[];
+  /** 可选：用于推导 allowedHosts 的 baseURL；不传则回退读 apiClient 当前配置 */
+  baseURL?: string;
 }
 
 /** 构造 START_DOWNLOAD worker 消息（URL 由库内 apiClient 拼接）。 */
 export function buildStartDownloadMessage(params: StartDownloadMessageParams) {
+  // F3：由 baseURL 推导允许宿主白名单，使 Worker 仅向可信域名携带鉴权头，
+  // 缓解 SSRF / token 泄漏。显式传入 allowedHosts 时优先使用。
+  const allowedHosts =
+    params.allowedHosts ??
+    getAllowedHosts({ baseURL: params.baseURL ?? apiClient.defaults.baseURL ?? "" });
+
   return {
     type: "START_DOWNLOAD" as const,
     payload: {
       fileId: params.fileId,
-      url: apiClient.createDownloadUrl(params.fileId),
+      url: createDownloadUrl(params.fileId),
       fileSize: params.fileSize,
       chunkSize: params.finalChunkSize,
       totalChunks: params.totalChunks,
@@ -73,6 +84,7 @@ export function buildStartDownloadMessage(params: StartDownloadMessageParams) {
       chunkConcurrency: params.chunkConcurrency,
       authHeaders: params.authHeaders,
       withCredentials: params.withCredentials,
+      allowedHosts,
     },
   };
 }

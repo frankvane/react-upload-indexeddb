@@ -34,7 +34,15 @@ export {
 export { resolveAuthHeaders } from "./components/ZustandFileUpload/utils/auth";
 
 // 调试日志开关：库默认静默，消费方排查时调用 configureDebug({ silent: false }) 打开。
-export { configureDebug } from "./shared/debugLogger";
+export {
+  configureDebug,
+  getDebugLog,
+  clearDebugLog,
+} from "./shared/debugLogger";
 
 // UI 套件类型：消费方实现 setMessageApi 注入时需要 MessageInstance 签名
 export type { MessageInstance } from "./ui";
+
+// 顶层错误边界（F6）：消费方可独立用于包裹上传/下载组件，避免旧 chunk 404 导致整页白屏
+export { ErrorBoundary } from "./ui";
+export type { ErrorBoundaryProps } from "./ui";

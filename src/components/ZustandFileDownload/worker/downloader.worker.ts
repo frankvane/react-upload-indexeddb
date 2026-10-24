@@ -1,5 +1,6 @@
 import type { StartDownloadPayload } from "../types/download";
 import { debugError, debugWarn, debugLog } from "./../../../shared/debugLogger";
+import { isUrlAllowed } from "./../../../shared/urlSafety";
 
 const ctx: Worker = self as unknown as Worker;
 type WorkerEnvelope = { type: string; payload: unknown };
@@ -17,12 +18,41 @@ const PROGRESS_CHANGE_THRESHOLD = 3;
 
 const DEFAULT_CHUNK_CONCURRENCY = 3;
 
+/**
+ * 解析 `Retry-After` 头（P1：限速信号驱动的退避）。
+ * 支持「秒数」（如 "30"）与 HTTP-date 两种格式；无法解析时返回 undefined，
+ * 退化为固定 RETRY_DELAY。
+ */
+function parseRetryAfter(header: string | null): number | undefined {
+  if (!header) return undefined;
+  const trimmed = header.trim();
+  if (!trimmed) return undefined;
+  // 秒数
+  if (/^\d+$/.test(trimmed)) {
+    const secs = Number(trimmed);
+    if (Number.isFinite(secs) && secs > 0) return secs * 1000;
+    return undefined;
+  }
+  // HTTP-date
+  const dateMs = Date.parse(trimmed);
+  if (!Number.isNaN(dateMs)) {
+    const delta = dateMs - Date.now();
+    return delta > 0 ? delta : undefined;
+  }
+  return undefined;
+}
+
 const fileConcurrencySettings: Record<string, number> = {};
 const chunkConcurrencySettings: Record<string, number> = {};
 // 每个文件的鉴权设置（随 START_DOWNLOAD 下发，取消/完成后清理，避免 token 残留）
 const downloadAuthSettings: Record<
   string,
-  { authHeaders?: Record<string, string>; withCredentials?: boolean }
+  {
+    authHeaders?: Record<string, string>;
+    withCredentials?: boolean;
+    /** F3：允许携带鉴权头的宿主白名单（SSRF/token 泄漏防护） */
+    allowedHosts?: string[];
+  }
 > = {};
 
 ctx.addEventListener("message", async (event: MessageEvent<WorkerEnvelope>) => {
@@ -88,6 +118,7 @@ async function handleDownload(payload: StartDownloadPayload) {
     chunkConcurrency,
     authHeaders,
     withCredentials,
+    allowedHosts,
   } = payload;
 
   if (fileConcurrency !== undefined) {
@@ -97,7 +128,7 @@ async function handleDownload(payload: StartDownloadPayload) {
     chunkConcurrencySettings[fileId] = chunkConcurrency;
   }
   // 记录该文件的鉴权设置，供分片请求合并（取消/下次启动时覆盖或清理）
-  downloadAuthSettings[fileId] = { authHeaders, withCredentials };
+  downloadAuthSettings[fileId] = { authHeaders, withCredentials, allowedHosts };
 
   const isFirstDownload = !processedFiles.has(fileId);
 
@@ -152,8 +183,15 @@ async function handleDownload(payload: StartDownloadPayload) {
     } else {
       retryAttempts[fileId] = (retryAttempts[fileId] || 0) + 1;
 
+      // P1：退避仅在有失败（限速）信号时触发，且优先采用服务端 Retry-After 指示的时长；
+      // 无信号时退化为固定 RETRY_DELAY。成功批次不再有任何固定等待（见下方循环尾）。
+      const backoff = results.reduce((max, r) => {
+        const ra = (r as { retryAfterMs?: number }).retryAfterMs;
+        return typeof ra === "number" && ra > max ? ra : max;
+      }, RETRY_DELAY);
+
       debugWarn(
-        `文件 ${fileId} 下载重试 ${retryAttempts[fileId]}/${MAX_RETRY_ATTEMPTS}`
+        `文件 ${fileId} 下载重试 ${retryAttempts[fileId]}/${MAX_RETRY_ATTEMPTS}（${backoff}ms 后）`
       );
 
       // F8 off-by-one：用 `>` 而非 `>=`，使得恰好 MAX_RETRY_ATTEMPTS 次失败时
@@ -197,7 +235,7 @@ async function handleDownload(payload: StartDownloadPayload) {
         return;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+      await new Promise((resolve) => setTimeout(resolve, backoff));
     }
 
     const retriableChunks = failedChunks.filter((chunkIndex) => {
@@ -223,9 +261,13 @@ async function handleDownload(payload: StartDownloadPayload) {
       });
     }
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, isFirstDownload ? 100 : 10)
-    );
+    // P1：成功批次不再有任何固定等待（此前此处有 isFirstDownload ? 100 : 10 的固定
+    // 让出，会随分片数线性拖慢大文件吞吐）。网络/分片 await 本身已让出事件循环；
+    // 仅失败批次按上方 backoff 退避。此处仅在"首批"（首次下载单并发预热）做一次
+    // 极小让出，避免极端情况下首屏渲染被单文件阻塞。
+    if (isFirstDownload) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
   }
 }
 
@@ -302,7 +344,13 @@ async function downloadChunk(
 
     // 合并鉴权设置：Bearer/自定义头 + credentials（默认 same-origin，
     // 仅 withCredentials:true 时 include，与上传侧语义一致）
-    const { authHeaders, withCredentials } = downloadAuthSettings[fileId] ?? {};
+    const { authHeaders, withCredentials, allowedHosts } =
+      downloadAuthSettings[fileId] ?? {};
+
+    // F3：SSRF / token 泄漏防护。仅当分片 URL 的 host 命中白名单时才携带鉴权头；
+    // 非白名单目标（如错误/恶意的 baseURL）一律不附加 authHeaders、且不带 Cookie，
+    // 避免把 Bearer 令牌发往任意域名。
+    const sendAuth = isUrlAllowed(url, allowedHosts ?? []);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -310,10 +358,11 @@ async function downloadChunk(
     try {
       const response = await fetch(url, {
         headers: {
-          ...(authHeaders ?? {}),
+          ...(sendAuth ? (authHeaders ?? {}) : {}),
           Range: `bytes=${start}-${end}`,
         },
-        credentials: withCredentials === true ? "include" : "same-origin",
+        credentials:
+          sendAuth && withCredentials === true ? "include" : "same-origin",
         signal: controller.signal,
       });
 
@@ -324,7 +373,16 @@ async function downloadChunk(
       }
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const retryAfterMs = parseRetryAfter(
+          response.headers.get("Retry-After")
+        );
+        const err = new Error(`HTTP error! status: ${response.status}`);
+        // 携带重试信号（P1）：429/503 带 Retry-After 时，批次退避时长优先采用之
+        if (typeof retryAfterMs === "number") {
+          (err as Error & { retryAfterMs?: number }).retryAfterMs =
+            retryAfterMs;
+        }
+        throw err;
       }
 
       // F4 下载分片完整性：要求 206 Partial Content + 正确的 Content-Range，
@@ -394,7 +452,7 @@ async function downloadChunk(
       throw error;
     }
   } catch (err) {
-    const error = err as Error;
+    const error = err as Error & { retryAfterMs?: number };
     debugError(
       `下载分片 ${chunkIndex} 失败 (尝试 ${chunkRetryAttempts[chunkId]}/${MAX_RETRY_ATTEMPTS}):`,
       error
@@ -404,6 +462,9 @@ async function downloadChunk(
       success: false,
       chunkIndex,
       error: error instanceof Error ? error.message : "未知错误",
+      ...(typeof error.retryAfterMs === "number"
+        ? { retryAfterMs: error.retryAfterMs }
+        : {}),
     };
   }
 }

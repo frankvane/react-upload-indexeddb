@@ -60,5 +60,8 @@ export type { TableProps, ColumnType, RowSelection } from "./table";
 export { message } from "./message";
 export type { MessageInstance, MessageType } from "./message";
 
+export { ErrorBoundary } from "./ErrorBoundary";
+export type { ErrorBoundaryProps } from "./ErrorBoundary";
+
 export * from "./icons";
 export type { IconProps } from "./icons";

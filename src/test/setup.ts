@@ -61,3 +61,29 @@ if (typeof Blob !== "undefined" && typeof Blob.prototype.arrayBuffer !== "functi
     });
   };
 }
+
+// jsdom 下 self === window，其 postMessage 要求 (message, targetOrigin) 两参数；
+// 而 Worker 模块使用单参数语义（ctx.postMessage(message)）。Vite 的 `?worker&inline`
+// 测试变换会把 Worker 消息经 window.postMessage 路由，触发 Worker 模块注册的
+// message 监听，进而以单参数回传消息（如 sendProgressUpdate）→ jsdom 抛
+// "postMessage requires 2 arguments" 未捕获异常。此处包裹为兼容单/双参数：
+// 单参数（Worker 风格）在测试环境无真实 Worker，安全丢弃；双参数（跨 frame 通信）
+// 保持 jsdom 原语义。（各 Worker 单测会自行覆盖 self.postMessage 收集消息，不受影响。）
+if (typeof window !== "undefined" && typeof window.postMessage === "function") {
+  const realPostMessage = window.postMessage.bind(window);
+  (window as unknown as {
+    postMessage: (message: unknown, targetOrigin?: unknown, transfer?: unknown) => void;
+  }).postMessage = function postMessageSafe(
+    message: unknown,
+    targetOrigin?: unknown,
+    transfer?: unknown
+  ): void {
+    // 双参数（含 targetOrigin）视为合法跨 frame 调用，保持原行为
+    if (arguments.length >= 2 && targetOrigin !== undefined) {
+      realPostMessage(message as never, targetOrigin as never, transfer as never);
+      return;
+    }
+    // 单参数（Worker 风格）：测试环境无真实 Worker，安全丢弃，避免未捕获异常
+  };
+}
+
