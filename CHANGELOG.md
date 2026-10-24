@@ -13,6 +13,8 @@
 - **错误响应脱敏**：全局错误处理器在生产环境仅返通用文案，真实堆栈 / 路径落服务端日志，不回传客户端（防信息泄漏）。
 - **安全响应头 + 指纹收敛**：关闭 `X-Powered-By`，补充 `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy` / `Cross-Origin-Resource-Policy`。
 - **auth 中间件加固**：Cookie 解析 `decodeURIComponent` 包 try/catch（畸形 Cookie 不再 500）；Bearer 令牌比较改用 `crypto.timingSafeEqual` 定长比较（抗时序攻击）；预检 `OPTIONS` 请求跳过鉴权，避免阻断跨域预检。
+- **S2 秒传防污染**：合并阶段以服务端计算的真实全量 md5 为权威去重键落库（不再信任客户端可能传入的 sample 采样哈希），并在合并后强制校验文件体积与声明一致；`full` 模式继续校验声明 md5，`sample` 模式跳过声明比对但仍以真实全量 md5 去重，杜绝采样哈希碰撞导致的误秒传 / 文件污染。
+- **S3 容量 / 分片数上限（DoS 防护）**：新增 `MAX_UPLOAD_SIZE_MB`（默认 5GB）、`MAX_CHUNKS`（默认 10 万）守卫（请求时读取，支持运行时配置），并在 `uploadChunk` 增加 `index` 范围校验；超限请求在控制器入口即被拒，不写盘。
 - **工程地基**：根与 `server/` 加 `.nvmrc`(24) + `engines.node`，锁定 Node 版本以消除 `better-sqlite3` 原生二进制 ABI 漂移导致的服务端子用例失败。
 
 ## [3.0.0] - 2026-10-24

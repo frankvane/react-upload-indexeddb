@@ -33,6 +33,18 @@ const httpError = (statusCode, message, details = undefined) => {
   return error;
 };
 
+// S3 容量 / 分片数上限（DoS 防护）：请求时读取，支持运行时配置且不受模块缓存影响。
+// 默认 5GB 单文件上限、10 万片上限；可通过环境变量收紧。
+const getMaxUploadSizeBytes = () => {
+  const mb = Number.parseFloat(process.env.MAX_UPLOAD_SIZE_MB || "");
+  return Number.isFinite(mb) && mb > 0 ? mb * 1024 * 1024 : 5120 * 1024 * 1024;
+};
+
+const getMaxChunks = () => {
+  const n = Number.parseInt(process.env.MAX_CHUNKS || "", 10);
+  return Number.isFinite(n) && n > 0 ? n : 100000;
+};
+
 const mergeLocks = new Map();
 
 const acquireMergeLock = (mergeKey) => {
@@ -280,6 +292,9 @@ exports.uploadChunk = async (req, res) => {
     if (Number.isNaN(index)) {
       return jsonError(res, 400, "index must be an integer");
     }
+    if (index < 0 || index >= getMaxChunks()) {
+      return jsonError(res, 400, "index out of range");
+    }
 
     ensureDir(TMP_UPLOAD_DIR);
     const chunkPath = buildChunkPath(safeFileId, index);
@@ -333,6 +348,22 @@ exports.mergeChunks = async (req, res) => {
     const totalChunks = Number.parseInt(total, 10);
     if (Number.isNaN(totalChunks) || totalChunks <= 0) {
       return jsonError(res, 400, "total must be a positive integer");
+    }
+
+    const fileSize = Number(size);
+    if (!Number.isFinite(fileSize) || fileSize <= 0) {
+      return jsonError(res, 400, "size must be a positive number");
+    }
+    // S3 容量 / 分片数上限（DoS 防护）
+    if (totalChunks > getMaxChunks()) {
+      return jsonError(res, 400, "total exceeds maximum allowed chunks", {
+        max: getMaxChunks(),
+      });
+    }
+    if (fileSize > getMaxUploadSizeBytes()) {
+      return jsonError(res, 413, "file size exceeds maximum allowed", {
+        maxMb: Math.round(getMaxUploadSizeBytes() / 1024 / 1024),
+      });
     }
 
     const mergeKey = `${safeFileId}:${md5}`;
@@ -401,15 +432,24 @@ exports.mergeChunks = async (req, res) => {
       await fs.promises.unlink(chunkPath);
     }
 
-    // 全量 md5 校验：仅 hash_mode 为 full（默认/未声明）时执行。
-    // sample 模式下 md5 是采样哈希，与合并后真实文件 md5 必然不一致，故跳过最终校验；
-    // 分片级 md5 比对（上面 chunk_md5 与 DB 比对）仍全覆盖，保证完整性不受损。
+    // S2 数据完整性：以服务端计算的真实全量 md5 为权威去重键，杜绝 sample 哈希碰撞污染。
+    // 1) 先校验合并后文件体积与声明一致（防截断 / 夹带）；
+    // 2) full 模式：客户端声明的 md5 应为真实全量哈希，必须一致；
+    // 3) sample 模式：跳过"声明 md5"比对（客户端传入的是采样哈希，必然不匹配），
+    //    但仍以真实全量 md5 落库，使秒传 / 去重键始终基于强哈希。
+    const mergedStat = await fs.promises.stat(targetPath);
+    if (mergedStat.size !== fileSize) {
+      throw httpError(422, "file size verification failed", {
+        expected: fileSize,
+        actual: mergedStat.size,
+      });
+    }
+    const authoritativeMd5 = await md5File(targetPath);
     if (hash_mode !== "sample") {
-      const mergedMd5 = await md5File(targetPath);
-      if (mergedMd5 !== md5) {
+      if (authoritativeMd5 !== md5) {
         throw httpError(422, "file md5 verification failed", {
           expected: md5,
-          actual: mergedMd5,
+          actual: authoritativeMd5,
         });
       }
     }
@@ -445,7 +485,7 @@ exports.mergeChunks = async (req, res) => {
             size,
             user_id: user_id || "test",
             status: 1,
-            md5,
+            md5: authoritativeMd5,
             category_id: category_id || 1,
             file_ext: fileExt,
             file_type: fileType,

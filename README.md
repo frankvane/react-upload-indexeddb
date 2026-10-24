@@ -239,6 +239,9 @@ configureDebug({ silent: false }); // 打开 warn/debug 级日志
 | `FILE_AUTH_TOKEN`   | 空          | Bearer 令牌白名单，逗号分隔；命中即通过                                                  |
 | `FILE_AUTH_COOKIE`  | 空          | 同域 Cookie 名；存在该 Cookie 即通过（用于 `withCredentials` 跨域 / 同域场景）            |
 | `CORS_ORIGIN`       | 空（关闭）  | 跨域白名单，逗号分隔的具体域名；**不设则不开启 CORS**，设 `*` 仅告警且无法带 Cookie 凭据 |
+| `MAX_UPLOAD_SIZE_MB`| `5120`      | 单文件体积上限（DoS 防护），超限合并请求在入口被拒（`413`）                              |
+| `MAX_CHUNKS`        | `100000`    | 单文件分片数上限（DoS 防护），超限请求在入口被拒（`400`）                                |
+| `CHUNK_MAX_SIZE_MB` | `20`        | 单分片上传体积上限（multer `limits.fileSize`），超限请求被拒                              |
 | `RATE_LIMIT_MAX`    | `300`       | 单 IP 每分钟请求上限（`RATE_LIMIT_ENABLED=false` 可关闭）                                 |
 | `NODE_ENV`          | —           | `test` / `development` 下错误响应回传明细；其余环境仅返通用文案（防信息泄漏）             |
 

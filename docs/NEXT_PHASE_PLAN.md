@@ -14,7 +14,9 @@
 - [x] **S5** 安全响应头：`disable('x-powered-by')` + `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy` / `Cross-Origin-Resource-Policy`
 - [x] **S6** 错误脱敏：生产仅返通用文案，堆栈落日志；导出 `errorHandler` 单测
 - [x] **S7** `auth.js`：Cookie `decodeURIComponent` try/catch + Bearer `timingSafeEqual` 定长比较 + `OPTIONS` 跳过鉴权
-- [x] 服务端测试补 `cors-default.test.js` / `error-handler.test.js`；functional 测试改 `AUTH_MODE=demo`
+- [x] **S2** 秒传防污染：服务端以真实全量 md5 为权威去重键（杜绝 sample 哈希碰撞污染），合并后强制体积校验（`stat.size === 声明 size`）；full 模式仍校验声明 md5，sample 模式跳过声明比对但仍以真实全量 md5 落库
+- [x] **S3** 容量 / 分片数上限（DoS 防护）：`MAX_UPLOAD_SIZE_MB`（默认 5GB）/`MAX_CHUNKS`（默认 10 万）守卫（请求时读取），`index` 范围校验，超限请求在控制器入口被拒（不写盘）
+- [x] 服务端测试补 `cors-default.test.js` / `error-handler.test.js` / `upload-security.test.js`；functional 测试改 `AUTH_MODE=demo`；服务端 49/49 全过（Node 24）
 
 ---
 
