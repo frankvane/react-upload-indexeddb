@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "node src/index.js",
     "start": "node src/index.js",
-    "test": "node --test --test-concurrency=1 tests/**/*.test.js",
+    "test": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-exclude='src/index.js' --test-coverage-lines=80 --test-coverage-branches=65 --test-coverage-functions=80 --test-concurrency=1 tests/**/*.test.js",
+    "test:plain": "node --test --test-concurrency=1 tests/**/*.test.js",
+    "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-exclude='src/index.js' --test-concurrency=1 tests/**/*.test.js",
     "verify": "npm run test"
   },
   "dependencies": {

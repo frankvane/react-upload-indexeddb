@@ -19,8 +19,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # vitest 5 硬性要求 Node ≥ 22.12
-          node-version: 22
+          # vitest 5 硬性要求 Node ≥ 22.12；与根 .nvmrc / engines 锁定的 24 对齐
+          node-version: 24
           cache: npm
 
       - name: 安装依赖
@@ -42,19 +42,21 @@ jobs:
         run: npm pack --dry-run
 
   server:
-    name: 参考服务端（node --test）
+    name: 参考服务端（node --test + 覆盖率门槛）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # 与根 .nvmrc(24) / engines 对齐；better-sqlite3 按此 Node 版本原生编译
+          node-version: 24
           cache: npm
           cache-dependency-path: server/package-lock.json
 
       - name: 安装依赖
         run: npm --prefix server ci
 
-      - name: 服务端测试
+      - name: 服务端测试 + 覆盖率门槛
+        # `test` 内含 node --experimental-test-coverage，未达门槛（行80/分支65/函数80）即非零退出
         run: npm --prefix server test

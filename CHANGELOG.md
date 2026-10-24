@@ -22,6 +22,9 @@
 - **F5 合并字节级 md5 终检**：`merger.worker.ts` / `mergeService.ts` 对合并后 Blob 增量计算全量 md5（复用 `spark-md5`），与文件列表 `md5` 比对；不一致即标记失败并保留分片供重试，杜绝"看起来成功"的静默损坏；无 `expectedMd5` 时跳过（向后兼容）。
 - 数据流贯通：文件列表 `md5` → `api.client.ts metadata.md5` → `store/index.ts DownloadFile.md5` → `useFileDownloaderController` 透传 `expectedMd5` 进 `MERGE_FILE`。
 
+### Engineering
+- **E2 服务端覆盖率门禁**：弃用 `c8`（`node --test` 子进程模型下 V8 覆盖率采集跨运行抖动 43%↔88%，不可靠）；改用 Node 24 原生 `--experimental-test-coverage`，`--test-coverage-include='src/**'`、`--test-coverage-exclude='src/index.js'`（bootstrap 不计入），门槛 **行80 / 分支65 / 函数80**（实测基线 行82.48% / 函数83.94%）。`server` 的 `test` 脚本内嵌该门槛，未达即非零退出；CI `.github/workflows/ci.yml` server job 升 Node 22→24 与 `.nvmrc` 对齐。
+
 ## [3.0.0] - 2026-10-24
 
 ### Removed
