@@ -19,45 +19,55 @@ export interface ButtonProps
   block?: boolean;
 }
 
-export const Button: React.FC<ButtonProps> = ({
-  type = "default",
-  size = "middle",
-  danger,
-  loading,
-  icon,
-  block,
-  children,
-  className,
-  disabled,
-  onClick,
-  ...rest
-}) => {
-  const classes = [
-    "rui-btn",
-    size === "small" ? "rui-btn-sm" : "",
-    type !== "default" ? `rui-btn-${type}` : "",
-    danger && type !== "link" && type !== "text" ? "rui-btn-dangerous" : "",
-    loading ? "rui-btn-loading" : "",
-    block ? "rui-btn-block" : "",
-    disabled || loading ? "rui-btn-disabled" : "",
-    className || "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+// forwardRef：Tooltip/Popconfirm 会通过 cloneElement 向子元素注入 ref，
+// 函数组件必须显式转发才能落到原生 <button> 上（否则 React 报 ref 警告）。
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  (
+    {
+      type = "default",
+      size = "middle",
+      danger,
+      loading,
+      icon,
+      block,
+      children,
+      className,
+      disabled,
+      onClick,
+      ...rest
+    },
+    ref,
+  ) => {
+    const classes = [
+      "rui-btn",
+      size === "small" ? "rui-btn-sm" : "",
+      type !== "default" ? `rui-btn-${type}` : "",
+      danger && type !== "link" && type !== "text" ? "rui-btn-dangerous" : "",
+      loading ? "rui-btn-loading" : "",
+      block ? "rui-btn-block" : "",
+      disabled || loading ? "rui-btn-disabled" : "",
+      className || "",
+    ]
+      .filter(Boolean)
+      .join(" ");
 
-  return (
-    <button
-      type="button"
-      className={classes}
-      disabled={disabled || loading}
-      onClick={onClick}
-      {...rest}
-    >
-      {loading ? <span className="rui-spin rui-spin-sm" /> : icon}
-      {children}
-    </button>
-  );
-};
+    return (
+      <button
+        ref={ref}
+        type="button"
+        className={classes}
+        disabled={disabled || loading}
+        onClick={onClick}
+        {...rest}
+      >
+        {loading ? <span className="rui-spin rui-spin-sm" /> : icon}
+        {children}
+      </button>
+    );
+  },
+);
+
+Button.displayName = "Button";
 
 /* ============================ Tag ============================ */
 
@@ -470,53 +480,62 @@ export interface SwitchProps {
   style?: React.CSSProperties;
 }
 
-export const Switch: React.FC<SwitchProps> = ({
-  checked,
-  defaultChecked,
-  disabled,
-  checkedChildren,
-  unCheckedChildren,
-  size,
-  onChange,
-  style,
-}) => {
-  const [inner, setInner] = React.useState(defaultChecked ?? false);
-  const isControlled = checked !== undefined;
-  const value = isControlled ? checked : inner;
-  const hasText = Boolean(checkedChildren || unCheckedChildren);
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={value}
-      disabled={disabled}
-      className={[
-        "rui-switch",
-        value ? "rui-switch-checked" : "",
-        size === "small" ? "rui-switch-sm" : "",
-        hasText ? "rui-switch-has-text" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      style={style}
-      onClick={() => {
-        if (!isControlled) setInner(!value);
-        onChange?.(!value);
-      }}
-    >
-      {checkedChildren && value && (
-        <span className="rui-switch-text rui-switch-text-inner">
-          {checkedChildren}
-        </span>
-      )}
-      {unCheckedChildren && !value && (
-        <span className="rui-switch-text rui-switch-text-unchecked">
-          {unCheckedChildren}
-        </span>
-      )}
-    </button>
-  );
-};
+// forwardRef：同 Button，Tooltip 场景需要把 ref 落到原生 <button>
+export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
+  (
+    {
+      checked,
+      defaultChecked,
+      disabled,
+      checkedChildren,
+      unCheckedChildren,
+      size,
+      onChange,
+      style,
+    },
+    ref,
+  ) => {
+    const [inner, setInner] = React.useState(defaultChecked ?? false);
+    const isControlled = checked !== undefined;
+    const value = isControlled ? checked : inner;
+    const hasText = Boolean(checkedChildren || unCheckedChildren);
+    return (
+      <button
+        ref={ref}
+        type="button"
+        role="switch"
+        aria-checked={value}
+        disabled={disabled}
+        className={[
+          "rui-switch",
+          value ? "rui-switch-checked" : "",
+          size === "small" ? "rui-switch-sm" : "",
+          hasText ? "rui-switch-has-text" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        style={style}
+        onClick={() => {
+          if (!isControlled) setInner(!value);
+          onChange?.(!value);
+        }}
+      >
+        {checkedChildren && value && (
+          <span className="rui-switch-text rui-switch-text-inner">
+            {checkedChildren}
+          </span>
+        )}
+        {unCheckedChildren && !value && (
+          <span className="rui-switch-text rui-switch-text-unchecked">
+            {unCheckedChildren}
+          </span>
+        )}
+      </button>
+    );
+  },
+);
+
+Switch.displayName = "Switch";
 
 /* ============================ Slider ============================ */
 

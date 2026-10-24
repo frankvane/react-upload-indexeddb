@@ -34,49 +34,49 @@ const formatEta = (seconds: number): string => {
   return `${Math.round(seconds)}秒`;
 };
 
-const PercentDisplay: React.FC<PercentDisplayProps> = ({
-  percent,
-  status = "normal",
-  speed,
-  eta,
-}) => {
-  // 将status转换为Progress组件可接受的类型
-  const progressStatus = status === "error" ? "exception" : status;
-  const speedText = formatSpeed(speed ?? 0);
-  const etaText = formatEta(eta ?? 0);
-  const hasDetail = Boolean(speedText || etaText);
+// forwardRef：FileTable 里被 Tooltip 包裹，Tooltip 会 cloneElement 注入 ref
+const PercentDisplay = React.forwardRef<HTMLDivElement, PercentDisplayProps>(
+  ({ percent, status = "normal", speed, eta }, ref) => {
+    // 将status转换为Progress组件可接受的类型
+    const progressStatus = status === "error" ? "exception" : status;
+    const speedText = formatSpeed(speed ?? 0);
+    const etaText = formatEta(eta ?? 0);
+    const hasDetail = Boolean(speedText || etaText);
 
-  return (
-    <div style={{ minWidth: 120 }}>
-      <Progress
-        percent={percent}
-        status={
-          progressStatus as
-            | "success"
-            | "exception"
-            | "normal"
-            | "active"
-            | undefined
-        }
-        size="small"
-        format={(percent) => `${Math.floor(percent || 0)}%`}
-      />
-      {hasDetail && (
-        <div
-          style={{
-            fontSize: 11,
-            color: "rgba(0,0,0,0.45)",
-            marginTop: -2,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {speedText}
-          {speedText && etaText ? " · 剩余 " : ""}
-          {etaText ? `${etaText}` : ""}
-        </div>
-      )}
-    </div>
-  );
-};
+    return (
+      <div ref={ref} style={{ minWidth: 120 }}>
+        <Progress
+          percent={percent}
+          status={
+            progressStatus as
+              | "success"
+              | "exception"
+              | "normal"
+              | "active"
+              | undefined
+          }
+          size="small"
+          format={(percent) => `${Math.floor(percent || 0)}%`}
+        />
+        {hasDetail && (
+          <div
+            style={{
+              fontSize: 11,
+              color: "rgba(0,0,0,0.45)",
+              marginTop: -2,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {speedText}
+            {speedText && etaText ? " · 剩余 " : ""}
+            {etaText ? `${etaText}` : ""}
+          </div>
+        )}
+      </div>
+    );
+  },
+);
+
+PercentDisplay.displayName = "PercentDisplay";
 
 export default PercentDisplay;
