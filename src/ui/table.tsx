@@ -46,6 +46,75 @@ export interface TableProps<RecordType extends object> {
   style?: React.CSSProperties;
 }
 
+/**
+ * 单列表行：用 React.memo 包裹，使父级（FileList / FileTable）因无关状态
+ * （切换 showXxx 开关、storageUsage 变化等）重渲染时，未变化的行跳过 Diff。
+ * 依赖 props 均为原始类型或稳定引用：columns（父级 useMemo）、record（store
+ * 中未变化的元素保持引用）、rowIndex、checked/disabled 布尔、onToggleOne（useCallback）。
+ */
+interface TableRowProps<RecordType> {
+  record: RecordType;
+  columns: ColumnType<RecordType>[];
+  rowKey: string;
+  rowIndex: number;
+  hasRowSelection: boolean;
+  checked: boolean;
+  disabled: boolean;
+  onToggleOne?: (key: React.Key) => void;
+}
+
+function TableRowInner<RecordType extends object>({
+  record,
+  columns,
+  rowKey,
+  rowIndex,
+  hasRowSelection,
+  checked,
+  disabled,
+  onToggleOne,
+}: TableRowProps<RecordType>) {
+  return (
+    <tr className="rui-table-row">
+      {hasRowSelection && (
+        <td>
+          <input
+            type="checkbox"
+            className="rui-table-checkbox"
+            checked={checked}
+            disabled={disabled}
+            onChange={() => onToggleOne?.(getKey(record, rowKey, rowIndex))}
+            aria-label="select row"
+          />
+        </td>
+      )}
+      {columns.map((col, colIndex) => {
+        const value = col.dataIndex
+          ? (record as Record<string, unknown>)[col.dataIndex]
+          : undefined;
+        const content = col.render
+          ? col.render(value, record, rowIndex)
+          : (value as React.ReactNode);
+        return (
+          <td
+            key={col.key ?? String(col.dataIndex ?? colIndex)}
+            className={col.ellipsis ? "rui-table-ellipsis" : undefined}
+            title={
+              col.ellipsis && typeof content === "string"
+                ? content
+                : undefined
+            }
+            style={{ textAlign: col.align }}
+          >
+            {content}
+          </td>
+        );
+      })}
+    </tr>
+  );
+}
+
+const TableRow = React.memo(TableRowInner) as typeof TableRowInner;
+
 export function Table<RecordType extends object>({
   columns,
   dataSource,
@@ -82,7 +151,7 @@ export function Table<RecordType extends object>({
   const someChecked =
     !allChecked && selectableKeys.some((k) => selectedSet.has(k));
 
-  const toggleAll = () => {
+  const toggleAll = React.useCallback(() => {
     if (!rowSelection) return;
     if (allChecked) {
       rowSelection.onChange(
@@ -94,15 +163,18 @@ export function Table<RecordType extends object>({
       const merged = new Set([...rowSelection.selectedRowKeys, ...selectableKeys]);
       rowSelection.onChange([...merged]);
     }
-  };
+  }, [rowSelection, selectableKeys, allChecked]);
 
-  const toggleOne = (key: React.Key) => {
-    if (!rowSelection) return;
-    const next = selectedSet.has(key)
-      ? rowSelection.selectedRowKeys.filter((k) => k !== key)
-      : [...rowSelection.selectedRowKeys, key];
-    rowSelection.onChange(next);
-  };
+  const toggleOne = React.useCallback(
+    (key: React.Key) => {
+      if (!rowSelection) return;
+      const next = selectedSet.has(key)
+        ? rowSelection.selectedRowKeys.filter((k) => k !== key)
+        : [...rowSelection.selectedRowKeys, key];
+      rowSelection.onChange(next);
+    },
+    [rowSelection, selectedSet],
+  );
 
   const table = (
     <table
@@ -149,42 +221,17 @@ export function Table<RecordType extends object>({
           const key = getKey(record, rowKey, rowIndex);
           const disabled = rowSelection?.getCheckboxProps?.(record).disabled;
           return (
-            <tr key={key} className="rui-table-row">
-              {rowSelection && (
-                <td>
-                  <input
-                    type="checkbox"
-                    className="rui-table-checkbox"
-                    checked={selectedSet.has(key)}
-                    disabled={disabled}
-                    onChange={() => toggleOne(key)}
-                    aria-label="select row"
-                  />
-                </td>
-              )}
-              {columns.map((col, colIndex) => {
-                const value = col.dataIndex
-                  ? (record as Record<string, unknown>)[col.dataIndex]
-                  : undefined;
-                const content = col.render
-                  ? col.render(value, record, rowIndex)
-                  : (value as React.ReactNode);
-                return (
-                  <td
-                    key={col.key ?? String(col.dataIndex ?? colIndex)}
-                    className={col.ellipsis ? "rui-table-ellipsis" : undefined}
-                    title={
-                      col.ellipsis && typeof content === "string"
-                        ? content
-                        : undefined
-                    }
-                    style={{ textAlign: col.align }}
-                  >
-                    {content}
-                  </td>
-                );
-              })}
-            </tr>
+            <TableRow<RecordType>
+              key={key}
+              record={record}
+              columns={columns}
+              rowKey={rowKey}
+              rowIndex={rowIndex}
+              hasRowSelection={!!rowSelection}
+              checked={rowSelection ? selectedSet.has(key) : false}
+              disabled={!!disabled}
+              onToggleOne={rowSelection ? toggleOne : undefined}
+            />
           );
         })}
       </tbody>

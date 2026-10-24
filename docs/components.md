@@ -300,3 +300,13 @@ setDownloadAuth({ Authorization: `Bearer ${token}` });
 ```
 
 > 优先级：`getAuthHeaders` > `getAuthToken` > `authToken`；均无时发送无鉴权头的请求。
+
+### 8.4 ⚠️ 安全部署提示
+
+配套的 demo / 参考服务端（`server/`）**鉴权中间件默认关闭**，仅用于本地联调与演示。**生产部署必须自行启用鉴权**：
+
+- 启用 `server/src/middleware/auth.js` 的 Bearer / Cookie 校验（通过环境变量打开）；
+- 任何对外暴露的上传/下载接口都应在网关或服务端强制校验身份，否则攻击者可任意上传/下载/读取他人文件；
+- 切勿将未鉴权的文件接口直接暴露在公网。
+
+组件层已做到「不持有凭证、纯 props 注入」，但**服务端是否鉴权由部署方负责**——库本身不承诺服务端安全。（server 默认 fail-closed 的变更为待确认项，当前仅做文档提示。）

@@ -144,6 +144,16 @@ import { SimpleUploadList, SimpleDownloadList } from "react-upload-indexeddb/sim
 下载侧 props 语义相同；列表请求（axios）也可用 `setDownloadAuth(headers)` 注入。
 服务端参考实现见 [docs/server-api-contract.md](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/server-api-contract.md)（`server/src/middleware/auth.js` 可插拔 Bearer/Cookie 中间件）。
 
+### ⚠️ 安全部署提示
+
+> 配套的 demo / 参考服务端（`server/`）**鉴权中间件默认关闭**，仅用于本地联调与演示。**生产部署必须自行启用鉴权**：
+>
+> - 启用 `server/src/middleware/auth.js` 的 Bearer / Cookie 校验（通过环境变量打开）；
+> - 任何对外暴露的上传/下载接口都应在网关或服务端强制校验身份，否则攻击者可任意上传/下载/读取他人文件；
+> - 切勿将未鉴权的文件接口直接暴露在公网。
+>
+> 组件层已做到「不持有凭证、纯 props 注入」，但服务端是否鉴权由部署方负责——库本身**不承诺服务端安全**。
+
 ## 调试日志
 
 库默认**静默**：仅真实失败以 `console.error` 透出，调试/重试提示默认不打印，避免生产环境控制台噪声。

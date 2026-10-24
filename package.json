@@ -55,7 +55,7 @@
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
     "test": "npm run test:unit && node scripts/verify-client-contract.mjs",
-    "test:unit": "vitest run",
+    "test:unit": "vitest run --no-isolate",
     "test:unit:watch": "vitest",
     "test:e2e": "npm --prefix server test",
     "verify:client": "npm run lint && npm run build && npm run test",

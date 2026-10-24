@@ -13,10 +13,10 @@
 | 3 | 两个 Controller 编排/业务拆分 | 二·中 | M | ☐ |
 | 4 | 可关闭 debug logger 替换 console.* | 二·中 | M | ✅ 已实施 |
 | 5 | 修正 vite.lib.config.ts 过时注释 | 二·中 | S | ✅ 已实施 |
-| 6 | 列表行 memo + 派生布尔选择器 | 三·低 | S | ☐ |
+| 6 | 列表行 memo + 派生布尔选择器 | 三·低 | S | ✅ 已实施 |
 | 7 | 收敛文件列表刷新入口去重拉取 | 三·低 | M | ☐ |
-| 8 | server auth 默认安全 + README 提示 | 三·低 | S | ☐ |
-| 9 | vitest 提速（--no-isolate） | 三·低 | S | ☐ |
+| 8 | server auth 默认安全 + README 提示 | 三·低 | S | ✅ 已实施（README 安全提示；server 默认 fail-closed 变更待用户确认） |
+| 9 | vitest 提速（--no-isolate） | 三·低 | S | ✅ 已实施 |
 
 > 工作量：S ≤ 0.5d，M ≈ 0.5–1d。建议每完成一项即提交一次（小步可审），不要攒成大 PR。
 
@@ -49,7 +49,7 @@
 
 ## 阶段二 · 中优先级（精简性 / 库卫生 / 规范）
 
-### ✅ #2 NetworkStatusBadge 拆分瘦身
+### #2 NetworkStatusBadge 拆分瘦身
 **问题**：`NetworkStatusBadge.tsx` 404 行却名为"徽章"，疑似混入完整网络面板（分析 §6.1 / §10-#2）。
 
 **涉及文件**
@@ -70,7 +70,7 @@
 
 **依赖**：无。建议紧跟 #1 之后。
 
-### ✅ #3 两个 Controller 编排/业务拆分
+### #3 两个 Controller 编排/业务拆分
 **问题**：`useBatchUploaderController.ts`(709) 与 `useFileDownloaderController.ts`(466) 编排（worker 生命周期/监听）与业务（策略计算/状态变换）混杂（分析 §6.1 / §10-#3）。
 
 **涉及文件**
@@ -151,7 +151,7 @@
 
 **依赖**：#1 之后做更顺。
 
-### ✅ #7 收敛文件列表刷新入口
+### #7 收敛文件列表刷新入口
 **问题**：`getFileList` 调用分散在 `store`/`hooks`/`api.client`，存在重复拉取（分析 §4.4 / §10-#7）。
 
 **涉及文件**
@@ -167,7 +167,7 @@
 
 **依赖**：可独立，但需谨慎核对调用点。
 
-### ✅ #8 server auth 默认安全 + README 提示
+### #8 server auth 默认安全 + README 提示
 **问题**：配套 server `middleware/auth.js` 默认关闭（分析 §7 / §10-#8）。
 
 **涉及文件**
