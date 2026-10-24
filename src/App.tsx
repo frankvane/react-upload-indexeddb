@@ -77,6 +77,7 @@ const App = () => {
   >("upload");
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [notices, setNotices] = useState<NoticeItem[]>([]);
+  const [showBatchInfo, setShowBatchInfo] = useState(true);
 
   const noticeTimersRef = useRef<Map<number, number>>(new Map());
   const noticeIdRef = useRef(0);
@@ -404,6 +405,26 @@ const App = () => {
         >
           简化下载
         </button>
+        {activeTab === "download" && (
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              marginLeft: 8,
+              fontSize: 13,
+              color: "#374151",
+              userSelect: "none",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showBatchInfo}
+              onChange={(e) => setShowBatchInfo(e.target.checked)}
+            />
+            显示批次汇总条（showBatchInfo）
+          </label>
+        )}
       </div>
 
       <div
@@ -453,6 +474,7 @@ const App = () => {
               showProgress={true}
               showStorageStats={true}
               showNetworkStatus={true}
+              showBatchInfo={showBatchInfo}
               onDownloadStart={handleDownloadStart}
               onDownloadProgress={handleDownloadProgress}
               onDownloadComplete={handleDownloadComplete}

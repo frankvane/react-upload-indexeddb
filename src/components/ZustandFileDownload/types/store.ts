@@ -52,6 +52,7 @@ export interface DownloadState {
   showProgress: boolean; // 是否显示进度
   showStorageStats: boolean; // 是否显示存储统计
   showNetworkStatus: boolean; // 是否显示网络状态
+  showBatchInfo: boolean; // 是否显示批次汇总条（活动中/排队中/已完成/批次进度）
 
   // 下载控制器
   abortControllers: Record<string, AbortController>;
@@ -82,4 +83,5 @@ export interface DownloadState {
   setShowProgress: (showProgress: boolean) => void;
   setShowStorageStats: (showStorageStats: boolean) => void;
   setShowNetworkStatus: (showNetworkStatus: boolean) => void;
+  setShowBatchInfo: (showBatchInfo: boolean) => void;
 }

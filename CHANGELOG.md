@@ -7,6 +7,9 @@
 
 ## [2.0.1] - 2026-10-24
 
+### Added
+- **下载组件新增 `showBatchInfo` 属性**：控制"活动中/排队中/已完成/批次进度"整个批次汇总条（含进度条）的显隐，默认 `true`。至此完整版 `ZustandFileDownload` 可通过属性组合（`showStorageStats`/`showNetworkStatus`/`showBatchInfo`/`showProgress`/`autoStart`）直接达到简化版外观；`SimpleDownloadList` 即默认 `showBatchInfo=false` 的薄封装，消费方也可在简化版上设回 `true` 找回汇总条
+
 ### Changed
 - **内置 UI 套件视觉升级（现代卡片风）**：`src/ui/ui.css` 全面 token 化重写（保留全部 `rui-` 类名，消费方覆盖不受影响）：
   - 设计令牌收敛到 `:root`（品牌蓝 `#2f6bff` 单一主色、三级蓝调阴影、hairline 边框、圆角层级、缓动曲线）；因 Drawer/Modal/message/Tooltip/Popover 等 portal 弹层挂在 `body` 下、不在 `.rui-root` 内，令牌必须定义在 `:root` 才能穿透到弹层

@@ -40,7 +40,7 @@ const InnerDownloadComponent: React.FC = () => {
             onRefreshFiles={fetchFileList}
           />
         )}
-        <BatchInfoDisplay />
+        {config.showBatchInfo && <BatchInfoDisplay />}
         <FileList onRefreshFiles={fetchFileList} />
       </Space>
     </div>
@@ -57,12 +57,13 @@ const ZustandFileDownload: React.FC<ZustandFileDownloadProps> = (props) => {
   const setShowNetworkStatus = useDownloadStore(
     (state) => state.setShowNetworkStatus
   );
+  const setShowBatchInfo = useDownloadStore((state) => state.setShowBatchInfo);
 
   useNetworkDetection();
 
   // UI/行为类 props 同步进 store：生效优先级是 Store > Context，
   // 不同步的话消费方传入的 autoStart/showProgress/showStorageStats/
-  // showNetworkStatus 会被 store 默认值（true/false）永远覆盖（props 形同虚设）。
+  // showNetworkStatus/showBatchInfo 会被 store 默认值（true/false）永远覆盖（props 形同虚设）。
   // 仅在显式传入时同步，未传的保持 store 现值（运行时修改不被重置）。
   useEffect(() => {
     if (props.autoStart !== undefined) setAutoStart(props.autoStart);
@@ -71,15 +72,18 @@ const ZustandFileDownload: React.FC<ZustandFileDownloadProps> = (props) => {
       setShowStorageStats(props.showStorageStats);
     if (props.showNetworkStatus !== undefined)
       setShowNetworkStatus(props.showNetworkStatus);
+    if (props.showBatchInfo !== undefined) setShowBatchInfo(props.showBatchInfo);
   }, [
     props.autoStart,
     props.showProgress,
     props.showStorageStats,
     props.showNetworkStatus,
+    props.showBatchInfo,
     setAutoStart,
     setShowProgress,
     setShowStorageStats,
     setShowNetworkStatus,
+    setShowBatchInfo,
   ]);
 
   useEffect(() => {

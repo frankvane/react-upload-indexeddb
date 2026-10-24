@@ -40,6 +40,7 @@ export const useDownloadStore = create<DownloadState>()(
         showProgress: true, // 是否显示进度
         showStorageStats: true, // 是否显示存储统计
         showNetworkStatus: true, // 是否显示网络状态
+        showBatchInfo: true, // 是否显示批次汇总条（活动中/排队中/已完成/批次进度）
 
         abortControllers: {},
 
@@ -243,6 +244,8 @@ export const useDownloadStore = create<DownloadState>()(
           set({ showStorageStats }, false, "setShowStorageStats"),
         setShowNetworkStatus: (showNetworkStatus) =>
           set({ showNetworkStatus }, false, "setShowNetworkStatus"),
+        setShowBatchInfo: (showBatchInfo) =>
+          set({ showBatchInfo }, false, "setShowBatchInfo"),
       }),
       {
         name: "download-network-storage", // 存储的唯一名称
@@ -262,6 +265,7 @@ export const useDownloadStore = create<DownloadState>()(
           showProgress: state.showProgress,
           showStorageStats: state.showStorageStats,
           showNetworkStatus: state.showNetworkStatus,
+          showBatchInfo: state.showBatchInfo,
         }),
       }
     ),

@@ -104,6 +104,7 @@ export interface ZustandFileDownloadProps {
   showProgress?: boolean; // 是否显示进度
   showStorageStats?: boolean; // 是否显示存储统计
   showNetworkStatus?: boolean; // 是否显示网络状态
+  showBatchInfo?: boolean; // 是否显示批次汇总条（活动中/排队中/已完成/批次进度）
 
   // 回调事件
   onDownloadStart?: (file: DownloadFile) => void;

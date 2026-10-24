@@ -26,6 +26,7 @@ export interface DownloadContextType {
   showProgress: boolean;
   showStorageStats: boolean;
   showNetworkStatus: boolean;
+  showBatchInfo: boolean;
   onDownloadStart?: (file: DownloadFile) => void;
   onDownloadProgress?: (file: DownloadFile, progress: number) => void;
   onDownloadComplete?: (file: DownloadFile, success: boolean) => void;
@@ -69,6 +70,7 @@ export const DownloadProvider: React.FC<DownloadProviderProps> = ({
   showProgress = true,
   showStorageStats = true,
   showNetworkStatus = true,
+  showBatchInfo = true,
   onDownloadStart,
   onDownloadProgress,
   onDownloadComplete,
@@ -95,6 +97,7 @@ export const DownloadProvider: React.FC<DownloadProviderProps> = ({
     showProgress,
     showStorageStats,
     showNetworkStatus,
+    showBatchInfo,
     onDownloadStart,
     onDownloadProgress,
     onDownloadComplete,

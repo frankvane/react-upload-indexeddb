@@ -28,6 +28,7 @@ export const useEffectiveDownloadConfig = () => {
   const showNetworkStatus = useDownloadStore(
     (state) => state.showNetworkStatus
   );
+  const showBatchInfo = useDownloadStore((state) => state.showBatchInfo);
 
   // 使用 useMemo 缓存合并后的最终配置对象
   return useMemo(
@@ -48,6 +49,7 @@ export const useEffectiveDownloadConfig = () => {
       showProgress: showProgress ?? contextConfig.showProgress,
       showStorageStats: showStorageStats ?? contextConfig.showStorageStats,
       showNetworkStatus: showNetworkStatus ?? contextConfig.showNetworkStatus,
+      showBatchInfo: showBatchInfo ?? contextConfig.showBatchInfo,
 
       // 回调事件（来自 Context）
       onDownloadStart: contextConfig.onDownloadStart,
@@ -73,6 +75,7 @@ export const useEffectiveDownloadConfig = () => {
       contextConfig.showProgress,
       contextConfig.showStorageStats,
       contextConfig.showNetworkStatus,
+      contextConfig.showBatchInfo,
       contextConfig.onDownloadStart,
       contextConfig.onDownloadProgress,
       contextConfig.onDownloadComplete,
@@ -89,6 +92,7 @@ export const useEffectiveDownloadConfig = () => {
       showProgress,
       showStorageStats,
       showNetworkStatus,
+      showBatchInfo,
     ]
   );
 };
