@@ -14,6 +14,7 @@
 | `ZustandFileUpload` | 完整上传组件（分片、重试、自动策略、IndexedDB 恢复） | 上传主页面、后台文件管理页 |
 | `SimpleUploadList` | 简化模式组件（服务器清单 + 上传弹窗） | 业务页面快速集成上传入口 |
 | `ZustandFileDownload` | 下载组件（列表、分片下载、暂停恢复、导出） | 下载中心、文件管理页 |
+| `SimpleDownloadList` | 简化下载组件（列表 + 核心操作，无重 UI） | 业务页面快速集成下载入口 |
 | `DebugPanel` | 前端调试日志面板 | 联调阶段、问题排查 |
 
 ## 2. ZustandFileUpload
@@ -201,6 +202,7 @@ import { API_BASE_URL, API_PATHS } from "./config/api";
 | `showProgress` | `boolean` | `true` | 是否显示进度 |
 | `showStorageStats` | `boolean` | `true` | 是否显示存储统计 |
 | `showNetworkStatus` | `boolean` | `true` | 是否显示网络状态 |
+| `showBatchInfo` | `boolean` | `true` | 是否显示批次汇总条（活动中/排队中/已完成/批次进度 + 进度条，v2.0.1 起） |
 | `customDownloadHandler` | `(file, config) => Promise<boolean>` | `undefined` | 自定义下载处理器（当前版本为预留） |
 | `customProgressHandler` | `(file, progress) => void` | `undefined` | 自定义进度处理器（当前版本为预留） |
 
@@ -221,7 +223,11 @@ import { API_BASE_URL, API_PATHS } from "./config/api";
 
 - 下载分片与状态会落到 IndexedDB，支持暂停/恢复与刷新后继续。
 - 文件列表来自服务端 `/api/file/list`，并合并本地下载状态展示。
-- 下载配置生效优先级为 `store(含持久化) > props`；若你发现传入 props 未生效，请先检查本地持久化配置。
+- UI/行为类 props（`autoStart`/`showProgress`/`showStorageStats`/`showNetworkStatus`/`showBatchInfo`）在挂载与 props 变化时显式同步进 store（v2.0.1 起）；未显式传入的项保持 store 现值，运行时修改不被重置。
+
+## 4.5 SimpleDownloadList（v2.0.1 起）
+
+`ZustandFileDownload` 的预配置精简版，默认 `showStorageStats=false`、`showNetworkStatus=false`、`showBatchInfo=false`——仅保留文件列表 + 单文件进度 + 下载/暂停/继续/导出/删除核心操作。所有 props 语义与 `ZustandFileDownload` 相同，显式传入即可覆盖默认值（如 `<SimpleDownloadList showBatchInfo />` 找回汇总条）。
 
 ## 5. DebugPanel（辅助）
 

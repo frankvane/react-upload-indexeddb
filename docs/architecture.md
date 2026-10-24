@@ -2,6 +2,10 @@
 
 本文是根 README 的架构补充，重点说明以下特色能力如何形成闭环：
 
+> 本文件中的 Mermaid 图是 README 引用的 PNG（`docs/assets/readme/architecture.png`、
+> `upload-sequence.png`、`download-sequence.png`）的**图源**。修改图中任意一处后，
+> 执行 `npm run docs:mermaid` 重新渲染 PNG（npmjs.com 不渲染 Mermaid，README 只能引用 PNG）。
+
 ## 文档职责
 
 - 负责：系统模块关系、上传/下载链路、自动策略与续传机制的流程/时序说明。
