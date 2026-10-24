@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UploadStatus, type UploadFile } from "../types/upload";
 
-const iterateMock = vi.fn();
-const removeItemMock = vi.fn(async () => undefined);
-const setItemMock = vi.fn(async () => undefined);
+type IterateCallback = (value: unknown, key: string) => void;
+
+const iterateMock = vi.fn<(callback: IterateCallback) => Promise<void>>();
+const removeItemMock = vi.fn<(key: string) => Promise<void>>();
+const setItemMock = vi.fn<(key: string, value: UploadFile) => Promise<void>>();
 
 vi.mock("localforage", () => ({
   default: {
-    iterate: (...args: unknown[]) => iterateMock(...args),
-    removeItem: (...args: unknown[]) => removeItemMock(...args),
-    setItem: (...args: unknown[]) => setItemMock(...args),
+    iterate: (callback: IterateCallback) => iterateMock(callback),
+    removeItem: (key: string) => removeItemMock(key),
+    setItem: (key: string, value: UploadFile) => setItemMock(key, value),
   },
 }));
 
@@ -26,8 +28,8 @@ const fakeStorage = {
   iterate: (callback: (value: unknown, key: string) => void) =>
     iterateMock(callback),
   removeItem: (key: string) => removeItemMock(key),
-  setItem: (key: string, value: unknown) => setItemMock(key, value),
-} as unknown as import("localforage").LocalForage;
+  setItem: (key: string, value: UploadFile) => setItemMock(key, value),
+} as unknown as LocalForage;
 
 const fakeRegistry = {
   registerFileRef: vi.fn(),
@@ -40,7 +42,7 @@ const fakeRegistry = {
 const createFile = (
   id: string,
   status: UploadStatus,
-  overrides: Partial<UploadFile> = {}
+  overrides: Partial<UploadFile> = {},
 ): UploadFile =>
   ({
     id,
@@ -112,7 +114,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
         createFile("u1", UploadStatus.UPLOADING, {
           fileRef: new File([new Uint8Array(8)], "u1.bin"),
         }),
-        "u1"
+        "u1",
       );
       callback(createFile("done", UploadStatus.DONE), "done");
     });
@@ -134,7 +136,7 @@ describe("uploadStorage（T2.8 补齐）", () => {
     iterateMock.mockImplementation(async (callback) => {
       callback(
         createFile("u2", UploadStatus.PREPARING_UPLOAD, { progress: 42 }),
-        "u2"
+        "u2",
       );
     });
 

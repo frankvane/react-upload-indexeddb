@@ -50,7 +50,7 @@ const createOptions = () => {
     getItem: mockGetItem,
     setItem: mockSetItem,
     removeItem: mockRemoveItem,
-  } as unknown as import("localforage").LocalForage;
+  } as unknown as LocalForage;
 
   const fileRegistry = {
     registerFileRef: vi.fn(),

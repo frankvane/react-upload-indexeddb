@@ -4,6 +4,7 @@ import type { UploadFile } from "../types/upload";
 
 interface PostedMessage {
   type: string;
+  fileId?: string;
   uploadConfig?: Record<string, unknown>;
 }
 
@@ -26,7 +27,9 @@ class FakeUploadWorker {
       return;
     }
     // 立即以 done 收尾，让 runUploadTask 的 Promise 落地
-    this.onmessage?.({ data: { type: "done", skipped: false } } as MessageEvent);
+    this.onmessage?.({
+      data: { type: "done", skipped: false },
+    } as MessageEvent);
   }
 
   terminate() {
@@ -38,6 +41,9 @@ vi.mock("../worker/uploadWorker.ts?worker&inline", () => ({
   default: FakeUploadWorker,
 }));
 
+// 全量套件使用 --no-isolate 共享模块缓存：若其他测试先加载过 bridge，真实的
+// inline worker 模块会被缓存，本文件的 vi.mock 就无法生效。先清缓存再导入。
+vi.resetModules();
 const { createUploadWorkerPool } = await import("./uploadWorkerBridge");
 
 // T3.2：runUploadTask / cancelUploadTask / dispose 不再是模块级单例导出，
@@ -193,7 +199,9 @@ describe("cancelUploadTask（T2.3 Worker CANCEL 协议）", () => {
       expect(worker.terminated).toBe(true);
 
       // 兜底 terminate 不会让任务 Promise 泄漏：手动触发 error 收尾
-      worker.onerror?.({ message: "terminated by cancel fallback" } as Event);
+      worker.onerror?.({
+        message: "terminated by cancel fallback",
+      } as unknown as Event);
       const result = await taskPromise;
       expect(result.success).toBe(false);
     } finally {
@@ -215,16 +223,17 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
 
   const runWithResponses = async (
     responses: Array<Record<string, unknown>>,
-    hooks: {
-      onProgress?: (p: number) => void;
-      onRetry?: (m: string) => void;
-      onDebug?: (m: string, d?: Record<string, unknown>) => void;
-    } = {}
+    hooks: Partial<
+      Pick<
+        Parameters<typeof pool.runUploadTask>[0],
+        "onProgress" | "onRetry" | "onDebug"
+      >
+    > = {},
   ) => {
     // 拦截 postMessage：不自动回 done，按脚本投递响应序列
     const originalPost = FakeUploadWorker.prototype.postMessage;
     FakeUploadWorker.prototype.postMessage = function patched(
-      message: PostedMessage
+      message: PostedMessage,
     ) {
       this.posted.push(message);
       for (const next of responses.splice(0)) {
@@ -262,7 +271,7 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
         { type: "debug", message: "chunk md5 done", data: { count: 4 } },
         { type: "done", skipped: false },
       ],
-      { onProgress, onRetry, onDebug }
+      { onProgress, onRetry, onDebug },
     );
 
     expect(result.success).toBe(true);
@@ -291,7 +300,7 @@ describe("runUploadTask 消息回调路径（T2.8 补齐）", () => {
     });
 
     const worker = FakeUploadWorker.instances[0];
-    worker.onerror?.({ message: "worker crashed" } as Event);
+    worker.onerror?.({ message: "worker crashed" } as unknown as Event);
 
     const result = await taskPromise;
     expect(result.success).toBe(false);
@@ -391,7 +400,9 @@ describe("pauseUploadTask / resumeUploadTask（T3.3）", () => {
     expect(resumeMessage?.fileId).toBe("file-1");
 
     // resume 不结束任务：用 done 收尾
-    worker.onmessage?.({ data: { type: "done", skipped: false } } as MessageEvent);
+    worker.onmessage?.({
+      data: { type: "done", skipped: false },
+    } as MessageEvent);
     const result = await taskPromise;
     expect(result.success).toBe(true);
   });
@@ -416,7 +427,12 @@ describe("pauseUploadTask / resumeUploadTask（T3.3）", () => {
     const worker = FakeUploadWorker.instances[0];
     pool.pauseUploadTask("file-1");
     worker.onmessage?.({
-      data: { type: "paused", fileId: "file-1", uploadedChunks: 1, totalChunks: 3 },
+      data: {
+        type: "paused",
+        fileId: "file-1",
+        uploadedChunks: 1,
+        totalChunks: 3,
+      },
     } as MessageEvent);
     await taskPromise;
 
