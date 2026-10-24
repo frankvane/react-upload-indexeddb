@@ -55,15 +55,27 @@ app.get("/api/health", (_req, res) => {
 // 文件上传/下载接口鉴权（参考实现，默认关闭）。
 // 设 REQUIRE_FILE_AUTH=true 并配置 FILE_AUTH_TOKEN / FILE_AUTH_COOKIE 后启用；
 // vane-crm 接入时应替换为自家鉴权（portal_token 校验 + RBAC）。
+//
+// fail-closed 语义：本分支仅在“明确要求鉴权”时进入，且永远以 requireAuth:true 挂载，
+// 因此不会出现“开了开关却静默全开”的悲剧。若 REQUIRE_FILE_AUTH=true 却未配置任何
+// 凭据，则所有 /api/file 请求一律 401（并打印 FATAL 告警），而非放行。
 if (process.env.REQUIRE_FILE_AUTH === "true") {
   const bearerTokens = (process.env.FILE_AUTH_TOKEN || "")
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
   const cookieName = process.env.FILE_AUTH_COOKIE || undefined;
+  const hasAnyConfig = bearerTokens.length > 0 || Boolean(cookieName);
+  if (!hasAnyConfig) {
+    // fail-closed：要求保护却未配置凭据 → 不允许 silent open，告警并一律拒绝。
+    console.error(
+      "[FATAL] REQUIRE_FILE_AUTH=true 但未配置 FILE_AUTH_TOKEN / FILE_AUTH_COOKIE，" +
+        "所有 /api/file 请求将被拒绝（fail-closed）。请配置凭据，或将 REQUIRE_FILE_AUTH 设回 false。"
+    );
+  }
   app.use(
     "/api/file",
-    createAuthMiddleware({ bearerTokens, cookieName })
+    createAuthMiddleware({ bearerTokens, cookieName, requireAuth: true })
   );
 }
 

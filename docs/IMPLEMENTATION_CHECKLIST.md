@@ -15,7 +15,7 @@
 | 5 | 修正 vite.lib.config.ts 过时注释 | 二·中 | S | ✅ 已实施 |
 | 6 | 列表行 memo + 派生布尔选择器 | 三·低 | S | ✅ 已实施 |
 | 7 | 收敛文件列表刷新入口去重拉取 | 三·低 | M | ✅ 已实施（api.client 并发去重 + 2 测试） |
-| 8 | server auth 默认安全 + README 提示 | 三·低 | S | ✅ 已实施（README 安全提示；server 默认 fail-closed 变更待用户确认） |
+| 8 | server auth 默认安全 + README 提示 | 三·低 | S | ✅ 已实施（README 安全提示 + server 默认 fail-closed 代码变更，2026-10-24） |
 | 9 | vitest 提速（--no-isolate） | 三·低 | S | ✅ 已实施 |
 
 > 工作量：S ≤ 0.5d，M ≈ 0.5–1d。建议每完成一项即提交一次（小步可审），不要攒成大 PR。
@@ -188,9 +188,13 @@
 
 **具体步骤**
 1. README 增加"安全部署"小节：明确 demo server 鉴权默认关闭，**生产必须启用**。
-2. （评估）将 server 鉴权默认值改为"未配置即拒绝"，或在启动缺失配置时告警退出。注意这会改变 demo 默认行为，需与用户确认后再改——**默认先只做文档提示**。
+2. （已实施 2026-10-24）将 server 鉴权默认值改为 fail-closed（拒绝优先）：
+   - `middleware/auth.js`：`createAuthMiddleware` 新增 `requireAuth`（默认 `true`）；移除旧的 `enabled===false` 静默放行分支——挂载即要求鉴权，未拿到有效凭据一律 401，唯一的放开口子是显式 `requireAuth:false`。
+   - `app.js`：`REQUIRE_FILE_AUTH=true` 时永远以 `requireAuth:true` 挂载；若设了开关却未配置 `FILE_AUTH_TOKEN`/`FILE_AUTH_COOKIE`，打印 `FATAL` 告警且所有 `/api/file` 请求返回 401（避免 silent open）。
+   - 默认关闭（`REQUIRE_FILE_AUTH` 未设/`false`）时接口完全开放，demo / 集成测试不受影响。
+   - 新增回归测试 `tests/auth-middleware.test.js`（纯单元）+ `tests/auth-app.test.js`（app 级 misconfig→401）。
 
-**验收标准**：README 有醒目安全提示；若改 server 默认，现有 demo 流程仍可用（配置开关明确）。
+**验收标准**：README 有醒目安全提示；server 测试 39/39 全绿（含 10 个新增鉴权用例）；demo 默认行为不变（无 `REQUIRE_FILE_AUTH` 仍开放）。
 
 **依赖**：需用户确认 server 默认策略变更意向。
 
