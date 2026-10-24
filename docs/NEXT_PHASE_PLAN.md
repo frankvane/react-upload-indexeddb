@@ -25,6 +25,7 @@
 - [x] **F5** 合并阶段字节级 md5 终检：`merger.worker.ts` / `mergeService.ts` 增量计算合并 Blob 全量 md5（复用 `spark-md5`），与列表 `md5` 比对；不一致抛错并保留分片供重试；无 `expectedMd5` 时跳过（向后兼容）。数据流：`list md5` → `api.client.ts metadata.md5` → `store/index.ts DownloadFile.md5` → `useFileDownloaderController` 透传 `expectedMd5` 进 `MERGE_FILE`。新增 `merger.integrity.test.ts`（正确/错误/缺失 md5 三态）
 - [x] 客户端测试补 `downloadAuth.test.ts`(F4 负例) / `merger.integrity.test.ts`(F5 三态)；`verify:client` 全绿：**140/140 测试** + lint 0 错误 + lib 构建通过 + client-contract passed
 - [x] **E3** e2e 冒烟：新增 `server/e2e/smoke.mjs`（Node 原生 `fetch`/`FormData` 驱动真实服务端 API），自动化"生成随机文件→分片上传→合并→列表→分片 Range 下载（镜像 F4：206+Content-Range+字节数校验）→重组→整文件下载交叉校验→md5 比对"。临时数据目录（`SERVER_DATA_DIR` 等 env 隔离，落 `os.tmpdir`）+ `AUTH_MODE=demo`；子进程复用 `process.execPath`（建议 Node 24 跑）。`server` 的 `e2e` 脚本 + `verify` 串联 `test&&e2e`；CI server job 已接。验证通过：3.15MB（4 片，末片 partial 12345B）round-trip md5 一致
+- [x] **D1** 依赖升级：`axios` 1.9.0→1.20.0（清生产**关键** `form-data` 不安全随机边界 + `follow-redirects` 跨域头泄漏）、`express` 4.21.2→4.22.3（清 `proxy-addr` **关键** IP 伪造 + `qs` 中危 DoS）；`sequelize` 保持 6.x（其传递 `uuid` 中危只能靠 `--force` 降至 3.x 修复，D1 明确禁止，故保留）；`npm audit fix`（安全、非 --force）清 dev 传递漏洞（ws/picomatch/minimatch/js-yaml/brace-expansion/flatted 等）。结果：root 生产依赖 **0 漏洞**，server 生产仅剩 3 中危（sequelize/uuid，放行）。CI 加生产依赖审计门禁（client `npm audit --omit=dev`；server `--omit=dev --audit-level=high`）。升级后 verify:client 140/140 + server 49/49+e2e 全过
 
 ---
 
@@ -67,7 +68,7 @@
 | S6 | 错误响应泄漏内部信息 | 全局错误处理器生产只返通用文案，堆栈/路径落服务端日志 | 500 响应不含 SQL/路径原文 |
 | S2 | 完整性校验可被绕过（秒传污染） | `hash_mode` 服务端强制或默认 `full`；落库前 `stat.size === Number(size)`；秒传命中后可选抽样/全量复核 | `sample` 模式无法跳过终检；污染 md5 不会被静默命中 |
 | S3 | 上传缺容量/分片上限（磁盘耗尽 DoS） | 新增 `MAX_UPLOAD_SIZE_MB`；`total`/`index` 上界（`index<total`）；单 `file_id` 累计分片数/字节配额；结合 `Content-Length` 前置拦截 | 超限请求在控制器入口被拒，不写盘 |
-| D1 | 生产依赖已知漏洞（server 1C/3H、前端 1C/1H） | `express`→维护版、`axios`→最新 1.x；`sequelize` **谨慎升级，禁止 `npm audit fix --force` 降级到 3.x**；CI 加 `npm audit --omit=dev` 门禁 | audit 高危项清零；升级后 39/39 + 136/136 仍全过 |
+| D1 | 依赖升级（✅ 已完成）：`axios` 1.9.0→**1.20.0**（清掉生产关键漏洞 `form-data` 不安全随机 + `follow-redirects` 头泄漏）、`express` 4.21.2→**4.22.3**（清 `proxy-addr` 关键 IP 伪造 + `qs` 中危）；`sequelize` **保持 6.x 不动**（其传递 `uuid` 中危只能靠 `--force` 降到 3.x 修复，D1 明确禁止）；`npm audit fix`（安全，非 --force）清掉 dev 传递漏洞（ws/picomatch/minimatch/js-yaml 等） | CI 加生产依赖审计门禁（`--omit=dev`，server 用 `--audit-level=high` 放行 sequelize/uuid 中危残留）；升级后 140/140 + 49/49 + e2e 全过 |
 
 ---
 

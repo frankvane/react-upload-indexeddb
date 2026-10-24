@@ -26,6 +26,10 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      - name: 生产依赖安全审计
+        # 仅查生产依赖；当前 0 漏洞。出现高危/严重即非零退出阻断 CI
+        run: npm audit --omit=dev
+
       - name: ESLint
         run: npm run lint
 
@@ -56,6 +60,11 @@ jobs:
 
       - name: 安装依赖
         run: npm --prefix server ci
+
+      - name: 生产依赖安全审计（高危及以上阻断）
+        # 仅查生产依赖；`--audit-level=high` 允许 sequelize 传递的 uuid 中危残留
+        # （修复需 sequelize 降至 3.x 破坏性变更，D1 明确禁止 --force，故保留）
+        run: npm --prefix server audit --omit=dev --audit-level=high
 
       - name: 服务端测试 + 覆盖率门槛 + e2e 冒烟
         # `verify` = `test`（含 node --experimental-test-coverage 门槛 行80/分支65/函数80）

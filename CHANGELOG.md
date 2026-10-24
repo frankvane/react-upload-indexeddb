@@ -25,6 +25,7 @@
 ### Engineering
 - **E2 服务端覆盖率门禁**：弃用 `c8`（`node --test` 子进程模型下 V8 覆盖率采集跨运行抖动 43%↔88%，不可靠）；改用 Node 24 原生 `--experimental-test-coverage`，`--test-coverage-include='src/**'`、`--test-coverage-exclude='src/index.js'`（bootstrap 不计入），门槛 **行80 / 分支65 / 函数80**（实测基线 行82.48% / 函数83.94%）。`server` 的 `test` 脚本内嵌该门槛，未达即非零退出；CI `.github/workflows/ci.yml` server job 升 Node 22→24 与 `.nvmrc` 对齐。
 - **E3 端到端冒烟**：新增 `server/e2e/smoke.mjs`，用 Node 原生 `fetch`/`FormData` 驱动真实服务端 API（无需 Playwright 浏览器），一条命令跑通"生成随机文件→分片上传→合并→列表→分片 Range 下载（镜像 F4：206 + Content-Range + 字节数校验）→重组→整文件下载交叉校验→md5 比对"，验证全链路不损坏。服务端数据目录经 `SERVER_DATA_DIR` 等 env 隔离到临时目录、`AUTH_MODE=demo`；子进程复用 `process.execPath`（建议 Node 24）。`server` 的 `e2e` 脚本 + `verify`（串联 `test && e2e`）已接 CI。
+- **D1 依赖安全升级**：`axios` 1.9.0→1.20.0（清除生产**关键**漏洞 `form-data` 不安全随机边界 + `follow-redirects` 跨域头泄漏）、`express` 4.21.2→4.22.3（清除 `proxy-addr` **关键** IP 伪造 + `qs` 中危 DoS）；`sequelize` 保持 6.x 不变（其传递的 `uuid` 中危只能经 `npm audit fix --force` 降级到 sequelize 3.x 修复，按 D1 决策禁止破坏性降级，故保留为中危残留）。`npm audit fix`（安全、非 `--force`）清除 dev 传递漏洞（ws/picomatch/minimatch/js-yaml/brace-expansion/flatted 等）。结果：根生产依赖 **0 漏洞**，server 生产仅剩 3 个中危（sequelize/uuid，CI 以 `--audit-level=high` 放行）。CI 新增生产依赖审计门禁（client `npm audit --omit=dev`；server `--omit=dev --audit-level=high`）。
 
 ## [3.0.0] - 2026-10-24
 

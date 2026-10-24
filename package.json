@@ -67,7 +67,7 @@
     "verify": "npm run verify:client && npm run verify:server"
   },
   "dependencies": {
-    "axios": "^1.9.0",
+    "axios": "^1.20.0",
     "localforage": "^1.10.0",
     "spark-md5": "^3.0.2"
   },
