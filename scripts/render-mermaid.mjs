@@ -21,6 +21,7 @@ const mermaidJs = readFileSync(
 const diagrams = [
   {
     name: "architecture",
+    renderWidth: 1400,
     code: `flowchart LR
   User["用户操作"] --> UI["React 页面<br/>上传/下载/简化"]
   UI --> Net["网络状态检测<br/>online/rtt/downlink"]
@@ -108,7 +109,7 @@ page.on("console", (m) => {
 });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 
-for (const { name, code } of diagrams) {
+for (const { name, code, renderWidth } of diagrams) {
   writeFileSync(
     tmpHtml,
     `<!DOCTYPE html>
@@ -120,7 +121,13 @@ for (const { name, code } of diagrams) {
   (async () => {
     mermaid.initialize({ startOnLoad: false, theme: "default", fontFamily: "sans-serif" });
     const { svg } = await mermaid.render("mmd", document.getElementById("graph").textContent);
-    document.getElementById("graph").innerHTML = svg;
+    const holder = document.createElement("div");
+    holder.innerHTML = svg;
+    const el = holder.querySelector("svg");
+    el.style.maxWidth = "none";
+    if (${renderWidth ?? 0}) el.setAttribute("width", "${renderWidth}");
+    document.getElementById("graph").innerHTML = "";
+    document.getElementById("graph").appendChild(el);
     window.__done = true;
   })();
 </script></body></html>`,
