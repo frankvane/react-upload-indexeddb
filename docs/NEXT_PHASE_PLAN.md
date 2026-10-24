@@ -94,7 +94,7 @@
 | S10 | 缩略图 URL 无对应静态路由（功能缺陷，必然 404） | 新增受控缩略图路由（带鉴权、`Content-Disposition: inline`，仅图片）；真实生成待无 CVE thumbnailer（**不装 sharp**，因其 libvips/libheif/librsvg 高危 CVE 与 D1 门禁冲突） | 路由已就绪：实体缺失 404、非图片 403、非法 id 404 ✅ 已完成 |
 | S11 | Range 解析不完整（多段被误判单段） | 只支持单段并显式拒绝多段，补标准 `Content-Range: bytes */size` 响应头；非法 Range（越界/负数/起点>终点）同样返回标准 416 + 该头（此前走 jsonError 不带头，已对齐） | 多段 Range / 非法 Range 均返回 416 且头正确 ✅ 已完成 |
 | F7 | 调试日志无上限，生产仍 `console.log` | `useDebugLogger` 限长环形（如 500 条）；生产关闭 `console.log` | 长会话内存不再持续上涨 |
-| F8 | 分片重试 off-by-one、文件级重试不重置 | `>` 改 `>=`；批次全部成功后 `retryAttempts` 归零 | 允许次数准确；3 次偶发失败不再整文件中止 |
+| F8 | 分片重试 off-by-one、文件级重试不重置 | 文件级 `>=` 改 `>`；分片级 `> MAX` 改 `> MAX+1` 并重排 requeue/`allChunksExceeded` 为 `MAX+1` 对齐：**MAX_RETRY_ATTEMPTS=3 现语义为 3 次重试 / 4 次尝试**；批次全部成功后 `retryAttempts` 归零（仅连续失败才累加） | 允许次数准确；分片前 3 次偶发失败、第 4 次成功 → 整文件 COMPLETE（修复前于第 3 次后误中止）✅ 已完成 |
 | F9 | 入口 HTML 无 CSP 等安全头 | README 提示宿主设置 CSP/`nosniff`/`frame-ancestors`，给出与 Worker(`worker-src blob:`)、内联样式兼容的示例 | 文档含可复制策略 |
 | P1 | 分片批次间固定等待拖慢吞吐 | 退避仅在有失败/限速信号时触发 | 大文件多批次吞吐不再被固定 delay 拖累 |
 

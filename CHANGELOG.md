@@ -30,6 +30,7 @@
 ### Robustness
 - **S11 多段 Range 显式拒绝**：`downloadController.downloadFile` 仅支持单段 `Range`；遇到含逗号的多段请求（`bytes=0-4,6-9`）一律返回标准 `416` + `Content-Range: bytes */size` + `Accept-Ranges: bytes`，避免被误判为单段而返回错误字节区间。非法 Range（起点/终点越界、负数、起点>终点）同样返回标准 `416` + `Content-Range: bytes */size`（此前走 `jsonError` 不带该头，与多段分支行为不一致，已对齐）。新增 `server/tests/range-thumbnail.test.js`（6 用例）覆盖单段 206 + Content-Range + 字节、多段 416、无 Range 整文件 200、非法 Range 416、缩略图 404、非法 id 404；服务端单测 49→55 全绿，覆盖率门禁（行80/分支65/函数80）与 E3 e2e 仍通过。
 - **S10 缩略图路由就绪（待 CVE-free thumbnailer）**：新增 `GET /api/file/thumbnail/:file_id`（`downloadController.downloadThumbnail`），与主文件同目录按 `${baseNoExt}_thumb${ext}` 解析缩略图实体，实体缺失返回 `404`、非图片返回 `403`、非法 id 直接 `404`（不扫描目录，沿用 P1-14 口径）。**重要安全取舍**：真实缩略图生成依赖 `sharp`，但 `sharp` 自带 libvips/libheif/librsvg 的高危 CVE（与 D1 刚建立的"生产 0 高/危" + CI `--audit-level=high` 门禁冲突），故**不安装 `sharp`**，路由保持优雅 404 直到出现无 CVE 的 thumbnailer。生成端 `uploadController.buildThumbnailName` 的命名约定已在控制器内对齐，后续接入 thumbnailer 时无需改路由。
+- **F8 下载重试 off-by-one + 文件级计数重置**：`downloader.worker.ts` 此前 `MAX_RETRY_ATTEMPTS=3` 在文件级（`>=`）与分片级（`>`）语义不一致，且文件级 `retryAttempts` 只增不减——早期偶发失败会单调递增触发"失败次数过多"误中止整文件。现统一为 **3 次重试 / 4 次尝试**：文件级阈值 `>=` 改 `>`；分片级守卫 `> MAX` 改 `> MAX+1`，requeue 与 `allChunksExceeded` 检查同步对齐为 `MAX+1`；并新增"整批全部成功后 `retryAttempts` 归零"（仅连续失败才累加）。新增 `worker/downloader.worker.retry.test.ts`（2 用例，直接加载 worker + mock fetch）：分片前 3 次失败、第 4 次成功 → 整文件 `COMPLETE`（修复前于第 3 次后误 `ERROR`）；分片始终失败 → 仍 `ERROR`（abort 路径不破坏）。客户端 142 单测全绿，lint/build 通过。
 
 ## [3.0.0] - 2026-10-24
 

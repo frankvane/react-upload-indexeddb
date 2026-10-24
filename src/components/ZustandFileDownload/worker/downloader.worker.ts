@@ -144,14 +144,22 @@ async function handleDownload(payload: StartDownloadPayload) {
       .filter((r) => !r.success && !r.paused)
       .map((r) => r.chunkIndex);
 
-    if (failedChunks.length > 0) {
+    if (failedChunks.length === 0) {
+      // F8：整批全部成功后清空累计失败计数，使得"早期偶发失败 + 后续恢复正常"
+      // 不会让 retryAttempts 单调递增，最终被误判为"失败次数过多"而中止整文件。
+      // 只有连续失败（中间无任何干净批次）才会累加。
+      retryAttempts[fileId] = 0;
+    } else {
       retryAttempts[fileId] = (retryAttempts[fileId] || 0) + 1;
 
       debugWarn(
         `文件 ${fileId} 下载重试 ${retryAttempts[fileId]}/${MAX_RETRY_ATTEMPTS}`
       );
 
-      if (retryAttempts[fileId] >= MAX_RETRY_ATTEMPTS) {
+      // F8 off-by-one：用 `>` 而非 `>=`，使得恰好 MAX_RETRY_ATTEMPTS 次失败时
+      // 仍会再重试一次；仅第 MAX_RETRY_ATTEMPTS+1 次失败才判定为"过多"并中止。
+      // （与分片级 chunkRetryAttempts 的 `>` 守卫保持一致。）
+      if (retryAttempts[fileId] > MAX_RETRY_ATTEMPTS) {
         debugWarn(`文件 ${fileId} 下载失败次数过多，暂停下载`);
         activeDownloads[fileId] = false;
 
@@ -169,7 +177,8 @@ async function handleDownload(payload: StartDownloadPayload) {
 
       const allChunksExceededRetries = failedChunks.every((chunkIndex) => {
         const chunkId = `${fileId}_${chunkIndex}`;
-        return (chunkRetryAttempts[chunkId] ?? 0) >= MAX_RETRY_ATTEMPTS;
+        // F8：与分片级重试上限对齐，需达到 MAX_RETRY_ATTEMPTS+1 次失败才算"超限"。
+        return (chunkRetryAttempts[chunkId] ?? 0) >= MAX_RETRY_ATTEMPTS + 1;
       });
 
       if (allChunksExceededRetries) {
@@ -193,7 +202,9 @@ async function handleDownload(payload: StartDownloadPayload) {
 
     const retriableChunks = failedChunks.filter((chunkIndex) => {
       const chunkId = `${fileId}_${chunkIndex}`;
-      return (chunkRetryAttempts[chunkId] ?? 0) < MAX_RETRY_ATTEMPTS;
+      // F8：分片级重试上限与 MAX_RETRY_ATTEMPTS 语义对齐（允许 MAX_RETRY_ATTEMPTS
+      // 次重试，即 MAX_RETRY_ATTEMPTS+1 次尝试）。
+      return (chunkRetryAttempts[chunkId] ?? 0) < MAX_RETRY_ATTEMPTS + 1;
     });
 
     remainingChunks = [...remainingChunks, ...retriableChunks];
@@ -270,7 +281,10 @@ async function downloadChunk(
 
   chunkRetryAttempts[chunkId] = (chunkRetryAttempts[chunkId] || 0) + 1;
 
-  if (chunkRetryAttempts[chunkId] > MAX_RETRY_ATTEMPTS) {
+  // F8：允许 MAX_RETRY_ATTEMPTS 次重试（即 MAX_RETRY_ATTEMPTS+1 次尝试）；
+  // 第 MAX_RETRY_ATTEMPTS+2 次调用才放弃（不再发起 fetch）。此前 `> MAX_RETRY_ATTEMPTS`
+  // 只允许 3 次尝试，与文件级阈值不一致，且无法容错恰好 3 次偶发失败。
+  if (chunkRetryAttempts[chunkId] > MAX_RETRY_ATTEMPTS + 1) {
     debugError(
       `分片 ${chunkIndex} 已达到最大重试次数 ${MAX_RETRY_ATTEMPTS}`
     );
