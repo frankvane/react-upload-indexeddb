@@ -7,6 +7,9 @@
 
 ## [Unreleased]
 
+### Bug Fixes
+- **UI 组件 forwardRef（3.0.1）**：`Button` / `Switch`（primitives）与 `PercentDisplay` 改为 `React.forwardRef`，消除 `Tooltip` / `Popconfirm` 通过 `cloneElement` 注入 `ref` 时触发的 `"Function components cannot be given refs"` 警告；ref 现已正确落到原生 DOM。
+
 ### Security
 - **服务端鉴权默认 secure（fail-closed）**：`server/src/app.js` 新增 `AUTH_MODE`（`secure` 默认 / `demo` 关闭）。`secure` 下始终挂载鉴权中间件且 `requireAuth:true`，即便未配置任何凭据也一律 `401`，彻底消除"开了开关却 silently 全开"；仅 `AUTH_MODE=demo` 用于本机 / 内网联调。
 - **CORS 默认关闭 + 显式白名单**：不再默认反射任意 Origin；仅当显式设置 `CORS_ORIGIN`（逗号分隔具体域名，不支持通配 `*`）时才启用，且可携带 Cookie 凭据。
