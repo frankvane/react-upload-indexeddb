@@ -23,6 +23,18 @@
 - **存储统计抽屉空态悬空标题**：0 文件时「状态分布」标题仍渲染、下方空白。现无文件时渲染 Empty 空态
 - **操作行溢出**：上传操作行（按钮 + 网络状态 + 设置项）在窄容器下溢出产生横向滚动。外层/左右分组均加 `flex-wrap: wrap`
 
+### Added
+- **子路径按需引入（真·分包）**：新增 `src/upload.ts` / `src/download.ts` / `src/simple.ts` 三个薄入口，配合 `vite.lib.config.ts` 多入口构建与 `package.json` 的 `exports` 子路径映射：
+  - `react-upload-indexeddb/upload` 只引上传链路、`/download` 只引下载链路、`/simple` 引两个简化组件；样式仍为统一 `react-upload-indexeddb/style.css`
+  - 实证隔离：`/upload` 入口的 chunk（98 kB）不含下载专属内容（`大文件下载` 串 0 次），下载逻辑只在 `/download` chunk（该串 2 次），即只引上传不会带入下载引擎
+  - 全量入口 `.`（index）保留，旧调用 `import "react-upload-indexeddb/dist/style.css"` 仍可用；`sideEffects: ["*.css"]` 维持具名导出 tree-shaking
+- **下载侧简化组件 `SimpleDownloadList`**：与既有 `SimpleUploadList` 对齐，作为 `ZustandFileDownload` 的预配置精简版——默认关闭"存储统计""网络状态"两块重 UI，保留文件列表 + 进度 + 下载/暂停/继续/导出/删除核心操作，底层仍是完整分片续传引擎
+- **公开导出两个简化组件**：`src/index.ts` 现导出 `SimpleUploadList` / `SimpleDownloadList`（含 `SimpleUploadListProps` / `SimpleServerFile` / `SimpleDownloadListProps` 类型），此前仅为 demo 专属
+
+### Fixed
+- **内置 `Modal` 忽略 `open` 导致弹层常驻**：自定义 `Modal` 此前完全忽略 `open` 始终渲染，调用方无法隐藏（"简化模式"上传弹层无法关闭）。`ModalInner` 现尊重 `open`，关闭时不渲染弹层
+- **`SimpleUploadList` 三处类型错误**（此前未进入 tsc 程序而隐藏）：`removeUploadFilesByIds` 漏传 `storage`/`fileRegistry` 两参（现取自 `createUploadStorage()`/`createFileRegistry()`，与内部默认上传实例同 DB/store）；`Modal` 误用不支持的 `destroyOnHidden`（改用条件显隐 + `open`）；`Typography.Paragraph` 误用不支持的 `type`（改用 `--rui-text-secondary` 着色）。相应单测断言同步更新为三参
+
 ## [2.0.0] - 2026-10-24
 
 ### Added

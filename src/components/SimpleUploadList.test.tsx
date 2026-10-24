@@ -181,10 +181,11 @@ describe("SimpleUploadList", () => {
     });
 
     await waitFor(() => {
-      expect(mockRemoveUploadFilesByIds).toHaveBeenCalledWith([
-        "mock-file",
-        "mock-file-2",
-      ]);
+      expect(mockRemoveUploadFilesByIds).toHaveBeenCalledWith(
+        ["mock-file", "mock-file-2"],
+        expect.anything(),
+        expect.anything(),
+      );
     });
 
     await waitFor(() => {
@@ -239,7 +240,11 @@ describe("SimpleUploadList", () => {
 
     // 仅清理成功文件，失败文件保留
     await waitFor(() => {
-      expect(mockRemoveUploadFilesByIds).toHaveBeenCalledWith(["ok-file"]);
+      expect(mockRemoveUploadFilesByIds).toHaveBeenCalledWith(
+        ["ok-file"],
+        expect.anything(),
+        expect.anything(),
+      );
     });
     expect(mockRemoveUploadFilesByIds).toHaveBeenCalledTimes(1);
     expect(mockRemoveUploadFilesByIds).not.toHaveBeenCalledWith(

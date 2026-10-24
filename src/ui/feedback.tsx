@@ -235,6 +235,7 @@ export interface ModalProps {
 
 const ModalInner: React.FC<ModalProps> = ({
   title,
+  open,
   onOk,
   onCancel,
   okText = "确定",
@@ -262,6 +263,8 @@ const ModalInner: React.FC<ModalProps> = ({
     dialogRef.current?.focus();
   }, [mounted]);
 
+  // 尊重 open：关闭时不渲染弹层（此前忽略 open 导致弹层常驻，调用方无法隐藏）
+  if (!open) return null;
   if (!mounted) return null;
 
   return ReactDOM.createPortal(

@@ -6,6 +6,8 @@ import ZustandFileUpload from "./ZustandFileUpload";
 import type { UploadFile } from "./ZustandFileUpload/types/upload";
 import { API_BASE_URL, API_PATHS } from "../config/api";
 import { removeUploadFilesByIds } from "./ZustandFileUpload/services/uploadStorage";
+import { createUploadStorage } from "./ZustandFileUpload/services/uploadStorageInstance";
+import { createFileRegistry } from "./ZustandFileUpload/services/fileRegistry";
 
 const normalizePath = (path: string | undefined, fallback: string) => {
   if (!path) {
@@ -13,6 +15,11 @@ const normalizePath = (path: string | undefined, fallback: string) => {
   }
   return path.startsWith("/") ? path : `/${path}`;
 };
+
+// 与内部默认上传实例同 DB/store：批次成功后用于清理已上传文件元数据。
+// fileRegistry 仅用于释放主线程 File 引用（已上传完成的记录引用早已释放，此处为空操作）。
+const cleanupStorage = createUploadStorage();
+const cleanupRegistry = createFileRegistry();
 
 const formatFileSize = (size: number) => {
   if (!Number.isFinite(size) || size < 0) {
@@ -174,7 +181,7 @@ const SimpleUploadList: React.FC<SimpleUploadListProps> = ({
     void (async () => {
       // 仅清理上传成功的文件；失败文件保留并提示用户
       if (successIds.length > 0) {
-        await removeUploadFilesByIds(successIds);
+        await removeUploadFilesByIds(successIds, cleanupStorage, cleanupRegistry);
       }
       setModalOpen(false);
       if (failedCount > 0) {
@@ -261,9 +268,10 @@ const SimpleUploadList: React.FC<SimpleUploadListProps> = ({
         onCancel={() => setModalOpen(false)}
         footer={null}
         width={960}
-        destroyOnHidden
       >
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+        <Typography.Paragraph
+          style={{ marginBottom: 8, color: "var(--rui-text-secondary)" }}
+        >
           选择文件后会自动上传，上传成功后会自动刷新左侧清单。
         </Typography.Paragraph>
 

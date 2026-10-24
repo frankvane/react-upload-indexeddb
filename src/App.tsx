@@ -22,6 +22,9 @@ const ZustandFileDownload = lazy(
 );
 const DebugPanel = lazy(() => import("./components/DebugPanel"));
 const SimpleUploadList = lazy(() => import("./components/SimpleUploadList"));
+const SimpleDownloadList = lazy(
+  () => import("./components/SimpleDownloadList"),
+);
 
 interface UploadBatchResult {
   success: number;
@@ -69,9 +72,9 @@ const tabButtonStyle = (isActive: boolean): CSSProperties => ({
 });
 
 const App = () => {
-  const [activeTab, setActiveTab] = useState<"upload" | "download" | "simple">(
-    "upload",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "upload" | "download" | "simple" | "simpleDownload"
+  >("upload");
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [notices, setNotices] = useState<NoticeItem[]>([]);
 
@@ -394,6 +397,13 @@ const App = () => {
         >
           简化模式
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("simpleDownload")}
+          style={tabButtonStyle(activeTab === "simpleDownload")}
+        >
+          简化下载
+        </button>
       </div>
 
       <div
@@ -449,6 +459,16 @@ const App = () => {
               onDownloadError={handleDownloadError}
               onBatchComplete={handleDownloadBatchComplete}
               onStorageChange={handleStorageChange}
+            />
+          </Suspense>
+        ) : activeTab === "simpleDownload" ? (
+          <Suspense fallback={<div>正在加载简化下载...</div>}>
+            <SimpleDownloadList
+              baseURL={API_BASE_URL}
+              listApi={API_PATHS.file.list}
+              downloadApi={API_PATHS.file.download}
+              autoStart={false}
+              showProgress={true}
             />
           </Suspense>
         ) : (

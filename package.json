@@ -22,7 +22,23 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    }
+    },
+    "./upload": {
+      "types": "./dist/upload.d.ts",
+      "import": "./dist/upload.js",
+      "require": "./dist/upload.cjs"
+    },
+    "./download": {
+      "types": "./dist/download.d.ts",
+      "import": "./dist/download.js",
+      "require": "./dist/download.cjs"
+    },
+    "./simple": {
+      "types": "./dist/simple.d.ts",
+      "import": "./dist/simple.js",
+      "require": "./dist/simple.cjs"
+    },
+    "./style.css": "./dist/style.css"
   },
   "files": [
     "dist"
