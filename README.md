@@ -201,11 +201,11 @@ configureDebug({ silent: false }); // 打开 warn/debug 级日志
 
 ![下载模式](https://raw.githubusercontent.com/frankvane/react-upload-indexeddb/main/docs/assets/readme/mode-download.png)
 
-### 简化模式
+### 简化外观
 
-![简化模式](https://raw.githubusercontent.com/frankvane/react-upload-indexeddb/main/docs/assets/readme/mode-simple.png)
+![简化外观](https://raw.githubusercontent.com/frankvane/react-upload-indexeddb/main/docs/assets/readme/mode-simple.png)
 
-> 截图可通过 `npm run docs:screenshot` 重新生成（默认访问 `http://127.0.0.1:5173`）。
+> 截图为 v2 的「简化模式」演示（服务端清单 + 上传弹窗）。v3.0.0 起等价外观由属性组合实现，demo 见 `src/demo/SimpleUploadDemo.tsx` / `SimpleDownloadDemo.tsx`；截图可通过 `npm run docs:screenshot` 重新生成（默认访问 `http://127.0.0.1:5173`）。
 
 ## 架构
 
@@ -262,13 +262,14 @@ npm run dev
 
 ## 文档索引
 
-| 文档                                                                                                               | 内容                                     |
-| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| [组件使用文档](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/components.md)                   | Props / 回调 / 集成示例                  |
-| [架构详图](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/architecture.md)                     | 流程图 / 时序图 / 自动策略（Mermaid 源） |
-| [API 契约](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/server-api-contract.md)              | 请求响应结构与错误语义                   |
-| [依赖瘦身分析](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/dependency-slimming-analysis.md) | 去 antd / ahooks 的动机与方案            |
-| [变更日志](https://github.com/frankvane/react-upload-indexeddb/blob/main/CHANGELOG.md)                             | 每个版本的变更明细                       |
+| 文档                                                                                                                               | 内容                                     |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| [组件使用文档](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/components.md)                                   | Props / 回调 / 集成示例                  |
+| [架构详图](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/architecture.md)                                     | 流程图 / 时序图 / 自动策略（Mermaid 源） |
+| [API 契约](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/server-api-contract.md)                              | 请求响应结构与错误语义                   |
+| [文档索引](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/README.md)                                           | 现行文档地图 / 历史归档 / 维护约定       |
+| [依赖瘦身分析（归档）](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/archive/dependency-slimming-analysis.md) | 去 antd / ahooks 的动机与方案            |
+| [变更日志](https://github.com/frankvane/react-upload-indexeddb/blob/main/CHANGELOG.md)                                             | 每个版本的变更明细                       |
 
 ## License
 

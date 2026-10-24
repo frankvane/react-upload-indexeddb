@@ -117,11 +117,11 @@ sequenceDiagram
     end
 
     UW-->>UI: onUploadComplete
-    UI->>API: GET /list（刷新服务器清单）
+    UI->>API: GET /list（业务侧按需刷新清单，库内不做）
   end
 
   UI->>UI: onBatchComplete
-  Note over UI: autoCleanup=true 时自动清理；简化模式批次结束后关闭弹窗并清空本批次列表项
+  Note over UI: autoCleanup=true 时按 cleanupPolicy 自动清理成功项；失败项保留供重试
 
   opt 页面刷新后续传
     U->>UI: 刷新或重开页面
@@ -214,7 +214,7 @@ flowchart TD
   Cleanup -- 否 --> Keep["保留完成项供人工处理"]
 ```
 
-## 5. 简化模式与完整模式关系
+## 5. 简化外观与完整模式关系（v3 起）
 
 ```mermaid
 flowchart LR
@@ -225,8 +225,9 @@ flowchart LR
   Auto --> API["/api/file/*"]
 ```
 
-- 简化模式不维护第二套上传内核，只收敛 UI 操作复杂度。
-- 完整模式保留参数调节和诊断能力；简化模式固定自动策略，适合集成页面。
+- 简化外观不是独立组件：由 `uiMode="simple"`（上传）与 `showXxx` 面板开关（下载）控制，不维护第二套内核，只收敛 UI 操作复杂度。
+- 完整模式保留参数调节和诊断能力；简化外观通常搭配 `settingsSource="props"` + 固定自动策略，适合集成页面。
+- 服务端清单、上传弹窗、批次清理等页面编排逻辑不由库提供，业务侧参考 `src/demo/SimpleUploadDemo.tsx` 自行组合。
 
 ## 6. 上传状态机（T3.3 收敛）
 

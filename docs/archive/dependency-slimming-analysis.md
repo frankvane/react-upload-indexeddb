@@ -1,5 +1,7 @@
 # 依赖瘦身分析：vitest 升级 / 去 ahooks / 去 antd
 
+> ⚠️ 历史归档（v1.0.5 制定，相关项均已实施）。文中涉及的 `SimpleUploadList` 已于 v3.0.0 移除，现行文档见 [../README.md](../README.md)、[../architecture.md](../architecture.md)、[../components.md](../components.md)。
+
 > 配套文档：[`project-analysis.md`](./project-analysis.md)（问题分析）、[`implementation-checklist.md`](./implementation-checklist.md)（实施清单）
 > 制定日期：2026-10-23　｜　基线版本：`v1.0.5`（阶段一+二已合入 main，未发版）
 

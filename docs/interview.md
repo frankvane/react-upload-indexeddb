@@ -17,7 +17,7 @@
 ### 1.1 我封装的核心组件
 
 1. `ZustandFileUpload`：完整上传组件（分片、秒传、重试、自动策略、恢复）。  
-2. `SimpleUploadList`：简化上传组件（服务器清单 + 上传弹窗 + 自动刷新）。  
+2. 简化外观：v3 起不再单独提供组件，改为 `uiMode="simple"` 等属性组合（`SimpleUploadList` / `SimpleDownloadList` 已移除）。  
 3. `ZustandFileDownload`：下载组件（分片下载、暂停恢复、导出）。  
 
 ### 1.2 组件边界（面试必讲）
