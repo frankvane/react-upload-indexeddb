@@ -12,12 +12,11 @@
 //   - 只要拿到有效凭据（Bearer token 命中白名单 / Cookie 命中 / verify 放行）才 next()；
 //   - 否则一律 401，绝不静默放行。
 //   - 唯一的“放开口子”是显式传入 requireAuth:false（demo / 测试场景由 app.js 决定）。
-//     app.js 仅在明确配置 REQUIRE_FILE_AUTH=true 时才挂载本中间件，且永远以
-//     requireAuth:true 挂载；因此生产路径绝不会出现“开了开关却 silently 全开”。
-//
-// 历史坑（已修复）：旧实现中若中间件“已挂载却未配置任何凭据”，enabled 为 false 会
-// 直接 next() 放行全部请求——即“本应受保护却 silently 全开”。现在改为 fail-closed：
-// 挂载即代表要求鉴权，缺凭据时所有请求都被拒绝，而非放行。
+//     app.js 默认 AUTH_MODE=secure，永远以 requireAuth:true 挂载本中间件；
+//     因此生产路径绝不会出现“开了开关却 silently 全开”。
+const crypto = require("crypto");
+
+// 解析 Cookie；畸形百分号编码（decodeURIComponent 抛错）视为空值，绝不抛异常（S7）。
 function parseCookies(header) {
   if (!header) return {};
   return header.split(";").reduce((acc, part) => {
@@ -25,9 +24,24 @@ function parseCookies(header) {
     if (idx === -1) return acc;
     const k = part.slice(0, idx).trim();
     const v = part.slice(idx + 1).trim();
-    if (k) acc[k] = decodeURIComponent(v);
+    if (!k) return acc;
+    let decoded;
+    try {
+      decoded = decodeURIComponent(v);
+    } catch (_err) {
+      decoded = "";
+    }
+    acc[k] = decoded;
     return acc;
   }, {});
+}
+
+// 定长 + timingSafeEqual 比较，抗时序攻击（S7）。
+function safeTokenEqual(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 function createAuthMiddleware(options = {}) {
@@ -39,6 +53,9 @@ function createAuthMiddleware(options = {}) {
   } = options;
 
   return function authMiddleware(req, res, next) {
+    // 预检请求（OPTIONS）不参与鉴权，交由 CORS 中间件处理，避免 401 阻断跨域预检。
+    if (req.method === "OPTIONS") return next();
+
     // 显式关闭（demo / 测试）：直接放行，不做任何校验。
     if (requireAuth === false) return next();
 
@@ -46,7 +63,7 @@ function createAuthMiddleware(options = {}) {
     const [scheme, token] = authHeader.split(" ");
     if (scheme === "Bearer" && token) {
       if (verify) return verify(token, req, next);
-      if (bearerTokens.includes(token)) return next();
+      if (bearerTokens.some((t) => safeTokenEqual(t, token))) return next();
     }
 
     if (cookieName) {

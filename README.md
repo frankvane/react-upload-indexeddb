@@ -173,13 +173,15 @@ import {
 
 ### ⚠️ 安全部署提示
 
-> 配套的 demo / 参考服务端（`server/`）**鉴权中间件默认关闭**，仅用于本地联调与演示。**生产部署必须自行启用鉴权**：
+> 配套的 demo / 参考服务端（`server/`）**默认 `AUTH_MODE=secure`（fail-closed）**：未配置任何凭据时，所有 `/api/file/*` 请求一律 `401`，绝不静默全开。
 >
-> - 启用 `server/src/middleware/auth.js` 的 Bearer / Cookie 校验（通过环境变量打开）；
-> - 任何对外暴露的上传/下载接口都应在网关或服务端强制校验身份，否则攻击者可任意上传/下载/读取他人文件；
+> - **本地联调 / 演示**：设 `AUTH_MODE=demo` 关闭鉴权（仅限本机 / 内网，切勿暴露公网）；
+> - **生产必须配置**：`FILE_AUTH_TOKEN`（Bearer 白名单，逗号分隔）或 `FILE_AUTH_COOKIE`（同域 Cookie 名），或替换为自家鉴权（portal_token + RBAC）；若 `secure` 模式下未配任何凭据，服务端会打印 `[FATAL]` 并以 `401` 拒绝全部文件请求；
+> - **CORS 默认关闭**：跨域浏览器访问需显式设置 `CORS_ORIGIN`（逗号分隔的具体域名白名单，不支持通配 `*`），否则不返回 `Access-Control-Allow-Origin`；
+> - 任何对外暴露的上传 / 下载接口都应在网关或服务端强制校验身份，否则攻击者可任意上传 / 下载 / 读取他人文件；
 > - 切勿将未鉴权的文件接口直接暴露在公网。
 >
-> 组件层已做到「不持有凭证、纯 props 注入」，但服务端是否鉴权由部署方负责——库本身**不承诺服务端安全**。
+> 组件层已做到「不持有凭证、纯 props 注入」，但服务端的最终鉴权策略由部署方负责。
 
 ## 调试日志
 
@@ -228,6 +230,17 @@ configureDebug({ silent: false }); // 打开 warn/debug 级日志
 
 本仓库 `server/` 自带一个 Express + SQLite 参考后端（`npm run server:dev`），完整契约见
 [docs/server-api-contract.md](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/server-api-contract.md)。
+
+### 服务端环境变量（安全相关）
+
+| 变量                | 默认值      | 说明                                                                                     |
+| ------------------- | ----------- | ---------------------------------------------------------------------------------------- |
+| `AUTH_MODE`         | `secure`    | `secure` 挂载鉴权（fail-closed，无凭据即 `401`）；`demo` 关闭鉴权（仅本机 / 内网联调）     |
+| `FILE_AUTH_TOKEN`   | 空          | Bearer 令牌白名单，逗号分隔；命中即通过                                                  |
+| `FILE_AUTH_COOKIE`  | 空          | 同域 Cookie 名；存在该 Cookie 即通过（用于 `withCredentials` 跨域 / 同域场景）            |
+| `CORS_ORIGIN`       | 空（关闭）  | 跨域白名单，逗号分隔的具体域名；**不设则不开启 CORS**，设 `*` 仅告警且无法带 Cookie 凭据 |
+| `RATE_LIMIT_MAX`    | `300`       | 单 IP 每分钟请求上限（`RATE_LIMIT_ENABLED=false` 可关闭）                                 |
+| `NODE_ENV`          | —           | `test` / `development` 下错误响应回传明细；其余环境仅返通用文案（防信息泄漏）             |
 
 ## 本地开发（demo 站点）
 

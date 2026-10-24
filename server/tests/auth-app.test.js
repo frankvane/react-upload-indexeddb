@@ -1,5 +1,5 @@
 // 回归测试：app 级 fail-closed。
-// 设 REQUIRE_FILE_AUTH=true 却未配置任何凭据 → 所有 /api/file 请求必须 401，
+// AUTH_MODE=secure（默认）却未配置任何凭据 → 所有 /api/file 请求必须 401，
 // 绝不允许 silent open（历史坑）。同时 /api/health 仍可用（服务器未崩溃）。
 const path = require("path");
 const fs = require("fs");
@@ -8,7 +8,7 @@ const assert = require("node:assert/strict");
 const request = require("supertest");
 
 process.env.NODE_ENV = "test";
-process.env.REQUIRE_FILE_AUTH = "true"; // 要求鉴权
+process.env.AUTH_MODE = "secure"; // 默认即 secure；要求鉴权
 // 故意不设置 FILE_AUTH_TOKEN / FILE_AUTH_COOKIE → 模拟“开了开关却忘配凭据”
 const testDbStorage = path.join(__dirname, "tmp-test-auth-app.sqlite");
 process.env.DB_STORAGE = testDbStorage;
@@ -28,7 +28,7 @@ test.after(async () => {
   if (fs.existsSync(testDbStorage)) fs.unlinkSync(testDbStorage);
 });
 
-test("REQUIRE_FILE_AUTH=true 但未配凭据 → /api/file 一律 401", async () => {
+test("AUTH_MODE=secure 但未配凭据 → /api/file 一律 401", async () => {
   const res = await request(app).get("/api/file/list");
   assert.equal(res.status, 401);
   assert.equal(res.body.code, 401);

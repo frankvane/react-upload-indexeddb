@@ -9,6 +9,10 @@ const testDbStorage = path.join(__dirname, "tmp-test-chunk-key.sqlite");
 process.env.DB_STORAGE = testDbStorage;
 process.env.CHUNK_STATE_FLUSH_INTERVAL_MS = "60000";
 process.env.CHUNK_STATE_MAX_PENDING = "99999";
+// 功能测试需要开放的服务端，显式关闭鉴权（默认 AUTH_MODE=secure 会 fail-closed）
+process.env.AUTH_MODE = "demo";
+// 显式关闭限流，避免与其他测试文件的全局 env 相互覆盖导致偶发 429
+process.env.RATE_LIMIT_ENABLED = "false";
 
 const app = require("../src/app");
 const { syncModels, sequelize, File, FileChunk } = require("../src/models");

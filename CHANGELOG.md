@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Security
+- **服务端鉴权默认 secure（fail-closed）**：`server/src/app.js` 新增 `AUTH_MODE`（`secure` 默认 / `demo` 关闭）。`secure` 下始终挂载鉴权中间件且 `requireAuth:true`，即便未配置任何凭据也一律 `401`，彻底消除"开了开关却 silently 全开"；仅 `AUTH_MODE=demo` 用于本机 / 内网联调。
+- **CORS 默认关闭 + 显式白名单**：不再默认反射任意 Origin；仅当显式设置 `CORS_ORIGIN`（逗号分隔具体域名，不支持通配 `*`）时才启用，且可携带 Cookie 凭据。
+- **错误响应脱敏**：全局错误处理器在生产环境仅返通用文案，真实堆栈 / 路径落服务端日志，不回传客户端（防信息泄漏）。
+- **安全响应头 + 指纹收敛**：关闭 `X-Powered-By`，补充 `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy` / `Cross-Origin-Resource-Policy`。
+- **auth 中间件加固**：Cookie 解析 `decodeURIComponent` 包 try/catch（畸形 Cookie 不再 500）；Bearer 令牌比较改用 `crypto.timingSafeEqual` 定长比较（抗时序攻击）；预检 `OPTIONS` 请求跳过鉴权，避免阻断跨域预检。
+- **工程地基**：根与 `server/` 加 `.nvmrc`(24) + `engines.node`，锁定 Node 版本以消除 `better-sqlite3` 原生二进制 ABI 漂移导致的服务端子用例失败。
+
 ## [3.0.0] - 2026-10-24
 
 ### Removed
