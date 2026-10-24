@@ -5,6 +5,20 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.0.0] - 2026-10-24
+
+### Removed
+- **移除 `SimpleUploadList` / `SimpleDownloadList` 及 `/simple` 子路径入口**（破坏性变更）：精简外观本就是"预置属性"，现改为在完整组件上直接配置——上传用 `uiMode="simple"`（配 `settingsSource="props"` 避免改动本地设置），下载用 `showStorageStats/showNetworkStatus/showBatchInfo={false}`。迁移示例见 README「简化外观（属性控制）」。原 `SimpleUploadList` 附带的"服务端清单 + 上传弹窗 + 批次清理"依赖业务接口，属 demo 职责，已迁至 `src/demo/SimpleUploadDemo.tsx` 作为纯属性示例。
+  - 同步删除 `package.json` 的 `exports["./simple"]`、`src/simple.ts` 与 `vite.lib.config.ts` 的 simple 构建入口。
+
+### Changed
+- **库构建不再产出 sourcemap**：dist 体积 1.73MB → 489KB（无 `.map`）；demo 站点构建输出改为 `demo-dist`，与库产物彻底分离。
+- 抽取 `shared/formatFileSize` 与 `shared/networkStrategy.resolveNetworkBadgeInfo`，删除上传/下载两侧的重复实现。
+
+### Fixed
+- **采样哈希的 size 后缀此前未真正参与哈希**：`spark-md5` 的 `ArrayBuffer.append` 收到字符串会把内部长度算成 `NaN`，现改用 `TextEncoder` 编码后追加。仅影响 `hashMode="sample"` 的哈希值（旧记录不再命中秒传），默认 `full` 模式不变。
+- 修复 worker 与测试文件中的严格模式类型错误，`npm run build:demo`（`tsc -b && vite build`）可通过；测试文件不再参与 demo 的类型检查（由 vitest 运行时校验）。
+
 ## [2.0.6] - 2026-10-24
 
 ### Fixed

@@ -27,7 +27,7 @@ flowchart TB
     Policy["自动策略引擎<br/>chunkSize + fileConcurrency + chunkConcurrency"]
     UploadCore["ZustandFileUpload（自动上传）"]
     DownloadCore["ZustandFileDownload"]
-    SimpleMode["SimpleUploadList（简化模式）"]
+    SimpleMode["uiMode=simple（简化外观）"]
     Cleanup["自动清理定时器<br/>autoCleanup + cleanupDelay"]
     UHook["Upload Hooks<br/>processor/uploader/cleanup"]
     DHook["Download Hooks<br/>files/downloader/storage"]
@@ -218,7 +218,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  Simple["简化模式 UI<br/>SimpleUploadList"] --> UploadCore["ZustandFileUpload 内核"]
+  Simple["简化外观<br/>uiMode=simple"] --> UploadCore["ZustandFileUpload 内核"]
   Full["完整上传模式 UI"] --> UploadCore
   UploadCore --> SharedHooks["共享 hooks/store/worker"]
   SharedHooks --> Auto["自动策略 + 自动清理 + IndexedDB 续传"]
@@ -236,16 +236,16 @@ T3.3 收敛了共享上传状态机：删除从未被赋值的死状态 `CALCULA
 
 ### 6.1 状态枚举（收敛后）
 
-| 状态                | 含义                         | 是否可上传（`isUploadableStatus`） |
-| ------------------- | ---------------------------- | --------------------------------- |
-| `queued`            | 排队中                       | ✅                                |
-| `queued-for-upload`  | 待上传（已入自动上传队列）     | ✅                                |
-| `preparing-upload`  | 准备上传（预处理/秒传校验中）  | ✅                                |
-| `uploading`         | 上传中                       | ✅                                |
-| `paused`            | 已暂停（分片边界挂起）         | ❌（需显式「继续」）              |
-| `error`             | 上传失败（可重试/续传）        | ✅                                |
-| `done`              | 已完成                       | ❌                                |
-| `instant`           | 秒传成功                     | ❌                                |
+| 状态                | 含义                          | 是否可上传（`isUploadableStatus`） |
+| ------------------- | ----------------------------- | ---------------------------------- |
+| `queued`            | 排队中                        | ✅                                 |
+| `queued-for-upload` | 待上传（已入自动上传队列）    | ✅                                 |
+| `preparing-upload`  | 准备上传（预处理/秒传校验中） | ✅                                 |
+| `uploading`         | 上传中                        | ✅                                 |
+| `paused`            | 已暂停（分片边界挂起）        | ❌（需显式「继续」）               |
+| `error`             | 上传失败（可重试/续传）       | ✅                                 |
+| `done`              | 已完成                        | ❌                                 |
+| `instant`           | 秒传成功                      | ❌                                 |
 
 ### 6.2 状态迁移图
 
@@ -307,8 +307,8 @@ sequenceDiagram
 ```
 
 要点：
+
 - `pause` 是**分片边界安全暂停**——已发出的在途分片请求会继续完成，下一分片起始前挂起；
 - 暂停态下 Bridge 直接销毁对应 Worker（不回空闲池），彻底消除挂起闭包与 Map 残留；
 - 继续时若 Worker 已不在（`resumeUploadTask` 返回 `false`），回落到重跑 `processFileUpload`，
   由服务端分片校验保证字节级续传，无需用户重新选择（除非 `fileRef` 已随刷新失效）。
-

@@ -16,14 +16,13 @@ export default defineConfig({
   base: "./",
   build: {
     lib: {
-      // 多入口：全量（index）+ 按需子路径（upload / download / simple）。
+      // 多入口：全量（index）+ 按需子路径（upload / download）。
       // 消费方按需 `import ... from "react-upload-indexeddb/upload"` 时，
       // 打包器只拉对应入口及其独占依赖，不会带入另一条链路代码。
       entry: {
         index: resolve(__dirname, "src/index.ts"),
         upload: resolve(__dirname, "src/upload.ts"),
         download: resolve(__dirname, "src/download.ts"),
-        simple: resolve(__dirname, "src/simple.ts"),
       },
       formats: ["es", "cjs"],
       fileName: (format, entryName) =>

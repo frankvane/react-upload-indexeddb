@@ -16,8 +16,8 @@
 - **自动策略引擎**：检测 online/rtt/downlink，动态计算分片大小与文件/分片两级并发度
 - **鉴权注入**：`getAuthToken` / `getAuthHeaders` / `withCredentials` props 注入，组件不持有任何凭证；默认 `same-origin`，跨域 Bearer 不触发 CORS credentials 校验
 - **零 UI 依赖**：内置极简 UI 套件（`rui-` 前缀 + 独立 `style.css`），**不需要 antd**；运行时依赖仅 `axios` / `localforage` / `spark-md5`
-- **按需分包**：`react-upload-indexeddb/upload`、`/download`、`/simple` 子路径入口，只引上传不会带入下载引擎
-- **简化组件**：`SimpleUploadList` / `SimpleDownloadList` 预配置精简外观，一行代码接入；完整组件全部属性可配，可自由在"完整 ↔ 简化"间切换
+- **按需分包**：`react-upload-indexeddb/upload`、`/download` 子路径入口，只引上传不会带入下载引擎
+- **外观可裁剪**：`uiMode="simple"` + `showStorageStats/showNetworkStatus/showBatchInfo` 等属性自由在"完整 ↔ 简化"间切换，无需额外组件
 
 ## 安装
 
@@ -44,13 +44,13 @@ import { ZustandFileUpload } from "react-upload-indexeddb";
   baseURL="https://your-api.com"
   uploadApi="/api/file/upload"
   checkApi="/api/file/instant"
-  chunkSize={5 * 1024 * 1024}   // 5MB 分片
-  fileConcurrency={2}            // 同时上传文件数
-  chunkConcurrency={3}           // 单文件分片并发
+  chunkSize={5 * 1024 * 1024} // 5MB 分片
+  fileConcurrency={2} // 同时上传文件数
+  chunkConcurrency={3} // 单文件分片并发
   autoUpload={true}
   autoCleanup={true}
-  getAuthToken={async () => await readPortalToken()}  // 鉴权注入
-/>
+  getAuthToken={async () => await readPortalToken()} // 鉴权注入
+/>;
 ```
 
 ### 完整下载
@@ -65,29 +65,32 @@ import { ZustandFileDownload } from "react-upload-indexeddb";
   chunkSize={2 * 1024 * 1024}
   maxConcurrency={3}
   autoStart={false}
-  showStorageStats={true}   // 存储统计
-  showNetworkStatus={true}  // 网络状态徽章
-  showBatchInfo={true}      // 批次汇总条（活动中/排队中/已完成/进度）
+  showStorageStats={true} // 存储统计
+  showNetworkStatus={true} // 网络状态徽章
+  showBatchInfo={true} // 批次汇总条（活动中/排队中/已完成/进度）
+/>;
+```
+
+### 简化外观（属性控制）
+
+v3 起不再提供 `SimpleUploadList` / `SimpleDownloadList`，精简外观完全由完整组件的属性控制——底层仍是同一套分片引擎，只是裁剪 UI：
+
+```tsx
+// 上传：uiMode="simple" 只保留「选择文件 + 进度列表」
+<ZustandFileUpload uiMode="simple" settingsSource="props" autoUpload />
+
+// 下载：关闭存储统计 / 网络状态 / 批次汇总条
+<ZustandFileDownload
+  showStorageStats={false}
+  showNetworkStatus={false}
+  showBatchInfo={false}
+  showProgress
 />
 ```
 
-### 简化组件（快速应用）
+> `uiMode="simple"` 为**纯自动模式**：选择文件即自动上传、失败自动重试，工具栏只提供「选择文件」，不暴露手动上传/重试按钮（页面刷新后残留的排队行会在挂载时转为"请重新选择文件"的失败态，见 CHANGELOG 2.0.5 / 2.0.6）。
 
-面向集成场景的最小外观，底层是同一套分片引擎：
-
-```tsx
-import { SimpleUploadList, SimpleDownloadList } from "react-upload-indexeddb";
-
-<SimpleUploadList baseURL="https://your-api.com" />
-<SimpleDownloadList baseURL="https://your-api.com" autoStart={false} />
-```
-
-简化组件本质是"预置了一组默认属性的完整组件"——传任意属性即可覆盖默认值，例如
-`<SimpleDownloadList showBatchInfo />` 找回批次汇总条，或
-`<ZustandFileDownload showStorageStats={false} showNetworkStatus={false} showBatchInfo={false} />`
-让完整版呈现简化外观。
-
-> 简化上传组件为**纯自动模式**：选择文件即自动上传、失败自动重试，工具栏只提供「选择文件」，不暴露手动上传/重试按钮（页面刷新后残留的排队行会在挂载时转为"请重新选择文件"的失败态，见 CHANGELOG 2.0.5 / 2.0.6）。
+> 原先 `SimpleUploadList` 附带的"服务端清单 + 上传弹窗 + 批次清理"属于业务页面逻辑，不在通用库范围内；demo 中的 `src/demo/SimpleUploadDemo.tsx` 用纯属性方式演示同一外观。
 
 ### 按需引入（真·分包）
 
@@ -97,19 +100,15 @@ import { ZustandFileUpload } from "react-upload-indexeddb/upload";
 
 // 只引下载链路
 import { ZustandFileDownload } from "react-upload-indexeddb/download";
-
-// 只引两个简化组件
-import { SimpleUploadList, SimpleDownloadList } from "react-upload-indexeddb/simple";
 ```
 
 ## 组件属性概览
 
-| 组件 | 用途 | 常用属性 |
-| --- | --- | --- |
-| `ZustandFileUpload` | 完整上传 | `baseURL` `uploadApi` `checkApi` `chunkSize` `fileConcurrency` `chunkConcurrency` `autoUpload` `autoCleanup` `hashMode` `maxFileSize` `allowedFileTypes` `visibleColumns` |
-| `ZustandFileDownload` | 完整下载 | `baseURL` `listApi` `downloadApi` `chunkSize` `maxConcurrency` `autoStart` `showProgress` `showStorageStats` `showNetworkStatus` `showBatchInfo` `visibleColumns` |
-| `SimpleUploadList` | 简化上传 | 同 `ZustandFileUpload`（默认 `autoUpload=true`、极简 UI） |
-| `SimpleDownloadList` | 简化下载 | 同 `ZustandFileDownload`（默认 `showStorageStats/showNetworkStatus/showBatchInfo=false`） |
+| 组件                  | 用途     | 常用属性                                                                                                                                                                  |
+| --------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ZustandFileUpload`   | 完整上传 | `baseURL` `uploadApi` `checkApi` `chunkSize` `fileConcurrency` `chunkConcurrency` `autoUpload` `autoCleanup` `hashMode` `maxFileSize` `allowedFileTypes` `visibleColumns` |
+| `ZustandFileDownload` | 完整下载 | `baseURL` `listApi` `downloadApi` `chunkSize` `maxConcurrency` `autoStart` `showProgress` `showStorageStats` `showNetworkStatus` `showBatchInfo` `visibleColumns`         |
+| 简化外观              | 属性组合 | 上传：`uiMode="simple"`；下载：`showStorageStats/showNetworkStatus/showBatchInfo={false}`                                                                                 |
 
 > 列控制 / 面板开关均**不改变底层引擎**，只影响展示。详见下方「自定义表格列」与「简化外观」。
 
@@ -137,8 +136,6 @@ import {
 - 上传 `UploadColumnKey`：`index` | `fileName` | `fileSize` | `chunkCount` | `status` | `progress` | `action`
 - 下载 `DownloadColumnKey`：`fileName` | `fileSize` | `chunks` | `status` | `progress` | `action`
 
-> `SimpleUploadList` / `SimpleDownloadList` 走各自独立的列集，当前未暴露 `visibleColumns`。
-
 完整 Props 说明与回调（`onUploadStart/Progress/Complete/Error`、`onBatchComplete`、`onStorageChange` 等）见
 [docs/components.md](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/components.md)。
 
@@ -146,11 +143,11 @@ import {
 
 组件不持有凭证，鉴权全部通过 props 注入：
 
-| 场景 | 做法 |
-| --- | --- |
-| 跨域 Bearer（推荐） | `getAuthToken` / `authToken` / `getAuthHeaders`；`withCredentials` 保持默认 `false` |
-| 同域 Cookie | 无需任何配置（默认 `same-origin` 自动携带） |
-| 跨域 Cookie | `withCredentials: true`（服务端需返回 `Access-Control-Allow-Credentials: true` 且 Origin 不能为 `*`） |
+| 场景                | 做法                                                                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------------------- |
+| 跨域 Bearer（推荐） | `getAuthToken` / `authToken` / `getAuthHeaders`；`withCredentials` 保持默认 `false`                   |
+| 同域 Cookie         | 无需任何配置（默认 `same-origin` 自动携带）                                                           |
+| 跨域 Cookie         | `withCredentials: true`（服务端需返回 `Access-Control-Allow-Credentials: true` 且 Origin 不能为 `*`） |
 
 ```tsx
 // 每次上传前从登录态取最新 token（推荐，支持刷新）
@@ -246,16 +243,16 @@ npm run server:dev
 npm run dev
 ```
 
-| 命令 | 说明 |
-| --- | --- |
-| `npm run dev` | 前端 demo 开发服务 |
-| `npm run server:dev` | 参考后端服务 |
-| `npm run build` | 组件库构建（ESM + CJS + d.ts + style.css） |
-| `npm run build:demo` | demo 站点构建 |
-| `npm run test:unit` | 前端单元测试 |
-| `npm run verify` | 前后端联合验证 |
-| `npm run docs:screenshot` | 重新生成 README 界面截图 |
-| `npm run docs:mermaid` | 重新渲染 README 架构图 PNG |
+| 命令                      | 说明                                       |
+| ------------------------- | ------------------------------------------ |
+| `npm run dev`             | 前端 demo 开发服务                         |
+| `npm run server:dev`      | 参考后端服务                               |
+| `npm run build`           | 组件库构建（ESM + CJS + d.ts + style.css） |
+| `npm run build:demo`      | demo 站点构建                              |
+| `npm run test:unit`       | 前端单元测试                               |
+| `npm run verify`          | 前后端联合验证                             |
+| `npm run docs:screenshot` | 重新生成 README 界面截图                   |
+| `npm run docs:mermaid`    | 重新渲染 README 架构图 PNG                 |
 
 ## 重要版本说明（v2.0.0 起）
 
@@ -265,13 +262,13 @@ npm run dev
 
 ## 文档索引
 
-| 文档 | 内容 |
-| --- | --- |
-| [组件使用文档](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/components.md) | Props / 回调 / 集成示例 |
-| [架构详图](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/architecture.md) | 流程图 / 时序图 / 自动策略（Mermaid 源） |
-| [API 契约](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/server-api-contract.md) | 请求响应结构与错误语义 |
-| [依赖瘦身分析](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/dependency-slimming-analysis.md) | 去 antd / ahooks 的动机与方案 |
-| [变更日志](https://github.com/frankvane/react-upload-indexeddb/blob/main/CHANGELOG.md) | 每个版本的变更明细 |
+| 文档                                                                                                               | 内容                                     |
+| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| [组件使用文档](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/components.md)                   | Props / 回调 / 集成示例                  |
+| [架构详图](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/architecture.md)                     | 流程图 / 时序图 / 自动策略（Mermaid 源） |
+| [API 契约](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/server-api-contract.md)              | 请求响应结构与错误语义                   |
+| [依赖瘦身分析](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/dependency-slimming-analysis.md) | 去 antd / ahooks 的动机与方案            |
+| [变更日志](https://github.com/frankvane/react-upload-indexeddb/blob/main/CHANGELOG.md)                             | 每个版本的变更明细                       |
 
 ## License
 

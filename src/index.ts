@@ -7,17 +7,6 @@ export { default } from "./components/ZustandFileUpload";
 export { default as FileUpload, default as ZustandFileUpload } from "./components/ZustandFileUpload";
 export { default as FileDownload, default as ZustandFileDownload } from "./components/ZustandFileDownload";
 
-// 简化版组件（轻量默认外观，底层仍是完整分片续传引擎）
-export { default as SimpleUploadList } from "./components/SimpleUploadList";
-export type {
-  SimpleUploadListProps,
-  SimpleServerFile,
-} from "./components/SimpleUploadList";
-export {
-  default as SimpleDownloadList,
-  type SimpleDownloadListProps,
-} from "./components/SimpleDownloadList";
-
 export { configureDownloadApi, setDownloadAuth, type FileInfo, type FileListResponse } from "./components/ZustandFileDownload/api.client";
 
 export {

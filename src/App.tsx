@@ -21,10 +21,8 @@ const ZustandFileDownload = lazy(
   () => import("./components/ZustandFileDownload"),
 );
 const DebugPanel = lazy(() => import("./components/DebugPanel"));
-const SimpleUploadList = lazy(() => import("./components/SimpleUploadList"));
-const SimpleDownloadList = lazy(
-  () => import("./components/SimpleDownloadList"),
-);
+const SimpleUploadDemo = lazy(() => import("./demo/SimpleUploadDemo"));
+const SimpleDownloadDemo = lazy(() => import("./demo/SimpleDownloadDemo"));
 
 interface UploadBatchResult {
   success: number;
@@ -270,15 +268,6 @@ const App = () => {
     [logInfo],
   );
 
-  const handleSimpleServerListChange = useCallback(
-    (files: { id: string }[]) => {
-      logInfo("system", `Simple mode list refreshed: ${files.length}`, {
-        total: files.length,
-      });
-    },
-    [logInfo],
-  );
-
   const customFileValidator = (file: File) => {
     if (file.name.includes("test")) {
       return { valid: false, message: "文件名包含 test 时不允许上传" };
@@ -485,23 +474,11 @@ const App = () => {
           </Suspense>
         ) : activeTab === "simpleDownload" ? (
           <Suspense fallback={<div>正在加载简化下载...</div>}>
-            <SimpleDownloadList
-              baseURL={API_BASE_URL}
-              listApi={API_PATHS.file.list}
-              downloadApi={API_PATHS.file.download}
-              autoStart={false}
-              showProgress={true}
-            />
+            <SimpleDownloadDemo />
           </Suspense>
         ) : (
           <Suspense fallback={<div>正在加载简化模式...</div>}>
-            <SimpleUploadList
-              baseURL={API_BASE_URL}
-              uploadApi={API_PATHS.file.upload}
-              checkApi={API_PATHS.file.instant}
-              listApi={API_PATHS.file.list}
-              onServerListChange={handleSimpleServerListChange}
-            />
+            <SimpleUploadDemo />
           </Suspense>
         )}
       </div>

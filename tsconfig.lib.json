@@ -12,7 +12,6 @@
     "src/index.ts",
     "src/upload.ts",
     "src/download.ts",
-    "src/simple.ts",
     "src/vite-env.d.ts"
   ]
 }

@@ -19,7 +19,6 @@ const targets = [
   "components/ZustandFileDownload/worker/merger.worker.ts",
   "components/ZustandFileDownload/store/index.ts",
   "components/ZustandFileDownload/hooks/useStorageManager.ts",
-  "components/SimpleUploadList.tsx",
 ];
 
 const REPLACEMENTS = [
