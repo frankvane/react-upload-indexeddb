@@ -252,22 +252,33 @@ export const useDownloadStore = create<DownloadState>()(
       {
         name: "download-network-storage", // 存储的唯一名称
         storage: createJSONStorage(() => localStorage), // 使用localStorage
+        // F2：版本化 + 迁移。仅持久化"真实用户偏好"，不再持久化网络自适应/
+        // 运行时派生字段（networkType/chunkSize/*Concurrency/retryDelay 等），
+        // 避免升级后旧结构覆盖新的网络自适应结果。
+        version: 1,
+        migrate: (persisted: unknown, version: number) => {
+          const p = (persisted ?? {}) as Record<string, unknown>;
+          if (version < 1) {
+            // 旧数据可能含网络自适应/运行时字段，仅保留用户偏好白名单
+            return {
+              displayMode: p.displayMode,
+              showProgress: p.showProgress,
+              showStorageStats: p.showStorageStats,
+              showNetworkStatus: p.showNetworkStatus,
+              showBatchInfo: p.showBatchInfo,
+              maxRetries: p.maxRetries,
+            };
+          }
+          return p;
+        },
         partialize: (state) => ({
-          // 只持久化网络相关设置和配置选项
-          networkType: state.networkType,
-          chunkSize: state.chunkSize,
-          fileConcurrency: state.fileConcurrency,
-          chunkConcurrency: state.chunkConcurrency,
-          isManuallySet: state.isManuallySet,
+          // 仅持久化真实用户偏好（F2）
           displayMode: state.displayMode,
-          maxConcurrency: state.maxConcurrency,
-          maxRetries: state.maxRetries,
-          retryDelay: state.retryDelay,
-          autoStart: state.autoStart,
           showProgress: state.showProgress,
           showStorageStats: state.showStorageStats,
           showNetworkStatus: state.showNetworkStatus,
           showBatchInfo: state.showBatchInfo,
+          maxRetries: state.maxRetries,
         }),
       }
     ),

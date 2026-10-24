@@ -61,4 +61,32 @@ describe("createUploadStore.initSettings", () => {
     expect(state.cleanupDelay).toBe(5);
     expect(state.networkDisplayMode).toBe("tooltip");
   });
+
+  it("reads rui:-prefixed persisted values (F1 命名空间)", () => {
+    // F1：safeStorage 写入带 rui: 前缀，读取也应命中该前缀
+    localStorage.setItem("rui:autoUpload", JSON.stringify(false));
+    localStorage.setItem("rui:cleanupDelay", JSON.stringify(22));
+    localStorage.setItem("rui:networkDisplayMode", JSON.stringify("direct"));
+
+    store.getState().initSettings({ settingsSource: "localStorage" });
+
+    const state = store.getState();
+    expect(state.autoUpload).toBe(false);
+    expect(state.cleanupDelay).toBe(22);
+    expect(state.networkDisplayMode).toBe("direct");
+  });
+
+  it("does not throw on corrupt localStorage JSON (F1 异常保护)", () => {
+    localStorage.setItem("rui:autoUpload", "{bad-json");
+    localStorage.setItem("rui:cleanupDelay", "not-a-number");
+
+    expect(() =>
+      store.getState().initSettings({ settingsSource: "localStorage" })
+    ).not.toThrow();
+
+    // 损坏数据 → 回落到默认值，而非崩溃
+    const state = store.getState();
+    expect(state.autoUpload).toBe(true);
+    expect(state.cleanupDelay).toBe(10);
+  });
 });

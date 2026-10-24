@@ -25,7 +25,12 @@
 - [x] **F5** 合并阶段字节级 md5 终检：`merger.worker.ts` / `mergeService.ts` 增量计算合并 Blob 全量 md5（复用 `spark-md5`），与列表 `md5` 比对；不一致抛错并保留分片供重试；无 `expectedMd5` 时跳过（向后兼容）。数据流：`list md5` → `api.client.ts metadata.md5` → `store/index.ts DownloadFile.md5` → `useFileDownloaderController` 透传 `expectedMd5` 进 `MERGE_FILE`。新增 `merger.integrity.test.ts`（正确/错误/缺失 md5 三态）
 - [x] 客户端测试补 `downloadAuth.test.ts`(F4 负例) / `merger.integrity.test.ts`(F5 三态)；`verify:client` 全绿：**140/140 测试** + lint 0 错误 + lib 构建通过 + client-contract passed
 - [x] **E3** e2e 冒烟：新增 `server/e2e/smoke.mjs`（Node 原生 `fetch`/`FormData` 驱动真实服务端 API），自动化"生成随机文件→分片上传→合并→列表→分片 Range 下载（镜像 F4：206+Content-Range+字节数校验）→重组→整文件下载交叉校验→md5 比对"。临时数据目录（`SERVER_DATA_DIR` 等 env 隔离，落 `os.tmpdir`）+ `AUTH_MODE=demo`；子进程复用 `process.execPath`（建议 Node 24 跑）。`server` 的 `e2e` 脚本 + `verify` 串联 `test&&e2e`；CI server job 已接。验证通过：3.15MB（4 片，末片 partial 12345B）round-trip md5 一致
-- [x] **D1** 依赖升级：`axios` 1.9.0→1.20.0（清生产**关键** `form-data` 不安全随机边界 + `follow-redirects` 跨域头泄漏）、`express` 4.21.2→4.22.3（清 `proxy-addr` **关键** IP 伪造 + `qs` 中危 DoS）；`sequelize` 保持 6.x（其传递 `uuid` 中危只能靠 `--force` 降至 3.x 修复，D1 明确禁止，故保留）；`npm audit fix`（安全、非 --force）清 dev 传递漏洞（ws/picomatch/minimatch/js-yaml/brace-expansion/flatted 等）。结果：root 生产依赖 **0 漏洞**，server 生产仅剩 3 中危（sequelize/uuid，放行）。CI 加生产依赖审计门禁（client `npm audit --omit=dev`；server `--omit=dev --audit-level=high`）。升级后 verify:client 140/140 + server 49/49+e2e 全过
+- [x] **D1** 依赖升级：`axios` 1.9.0→1.20.0（清生产**关键** `form-data` 不安全随机边界 + `follow-redirects` 跨域头泄漏）、`express` 4.21.2→4.22.3（清 `proxy-addr` **关键** IP 伪造 + `qs` 中危 DoS）；`sequelize` 保持 6.x（其传递 `uuid` 中危只能靠 `--force` 降至 3.x 修复，D1 明确禁止，故保留）；`npm audit fix`（安全，非 --force）清 dev 传递漏洞（ws/picomatch/minimatch/js-yaml/brace-expansion/flatted 等）。结果：root 生产依赖 **0 漏洞**，server 生产仅剩 3 中危（sequelize/uuid，放行）。CI 加生产依赖审计门禁（client `npm audit --omit=dev`；server `--omit=dev --audit-level=high`）。升级后 verify:client 140/140 + server 49/49+e2e 全过
+- [x] **S11** 多段/非法 Range 标准 416 + `Content-Range` 头（此前走 `jsonError` 不带头，已对齐）；新增 `server/tests/range-thumbnail.test.js`（6 用例）。服务端单测 49→**55** 全过
+- [x] **S10** 受控缩略图路由 `GET /api/file/thumbnail/:file_id` 就绪（实体缺失 404 / 非图片 403 / 非法 id 404）；**不装 `sharp`**（libvips/libheif/librsvg 高危 CVE 与 D1 门禁冲突），保持优雅 404 待无 CVE thumbnailer
+- [x] **F8** 下载重试 off-by-one + 文件级计数重置（统一 3 次重试 / 4 次尝试 + 成功归零）；新增 `downloader.worker.retry.test.ts`（2 用例）。verify:client 140→**142** 全过
+- [x] **F1** 本地存储安全封装 `safeStorage`（`try/catch` + `rui:` 命名空间 + 旧 key 回退 + schema 校验 + 旧版裸写兼容）；上传 store 的 4 个偏好 setter 与 `initSettings` 改走 `safeStorage`；新增 `safeStorage.test.ts`（9 用例）+ 扩展 `upload.test.ts`（+2）
+- [x] **F2** 下载 store persist 版本化（`version:1` + `migrate` 剥离派生字段）+ `partialize` 收敛为 6 个真实用户偏好；新增 `index.persist.test.ts`（2 用例）。verify:client 142→**154** 全过（lint 0 + lib 构建 + client-contract）
 
 ---
 
@@ -33,7 +38,7 @@
 
 | 套件 | 命令 | 结果 | 备注 |
 | --- | --- | --- | --- |
-| 客户端质量门禁 | `npm run verify:client` | ✅ 全绿 | lint 0 错误 · lib 构建通过 · **140/140 测试** · client-contract passed |
+| 客户端质量门禁 | `npm run verify:client` | ✅ 全绿 | lint 0 错误 · lib 构建通过 · **154/154 测试** · client-contract passed |
 | 服务端集成测试 | `server: npm test`（Node 24） | ✅ **49/49 通过 + 覆盖率门槛** | 用编译 `better-sqlite3` 的 Node 24 运行；原生 `--experimental-test-coverage` 行80/分支65/函数80 卡门槛 |
 | 服务端 e2e 冒烟 | `server: npm run e2e`（Node 24） | ✅ **round-trip 通过** | 临时数据目录 + `AUTH_MODE=demo`；随机 3.15MB 分片上传→合并→分片 Range 下载→重组→md5 比对一致 |
 | 服务端集成测试 | `server: npm test`（默认 Node 22） | ❌ 12/44（32 失败） | **纯环境问题**：`better-sqlite3` 原生二进制按 Node 24(ABI 137) 编译，当前默认 Node 22(ABI 127) 加载即 `ERR_DLOPEN_FAILED`，所有 DB 依赖用例崩在连接阶段；代码无回归 |
@@ -86,8 +91,8 @@
 
 | 编号 | 问题 | 改造点 | 验收标准 |
 | --- | --- | --- | --- |
-| F1 | localStorage 读取无异常保护、key 无命名空间 | 集中封装 `safeStorage`（try/catch + schema 校验 + 版本号），key 加 `rui:` 前缀 | 被污染/半写入数据不再让 store 初始化抛错；多实例不互相覆盖 |
-| F2 | Zustand persist 无版本迁移，持久化了派生字段 | `version` + `migrate`；只持久化真实用户偏好（`displayMode`/`show*`/`maxRetries`） | 升级后旧结构不覆盖新的网络自适应结果 |
+| F1 | localStorage 读取无异常保护、key 无命名空间 | 集中封装 `safeStorage`（try/catch + schema 校验 + 版本号），key 加 `rui:` 前缀；上传 store 的偏好 setter 与 `initSettings` 全部经 `safeStorage`；兼容早期裸写原生字符串 | 被污染/半写入数据不再让 store 初始化抛错；多实例不互相覆盖 ✅ 已完成 |
+| F2 | Zustand persist 无版本迁移，持久化了派生字段 | `version: 1` + `migrate`（v0 数据剥离派生字段只留偏好白名单）；`partialize` 只持久化真实用户偏好（`displayMode`/`show*`/`maxRetries`） | 升级后旧结构不覆盖新的网络自适应结果 ✅ 已完成 |
 | F3 | Worker 对任意 URL 携带鉴权头（SSRF/泄漏风险） | 下载 URL 做同源/白名单校验，非白名单目标剥离鉴权头 | token 不会发往任意域名 |
 | F6 | 无 ErrorBoundary，懒加载失败整页白屏 | 外层加 `ErrorBoundary` + "刷新/重载资源"兜底 | 旧 chunk 404/网络抖动不再整页白屏 |
 | S5 | 缺安全响应头与指纹收敛 | 引入 `helmet()`、`app.disable('x-powered-by')`、补自定义 404 | 响应带标准安全头 |

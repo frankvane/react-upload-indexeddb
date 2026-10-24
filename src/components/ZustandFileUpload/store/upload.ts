@@ -11,6 +11,7 @@ import { create, type StoreApi } from "zustand";
 import { message } from "../../../ui";
 import type { MessageInstance } from "../../../ui";
 import { listUploadFiles } from "../services/uploadStorage";
+import { safeStorage } from "../../../shared/safeStorage";
 
 type ProgressMapUpdater =
   | Record<string, number>
@@ -188,19 +189,19 @@ export const createUploadStore = (storage: LocalForage): UploadStore =>
     setLoading: (loading) => set({ loading }),
     setCost: (cost) => set({ cost }),
     setAutoUpload: (autoUpload) => {
-      localStorage.setItem("autoUpload", JSON.stringify(autoUpload));
+      safeStorage.setItem("autoUpload", autoUpload);
       set({ autoUpload });
     },
     setAutoCleanup: (autoCleanup) => {
-      localStorage.setItem("autoCleanup", JSON.stringify(autoCleanup));
+      safeStorage.setItem("autoCleanup", autoCleanup);
       set({ autoCleanup });
     },
     setCleanupDelay: (delay) => {
-      localStorage.setItem("cleanupDelay", JSON.stringify(delay));
+      safeStorage.setItem("cleanupDelay", delay);
       set({ cleanupDelay: delay });
     },
     setNetworkDisplayMode: (networkDisplayMode) => {
-      localStorage.setItem("networkDisplayMode", networkDisplayMode);
+      safeStorage.setItem("networkDisplayMode", networkDisplayMode);
       set({ networkDisplayMode });
     },
     setStorageStatsVisible: (storageStatsVisible) =>
@@ -225,29 +226,26 @@ export const createUploadStore = (storage: LocalForage): UploadStore =>
     initSettings: (defaults) => {
       const settingsSource = defaults?.settingsSource ?? "localStorage";
 
-      const autoUpload =
-        settingsSource === "localStorage" &&
-        localStorage.getItem("autoUpload") !== null
-          ? JSON.parse(localStorage.getItem("autoUpload") || "true")
-          : defaults?.autoUpload ?? true;
-      const autoCleanup =
-        settingsSource === "localStorage" &&
-        localStorage.getItem("autoCleanup") !== null
-          ? JSON.parse(localStorage.getItem("autoCleanup") || "true")
-          : defaults?.autoCleanup ?? true;
-      const cleanupDelay =
-        settingsSource === "localStorage" &&
-        localStorage.getItem("cleanupDelay") !== null
-          ? JSON.parse(localStorage.getItem("cleanupDelay") || "10")
-          : defaults?.cleanupDelay ?? 10;
-      const networkDisplayMode =
+      // F1：经 safeStorage 读取（try/catch + rui: 前缀 + 旧 key 回退 + 类型校验），
+      // 避免隐私模式/损坏数据导致初始化抛错。settingsSource 为 props 时不读本地。
+      const readLocal = <T,>(key: string, fallback: T): T =>
         settingsSource === "localStorage"
-          ? ((localStorage.getItem("networkDisplayMode") as
-              | "tooltip"
-              | "direct") ||
-            defaults?.networkDisplayMode ||
-            "tooltip")
-          : defaults?.networkDisplayMode || "tooltip";
+          ? safeStorage.getItem(key, fallback)
+          : fallback;
+
+      const autoUpload = readLocal("autoUpload", defaults?.autoUpload ?? true);
+      const autoCleanup = readLocal(
+        "autoCleanup",
+        defaults?.autoCleanup ?? true
+      );
+      const cleanupDelay = readLocal(
+        "cleanupDelay",
+        defaults?.cleanupDelay ?? 10
+      );
+      const networkDisplayMode = readLocal(
+        "networkDisplayMode",
+        (defaults?.networkDisplayMode ?? "tooltip") as "tooltip" | "direct"
+      );
 
       set({ autoUpload, autoCleanup, cleanupDelay, networkDisplayMode });
     },
