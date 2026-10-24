@@ -1173,6 +1173,12 @@
 .rui-table tbody tr {
   transition: background-color var(--rui-dur-fast) ease-out;
 }
+/* 性能：长列表（数百行）下跳过屏外行的布局/绘制，预留行高避免滚动跳动。
+   对不支持 content-visibility 的浏览器（Firefox/Safari）自动降级为无优化。 */
+.rui-table tbody tr.rui-table-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
 .rui-table tbody tr:hover td {
   background: var(--rui-brand-bg);
 }

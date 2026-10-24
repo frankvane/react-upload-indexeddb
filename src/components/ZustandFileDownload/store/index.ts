@@ -5,6 +5,7 @@ import { createJSONStorage, devtools, persist } from "zustand/middleware";
 
 import { DownloadStatus } from "../types/download";
 import { create } from "zustand";
+import { debugError } from "./../../../shared/debugLogger";
 
 // 创建下载状态存储
 export const useDownloadStore = create<DownloadState>()(
@@ -161,7 +162,7 @@ export const useDownloadStore = create<DownloadState>()(
             // 返回获取的文件列表
             return processedFiles;
           } catch (error) {
-            console.error("获取文件列表失败:", error);
+            debugError("获取文件列表失败:", error);
             set(
               {
                 isFetchingFileList: false,

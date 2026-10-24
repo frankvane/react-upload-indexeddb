@@ -1,5 +1,6 @@
-﻿import { DownloadFile } from "../types";
+import { DownloadFile } from "../types";
 import { chunkStore, completeFileStore } from "./storage";
+import { debugError } from "./../../../shared/debugLogger";
 
 /**
  * 合并文件分片
@@ -43,7 +44,7 @@ export const exportFileToLocal = async (
         const chunk = await chunkStore.getItem<Blob>(chunkId);
         if (!chunk) {
           allChunksExist = false;
-          console.error(`分片 ${i} 不存在，无法合并文件`);
+          debugError(`分片 ${i} 不存在，无法合并文件`);
           break;
         }
       }
@@ -70,7 +71,7 @@ export const exportFileToLocal = async (
 
     return true;
   } catch (error) {
-    console.error("导出文件失败:", error);
+    debugError("导出文件失败:", error);
     return false;
   }
 };

@@ -1,6 +1,7 @@
 import SparkMD5 from "spark-md5";
 import { buildQueueId } from "../../../shared/fileId";
 import type { UploadHashMode, UploadFile } from "../types/upload";
+import { debugError } from "./../../../shared/debugLogger";
 
 /**
  * @enum {string}
@@ -181,7 +182,7 @@ self.onmessage = async (e: MessageEvent<FilePrepareRequest>) => {
       uploadFiles.push(uploadFile);
       success++;
     } catch (error) {
-      console.error("Error processing file:", error);
+      debugError("Error processing file:", error);
       failed++;
 
       // 发送错误文件的信息

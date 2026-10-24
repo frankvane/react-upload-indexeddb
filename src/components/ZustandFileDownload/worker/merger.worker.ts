@@ -1,4 +1,5 @@
-﻿const ctx: Worker = self as unknown as Worker;
+import { debugError } from "./../../../shared/debugLogger";
+const ctx: Worker = self as unknown as Worker;
 type WorkerEnvelope = { type: string; payload: unknown };
 
 ctx.addEventListener("message", async (event: MessageEvent<WorkerEnvelope>) => {
@@ -43,7 +44,7 @@ async function mergeFileChunks(payload: {
     });
   } catch (err) {
     const error = err as Error;
-    console.error("Failed to merge file:", error);
+    debugError("Failed to merge file:", error);
 
     ctx.postMessage({
       type: "ERROR",

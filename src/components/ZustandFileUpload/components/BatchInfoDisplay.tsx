@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useUploadStore } from "../store/upload";
 import type { BatchUploaderActions } from "../hooks/useBatchUploader";
 import { useShallow } from "zustand/react/shallow";
+import { debugError } from "./../../../shared/debugLogger";
 
 interface BatchInfoDisplayProps {
   batchUploader: Pick<
@@ -148,7 +149,7 @@ const BatchInfoDisplay: React.FC<BatchInfoDisplayProps> = ({ batchUploader }) =>
               <Button
                 onClick={() => {
                   forceCleanupUI().catch((err) => {
-                    console.error("cleanup failed", err);
+                    debugError("cleanup failed", err);
                   });
                 }}
               >

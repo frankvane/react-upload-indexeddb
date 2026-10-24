@@ -149,7 +149,7 @@ export function Table<RecordType extends object>({
           const key = getKey(record, rowKey, rowIndex);
           const disabled = rowSelection?.getCheckboxProps?.(record).disabled;
           return (
-            <tr key={key}>
+            <tr key={key} className="rui-table-row">
               {rowSelection && (
                 <td>
                   <input

@@ -1,4 +1,5 @@
 import type { StartDownloadPayload } from "../types/download";
+import { debugError, debugWarn, debugLog } from "./../../../shared/debugLogger";
 
 const ctx: Worker = self as unknown as Worker;
 type WorkerEnvelope = { type: string; payload: unknown };
@@ -50,7 +51,7 @@ ctx.addEventListener("message", async (event: MessageEvent<WorkerEnvelope>) => {
       );
       break;
     default:
-      console.error("未知的Worker消息类型:", type);
+      debugError("未知的Worker消息类型:", type);
   }
 });
 
@@ -146,12 +147,12 @@ async function handleDownload(payload: StartDownloadPayload) {
     if (failedChunks.length > 0) {
       retryAttempts[fileId] = (retryAttempts[fileId] || 0) + 1;
 
-      console.warn(
+      debugWarn(
         `文件 ${fileId} 下载重试 ${retryAttempts[fileId]}/${MAX_RETRY_ATTEMPTS}`
       );
 
       if (retryAttempts[fileId] >= MAX_RETRY_ATTEMPTS) {
-        console.warn(`文件 ${fileId} 下载失败次数过多，暂停下载`);
+        debugWarn(`文件 ${fileId} 下载失败次数过多，暂停下载`);
         activeDownloads[fileId] = false;
 
         ctx.postMessage({
@@ -172,7 +173,7 @@ async function handleDownload(payload: StartDownloadPayload) {
       });
 
       if (allChunksExceededRetries) {
-        console.warn(`文件 ${fileId} 的所有分片都已达到最大重试次数，停止下载`);
+        debugWarn(`文件 ${fileId} 的所有分片都已达到最大重试次数，停止下载`);
         activeDownloads[fileId] = false;
 
         ctx.postMessage({
@@ -263,14 +264,14 @@ async function downloadChunk(
   const chunkId = `${fileId}_${chunkIndex}`;
 
   const actualChunkSize = end - start + 1;
-  console.debug(
+  debugLog(
     `下载分片 ${chunkIndex}: 范围 ${start}-${end}, 大小: ${actualChunkSize}字节`
   );
 
   chunkRetryAttempts[chunkId] = (chunkRetryAttempts[chunkId] || 0) + 1;
 
   if (chunkRetryAttempts[chunkId] > MAX_RETRY_ATTEMPTS) {
-    console.error(
+    debugError(
       `分片 ${chunkIndex} 已达到最大重试次数 ${MAX_RETRY_ATTEMPTS}`
     );
     return {
@@ -344,7 +345,7 @@ async function downloadChunk(
         "name" in error &&
         error.name === "AbortError"
       ) {
-        console.error(`下载分片 ${chunkIndex} 超时`);
+        debugError(`下载分片 ${chunkIndex} 超时`);
         throw new Error(`下载超时`);
       }
 
@@ -352,7 +353,7 @@ async function downloadChunk(
     }
   } catch (err) {
     const error = err as Error;
-    console.error(
+    debugError(
       `下载分片 ${chunkIndex} 失败 (尝试 ${chunkRetryAttempts[chunkId]}/${MAX_RETRY_ATTEMPTS}):`,
       error
     );

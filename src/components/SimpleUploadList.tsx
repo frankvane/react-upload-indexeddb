@@ -8,6 +8,7 @@ import { API_BASE_URL, API_PATHS } from "../config/api";
 import { removeUploadFilesByIds } from "./ZustandFileUpload/services/uploadStorage";
 import { createUploadStorage } from "./ZustandFileUpload/services/uploadStorageInstance";
 import { createFileRegistry } from "./ZustandFileUpload/services/fileRegistry";
+import { debugError } from "./../shared/debugLogger";
 
 const normalizePath = (path: string | undefined, fallback: string) => {
   if (!path) {
@@ -125,7 +126,7 @@ const SimpleUploadList: React.FC<SimpleUploadListProps> = ({
       setFiles(latestFiles);
       onServerListChange?.(latestFiles);
     } catch (error) {
-      console.error("failed to refresh server file list", error);
+      debugError("failed to refresh server file list", error);
       message.error("刷新文件清单失败，请稍后重试");
     } finally {
       setLoading(false);

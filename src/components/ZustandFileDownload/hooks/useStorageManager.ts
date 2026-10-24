@@ -1,4 +1,4 @@
-﻿import { useCallback, useRef } from "react";
+import { useCallback, useRef } from "react";
 
 import { message } from "../../../ui";
 import { DownloadFile, DownloadStatus } from "../types";
@@ -6,6 +6,7 @@ import { useDownloadStore } from "../store";
 import { clearAllStorageData, getStorageEstimate } from "../utils";
 import { chunkStore, completeFileStore, fileStore } from "../utils";
 import { useShallow } from "zustand/react/shallow";
+import { debugError } from "./../../../shared/debugLogger";
 
 const STORAGE_CACHE_TIME = 30000;
 const STORAGE_CALC_BATCH_SIZE = 50;
@@ -127,7 +128,7 @@ export const useStorageManager = () => {
 
         lastCalculation.current.lastUpdateTime = now;
       } catch (error) {
-        console.error("Failed to calculate storage usage:", error);
+        debugError("Failed to calculate storage usage:", error);
         updateStorageUsage({ isLoading: false });
       }
     },

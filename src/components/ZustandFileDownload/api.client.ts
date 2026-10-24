@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance } from "axios";
 import { API_BASE_URL, API_PATHS, buildApiUrl } from "../../config/api";
+import { debugError } from "./../../shared/debugLogger";
 
 export interface FileInfo {
   id: string;
@@ -155,7 +156,7 @@ export const createDownloadApiClient = (): DownloadApiClient => {
       }
       throw new Error(response.data.message || "获取文件列表失败");
     } catch (error) {
-      console.error("获取文件列表失败:", error);
+      debugError("获取文件列表失败:", error);
       throw error;
     }
   };
@@ -187,7 +188,7 @@ export const createDownloadApiClient = (): DownloadApiClient => {
         },
       }));
     } catch (error) {
-      console.error("获取下载文件列表失败:", error);
+      debugError("获取下载文件列表失败:", error);
       throw error;
     }
   };

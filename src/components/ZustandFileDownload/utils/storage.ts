@@ -1,5 +1,6 @@
 import { DownloadFile } from "../types";
 import localforage from "localforage";
+import { debugError, debugWarn } from "./../../../shared/debugLogger";
 
 const DB_NAME = "fileDownloadTest";
 // 版本号只增不减，避免触发 "can't be downgraded"。
@@ -58,10 +59,10 @@ export const initializeStorage = async (): Promise<void> => {
       completeFileStore.ready(),
     ]);
   } catch (error) {
-    console.error("存储初始化失败:", error);
+    debugError("存储初始化失败:", error);
     // 如果检测到版本降级冲突，删除旧库后重建。
     if (isVersionDowngradeError(error)) {
-      console.warn("检测到数据库版本冲突，正在重建下载存储库");
+      debugWarn("检测到数据库版本冲突，正在重建下载存储库");
       try {
         await deleteDownloadDatabase();
         await Promise.all([
@@ -70,7 +71,7 @@ export const initializeStorage = async (): Promise<void> => {
           completeFileStore.ready(),
         ]);
       } catch (retryError) {
-        console.error("存储重新初始化失败:", retryError);
+        debugError("存储重新初始化失败:", retryError);
         throw retryError;
       }
     } else {
@@ -99,7 +100,7 @@ export const getStoredFiles = async (): Promise<DownloadFile[]> => {
 
     return storedFilesData;
   } catch (error) {
-    console.error("获取已存储文件失败:", error);
+    debugError("获取已存储文件失败:", error);
     return [];
   }
 };
@@ -121,7 +122,7 @@ export const getStorageEstimate = async (): Promise<{
     }
     return { usage: 0, quota: 0 };
   } catch (error) {
-    console.error("获取存储使用情况失败:", error);
+    debugError("获取存储使用情况失败:", error);
     return { usage: 0, quota: 0 };
   }
 };
@@ -135,7 +136,7 @@ export const clearAllStorageData = async (): Promise<void> => {
     await chunkStore.clear();
     await completeFileStore.clear();
   } catch (error) {
-    console.error("清除存储数据失败:", error);
+    debugError("清除存储数据失败:", error);
     throw error;
   }
 };

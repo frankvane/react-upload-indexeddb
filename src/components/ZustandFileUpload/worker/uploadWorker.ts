@@ -2,6 +2,7 @@ import SparkMD5 from "spark-md5";
 import { joinUrl } from "../../../shared/url";
 import type { UploadHashMode } from "../types/upload";
 import { computeUploadProgress } from "../services/uploadProgress";
+import { debugError, debugLog } from "./../../../shared/debugLogger";
 
 // Worker消息类型定义
 type UploadWorkerMessage =
@@ -125,7 +126,7 @@ function debug(
     lastRoutineDebugAt = now;
   }
 
-  console.log(`[UploadWorker] ${message}`, data || "");
+  debugLog(`[UploadWorker] ${message}`, data || "");
   // 同时发送日志消息到主线程
   self.postMessage({
     type: "debug",
@@ -650,7 +651,7 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
               debug(`分片 ${i + 1} 上传失败`, {
                 error: error instanceof Error ? error.message : String(error),
               }, true);
-              console.error(`分片 ${i + 1} 上传失败:`, error);
+              debugError(`分片 ${i + 1} 上传失败:`, error);
               throw error;
             }
           };

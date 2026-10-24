@@ -144,6 +144,20 @@ import { SimpleUploadList, SimpleDownloadList } from "react-upload-indexeddb/sim
 下载侧 props 语义相同；列表请求（axios）也可用 `setDownloadAuth(headers)` 注入。
 服务端参考实现见 [docs/server-api-contract.md](https://github.com/frankvane/react-upload-indexeddb/blob/main/docs/server-api-contract.md)（`server/src/middleware/auth.js` 可插拔 Bearer/Cookie 中间件）。
 
+## 调试日志
+
+库默认**静默**：仅真实失败以 `console.error` 透出，调试/重试提示默认不打印，避免生产环境控制台噪声。
+
+排查问题时打开全部日志：
+
+```ts
+import { configureDebug } from "react-upload-indexeddb";
+
+configureDebug({ silent: false }); // 打开 warn/debug 级日志
+```
+
+> 上传 Worker 另有**按任务**的调试开关：传 `uploadConfig.debug === true` 时，分片级日志会按 200ms 节流并经 `postMessage` 上报主线程（被 demo 的 DebugPanel 消费），不受 `configureDebug` 影响；`configureDebug` 仅控制是否同步打印到浏览器控制台。
+
 ## 界面示意
 
 ### 下载模式

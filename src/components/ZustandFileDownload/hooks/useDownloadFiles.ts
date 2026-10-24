@@ -8,6 +8,7 @@ import { message } from "../../../ui";
 import { useDownloadStore } from "../store";
 import { useStorageManager } from "./useStorageManager";
 import { useShallow } from "zustand/react/shallow";
+import { debugError } from "./../../../shared/debugLogger";
 
 const CHUNK_KEY_MARKER = "_chunk_";
 
@@ -199,7 +200,7 @@ export const useDownloadFiles = () => {
 
         setFiles(updatedFiles);
       } catch (error) {
-        console.error("Failed to update local file status:", error);
+        debugError("Failed to update local file status:", error);
       }
     },
     [setFiles]
@@ -219,7 +220,7 @@ export const useDownloadFiles = () => {
           prevState.current.isInitialized = true;
         }
       } catch (error) {
-        console.error("获取文件列表失败:", error);
+        debugError("获取文件列表失败:", error);
         message.error("获取文件列表失败，请检查网络连接。");
       }
     },

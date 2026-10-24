@@ -8,10 +8,11 @@ export default defineConfig({
   plugins: [react()],
   // 库构建不复制 public/ 静态资源（vite.svg 等），保持 dist 干净
   publicDir: false,
-  // 关键：worker chunk（filePrepareWorker/uploadWorker/merger/downloader）经
-  // `new URL('...', import.meta.url)` 引用，默认 base '/' 会生成绝对路径
-  // `/assets/xxx.js`，被消费方 Vite（dev/构建）解析到站点根 → 404 → 文件预处理失败。
-  // 设为 './' 让 worker URL 相对引用，随 import.meta.url 落到库自身目录，消费方直接可用。
+  // 关键：worker chunk（filePrepareWorker/uploadWorker/merger/downloader）经 Vite
+  // `?worker&inline` 内联为 Blob（见 useFileProcessor.ts / uploadWorkerBridge.ts /
+  // ZustandFileDownload/worker/index.ts），不生成外部 worker 资产，避免消费方 dev/构建
+  // 解析到站点根 → 404 → 文件预处理失败。
+  // base './' 让其余相对引用随 import.meta.url 落到库自身目录，消费方直接可用。
   base: "./",
   build: {
     lib: {
