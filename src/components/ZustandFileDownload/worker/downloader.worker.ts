@@ -313,7 +313,35 @@ async function downloadChunk(
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
+      // F4 下载分片完整性：要求 206 Partial Content + 正确的 Content-Range，
+      // 并校验返回 blob 体积与期望分片大小一致。代理忽略 Range、返回全量 200
+      // 或范围错位时，会静默产出损坏分片，此处一律判失败并触发重试。
+      if (response.status !== 206) {
+        throw new Error(`expected 206 Partial Content, got ${response.status}`);
+      }
+      const contentRange = response.headers.get("Content-Range");
+      if (!contentRange) {
+        throw new Error("missing Content-Range header");
+      }
+      const crMatch = /^bytes (\d+)-(\d+)\/(?:\d+|\*)$/.exec(contentRange);
+      if (!crMatch) {
+        throw new Error(`invalid Content-Range: ${contentRange}`);
+      }
+      const crStart = Number(crMatch[1]);
+      const crEnd = Number(crMatch[2]);
+      if (crStart !== start || crEnd !== end) {
+        throw new Error(
+          `Content-Range mismatch: expected ${start}-${end}, got ${crStart}-${crEnd}`
+        );
+      }
+
       const blob = await response.blob();
+
+      if (blob.size !== actualChunkSize) {
+        throw new Error(
+          `chunk ${chunkIndex} size mismatch: expected ${actualChunkSize}, got ${blob.size}`
+        );
+      }
 
       if (blob.size === 0) {
         throw new Error(`分片 ${chunkIndex} 下载完成，但大小为0字节`);

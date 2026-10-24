@@ -1,11 +1,16 @@
 import { DownloadFile } from "../types";
 import { chunkStore, completeFileStore } from "./storage";
 import { debugError } from "./../../../shared/debugLogger";
+import SparkMD5 from "spark-md5";
 
 /**
- * 合并文件分片
+ * 合并文件分片（主线程回退路径，无 Worker 环境时使用）。
+ * expectedMd5 提供时增量计算合并后真实全量 md5 并比对（F5 合并终检）。
  */
-export const mergeFileChunks = async (file: DownloadFile): Promise<Blob> => {
+export const mergeFileChunks = async (
+  file: DownloadFile,
+  expectedMd5?: string
+): Promise<Blob> => {
   const totalChunks = file.totalChunks;
   const chunkKeys = Array.from(
     { length: totalChunks },
@@ -19,6 +24,20 @@ export const mergeFileChunks = async (file: DownloadFile): Promise<Blob> => {
       throw new Error(`分片 ${key} 不存在，无法合并文件`);
     }
     blobs.push(chunk);
+  }
+
+  if (expectedMd5) {
+    const spark = new SparkMD5.ArrayBuffer();
+    for (const chunk of blobs) {
+      const buf = await chunk.arrayBuffer();
+      spark.append(buf);
+    }
+    const actualMd5 = spark.end();
+    if (actualMd5 !== expectedMd5) {
+      throw new Error(
+        `file md5 verification failed: expected ${expectedMd5}, actual ${actualMd5}`
+      );
+    }
   }
 
   return new Blob(blobs, {

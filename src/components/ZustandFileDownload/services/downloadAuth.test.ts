@@ -34,9 +34,24 @@ describe("下载 Worker 分片请求鉴权（P0-1）", () => {
 
   beforeEach(() => {
     fetchMock.mockReset();
-    fetchMock.mockResolvedValue({
-      ok: true,
-      blob: async () => new Blob(["chunk-bytes"]),
+    // 真实还原服务端 206 + Content-Range 行为（F4 校验依赖），按 Range 返回对应大小的分片
+    fetchMock.mockImplementation(async (_url, init) => {
+      const headers = (init?.headers || {}) as Record<string, string>;
+      const m = /bytes=(\d+)-(\d+)/.exec(headers.Range || "");
+      const s = m ? Number(m[1]) : 0;
+      const e = m ? Number(m[2]) : 0;
+      const size = e - s + 1;
+      return {
+        ok: true,
+        status: 206,
+        headers: {
+          get: (h: string) =>
+            h.toLowerCase() === "content-range"
+              ? `bytes ${s}-${e}/100`
+              : null,
+        },
+        blob: async () => new Blob([new Uint8Array(Math.max(size, 0))]),
+      };
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(window, "postMessage").mockImplementation(() => undefined);
@@ -130,5 +145,27 @@ describe("下载 Worker 分片请求鉴权（P0-1）", () => {
     await vi.waitFor(() => {
       expect(postedTypes()).toContain("CHUNK_DOWNLOADED");
     });
+  });
+
+  it("F4：返回 200（非 206）时分片不会被判为成功", async () => {
+    fetchMock.mockImplementation(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      blob: async () => new Blob([new Uint8Array(100)]),
+    }));
+
+    dispatchStartDownload({
+      fileId: "file-no-206",
+      url: "https://cdn.example.com/api/file/download/file-no-206",
+      fileSize: 100,
+      chunkSize: 100,
+      totalChunks: 1,
+      pendingChunks: [0],
+    });
+
+    // 非 206 立即判失败并重试，短时间内不应出现 CHUNK_DOWNLOADED
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(postedTypes()).not.toContain("CHUNK_DOWNLOADED");
   });
 });

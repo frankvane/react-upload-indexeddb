@@ -21,6 +21,8 @@ export interface DownloadFile {
   fileSize: number;
   mimeType: string;
   fileType?: string;
+  /** 服务端返回的权威全量 md5（合并终检用，见 F5） */
+  md5?: string;
   totalChunks: number;
   chunkSize?: number;
   downloadedChunks?: number;

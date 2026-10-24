@@ -61,7 +61,7 @@ export class MergeService {
   }
 
   async mergeInMainThread(file: DownloadFile) {
-    const mergedBlob = await mergeFileChunks(file);
+    const mergedBlob = await mergeFileChunks(file, file.md5);
     await this.saveMergedBlob(file, mergedBlob);
   }
 }

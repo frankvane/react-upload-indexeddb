@@ -7,6 +7,7 @@
 ## 进度（已实现）
 
 > 第一批增量（2026-10-24）：工程地基 + P0 安全基线已落地，服务端测试 42/42 全过（Node 24）。
+> 第二批增量（2026-10-24）：P1 端到端完整性（F4 + F5 + S7）已落地，客户端测试 136 → **140** 全过（`verify:client` 全绿）。
 
 - [x] **E1** Node 版本锁定：根 + `server/` 加 `.nvmrc`(24) 与 `engines.node`
 - [x] **S1** 鉴权默认 `secure`（fail-closed）：`AUTH_MODE` 取代旧 `REQUIRE_FILE_AUTH`，默认挂载、`requireAuth:true`、无凭据即 `401`
@@ -17,6 +18,10 @@
 - [x] **S2** 秒传防污染：服务端以真实全量 md5 为权威去重键（杜绝 sample 哈希碰撞污染），合并后强制体积校验（`stat.size === 声明 size`）；full 模式仍校验声明 md5，sample 模式跳过声明比对但仍以真实全量 md5 落库
 - [x] **S3** 容量 / 分片数上限（DoS 防护）：`MAX_UPLOAD_SIZE_MB`（默认 5GB）/`MAX_CHUNKS`（默认 10 万）守卫（请求时读取），`index` 范围校验，超限请求在控制器入口被拒（不写盘）
 - [x] 服务端测试补 `cors-default.test.js` / `error-handler.test.js` / `upload-security.test.js`；functional 测试改 `AUTH_MODE=demo`；服务端 49/49 全过（Node 24）
+- [x] **S7** `auth.js`：Cookie `decodeURIComponent` try/catch + Bearer `timingSafeEqual` 定长比较 + `OPTIONS` 跳过鉴权（与第一批 S7 合并落地）
+- [x] **F4** 下载分片 206/Range 终检：`downloader.worker.ts` 要求 `status===206`、正则解析 `Content-Range`（`/^bytes (\d+)-(\d+)\/(?:\d+|\*)$/`）校验 `crStart===start && crEnd===end`、且 `blob.size===end-start+1`；不满足即失败触发重试（新增 `downloadAuth.test.ts` 负例：200 不判成功）
+- [x] **F5** 合并阶段字节级 md5 终检：`merger.worker.ts` / `mergeService.ts` 增量计算合并 Blob 全量 md5（复用 `spark-md5`），与列表 `md5` 比对；不一致抛错并保留分片供重试；无 `expectedMd5` 时跳过（向后兼容）。数据流：`list md5` → `api.client.ts metadata.md5` → `store/index.ts DownloadFile.md5` → `useFileDownloaderController` 透传 `expectedMd5` 进 `MERGE_FILE`。新增 `merger.integrity.test.ts`（正确/错误/缺失 md5 三态）
+- [x] 客户端测试补 `downloadAuth.test.ts`(F4 负例) / `merger.integrity.test.ts`(F5 三态)；`verify:client` 全绿：**140/140 测试** + lint 0 错误 + lib 构建通过 + client-contract passed
 
 ---
 
@@ -24,7 +29,7 @@
 
 | 套件 | 命令 | 结果 | 备注 |
 | --- | --- | --- | --- |
-| 客户端质量门禁 | `npm run verify:client` | ✅ 全绿 | lint 0 错误 · lib 构建通过 · **136/136 测试** · client-contract passed |
+| 客户端质量门禁 | `npm run verify:client` | ✅ 全绿 | lint 0 错误 · lib 构建通过 · **140/140 测试** · client-contract passed |
 | 服务端集成测试 | `server: npm test`（Node 24） | ✅ **39/39 通过** | 用编译 `better-sqlite3` 的 Node 24 运行 |
 | 服务端集成测试 | `server: npm test`（默认 Node 22） | ❌ 12/44（32 失败） | **纯环境问题**：`better-sqlite3` 原生二进制按 Node 24(ABI 137) 编译，当前默认 Node 22(ABI 127) 加载即 `ERR_DLOPEN_FAILED`，所有 DB 依赖用例崩在连接阶段；代码无回归 |
 

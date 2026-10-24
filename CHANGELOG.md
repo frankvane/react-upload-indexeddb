@@ -17,6 +17,11 @@
 - **S3 容量 / 分片数上限（DoS 防护）**：新增 `MAX_UPLOAD_SIZE_MB`（默认 5GB）、`MAX_CHUNKS`（默认 10 万）守卫（请求时读取，支持运行时配置），并在 `uploadChunk` 增加 `index` 范围校验；超限请求在控制器入口即被拒，不写盘。
 - **工程地基**：根与 `server/` 加 `.nvmrc`(24) + `engines.node`，锁定 Node 版本以消除 `better-sqlite3` 原生二进制 ABI 漂移导致的服务端子用例失败。
 
+### Integrity
+- **F4 下载分片 206/Range 终检**：`downloader.worker.ts` 现要求 `status===206`、解析并校验 `Content-Range`（`crStart===start && crEnd===end`）且 `blob.size===end-start+1`；代理忽略 Range 返回 200 全量或范围错位时，Worker 报错触发重试，不再静默写入损坏分片。
+- **F5 合并字节级 md5 终检**：`merger.worker.ts` / `mergeService.ts` 对合并后 Blob 增量计算全量 md5（复用 `spark-md5`），与文件列表 `md5` 比对；不一致即标记失败并保留分片供重试，杜绝"看起来成功"的静默损坏；无 `expectedMd5` 时跳过（向后兼容）。
+- 数据流贯通：文件列表 `md5` → `api.client.ts metadata.md5` → `store/index.ts DownloadFile.md5` → `useFileDownloaderController` 透传 `expectedMd5` 进 `MERGE_FILE`。
+
 ## [3.0.0] - 2026-10-24
 
 ### Removed

@@ -144,6 +144,7 @@ export const useDownloadStore = create<DownloadState>()(
                 progress: 0,
                 status: DownloadStatus.IDLE,
                 chunkSize,
+                md5: file.metadata?.md5,
               };
             });
 

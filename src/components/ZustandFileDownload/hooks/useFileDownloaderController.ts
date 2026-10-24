@@ -166,6 +166,7 @@ export const useFileDownloader = () => {
               totalChunks: file.totalChunks,
               mimeType: file.mimeType,
               chunks,
+              expectedMd5: file.md5,
             },
           });
           return;
