@@ -34,6 +34,7 @@
 ### Fixed
 - **内置 `Modal` 忽略 `open` 导致弹层常驻**：自定义 `Modal` 此前完全忽略 `open` 始终渲染，调用方无法隐藏（"简化模式"上传弹层无法关闭）。`ModalInner` 现尊重 `open`，关闭时不渲染弹层
 - **`SimpleUploadList` 三处类型错误**（此前未进入 tsc 程序而隐藏）：`removeUploadFilesByIds` 漏传 `storage`/`fileRegistry` 两参（现取自 `createUploadStorage()`/`createFileRegistry()`，与内部默认上传实例同 DB/store）；`Modal` 误用不支持的 `destroyOnHidden`（改用条件显隐 + `open`）；`Typography.Paragraph` 误用不支持的 `type`（改用 `--rui-text-secondary` 着色）。相应单测断言同步更新为三参
+- **`ZustandFileDownload` 的 UI/行为 props 从未生效**：生效优先级为 Store > Context，而下载 store 默认 `showStorageStats/showNetworkStatus: true`、`autoStart: false` 且无人调用对应 setter——消费方传入的 `autoStart`/`showProgress`/`showStorageStats`/`showNetworkStatus` 被 store 默认值永远覆盖（`SimpleDownloadList` 的"简化"因此不生效）。现组件挂载/props 变化时把显式传入的这四项同步进 store；未传的项保持 store 现值，运行时修改不被重置
 
 ## [2.0.0] - 2026-10-24
 

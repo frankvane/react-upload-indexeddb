@@ -49,8 +49,38 @@ const InnerDownloadComponent: React.FC = () => {
 
 const ZustandFileDownload: React.FC<ZustandFileDownloadProps> = (props) => {
   const { getStorageUsage } = useStorageManager();
+  const setAutoStart = useDownloadStore((state) => state.setAutoStart);
+  const setShowProgress = useDownloadStore((state) => state.setShowProgress);
+  const setShowStorageStats = useDownloadStore(
+    (state) => state.setShowStorageStats
+  );
+  const setShowNetworkStatus = useDownloadStore(
+    (state) => state.setShowNetworkStatus
+  );
 
   useNetworkDetection();
+
+  // UI/行为类 props 同步进 store：生效优先级是 Store > Context，
+  // 不同步的话消费方传入的 autoStart/showProgress/showStorageStats/
+  // showNetworkStatus 会被 store 默认值（true/false）永远覆盖（props 形同虚设）。
+  // 仅在显式传入时同步，未传的保持 store 现值（运行时修改不被重置）。
+  useEffect(() => {
+    if (props.autoStart !== undefined) setAutoStart(props.autoStart);
+    if (props.showProgress !== undefined) setShowProgress(props.showProgress);
+    if (props.showStorageStats !== undefined)
+      setShowStorageStats(props.showStorageStats);
+    if (props.showNetworkStatus !== undefined)
+      setShowNetworkStatus(props.showNetworkStatus);
+  }, [
+    props.autoStart,
+    props.showProgress,
+    props.showStorageStats,
+    props.showNetworkStatus,
+    setAutoStart,
+    setShowProgress,
+    setShowStorageStats,
+    setShowNetworkStatus,
+  ]);
 
   useEffect(() => {
     configureDownloadApi({
