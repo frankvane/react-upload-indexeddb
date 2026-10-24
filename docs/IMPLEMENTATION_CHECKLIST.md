@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | 1 | 长列表渲染优化（content-visibility） | 一·高 | S | ✅ 已实施 |
 | 2 | NetworkStatusBadge 拆分瘦身 | 二·中 | M | ✅ 已实施（面板抽至 NetworkStatusPanel.tsx） |
-| 3 | 两个 Controller 编排/业务拆分 | 二·中 | M | ☐ |
+| 3 | 两个 Controller 编排/业务拆分 | 二·中 | M | ✅ 已实施 |
 | 4 | 可关闭 debug logger 替换 console.* | 二·中 | M | ✅ 已实施 |
 | 5 | 修正 vite.lib.config.ts 过时注释 | 二·中 | S | ✅ 已实施 |
 | 6 | 列表行 memo + 派生布尔选择器 | 三·低 | S | ✅ 已实施 |
@@ -72,8 +72,18 @@
 
 > 注：徽章保留的 compact/tooltip `renderContent` 属徽章本体展示，故未硬压到 120 行；核心收益（面板逻辑解耦）已达成。
 
-### #3 两个 Controller 编排/业务拆分
+### ✅ #3 两个 Controller 编排/业务拆分
 **问题**：`useBatchUploaderController.ts`(709) 与 `useFileDownloaderController.ts`(466) 编排（worker 生命周期/监听）与业务（策略计算/状态变换）混杂（分析 §6.1 / §10-#3）。
+
+**已实施（2026-10-24）**：按"Lifecycle（编排）/ Policy（业务）"两类职责拆分，原 hook 作为只做编排的薄壳，公开签名与返回值 100% 不变（`useBatchUploader`/`BatchUploaderActions`/`useFileDownloader` 均经 `verify:client` + client-contract 校验）。
+
+**新增文件（均 ≤400 行）**
+- `ZustandFileUpload/hooks/uploadPolicy.ts`：纯函数 `BatchInfo` reducer（`createInitialBatchInfo`/`applyBeforeEach`/`applySettled`/`applyFinalized`/`withClearedCountdown`）+ `classifyUploadResult`（worker 结果 → 状态机分支判别），无 React/engine 副作用。
+- `ZustandFileUpload/hooks/useUploaderLifecycle.ts`：抽出 abort 会话、刷新节流调度、autoCleanup + 卸载销毁两个 effect 与 `cleanupPolicy` 创建，返回编排句柄。
+- `ZustandFileDownload/hooks/downloadPolicy.ts`：纯函数 `normalizeDownloadFile` + `buildStartDownloadMessage` + `buildUpdateConcurrencyMessage`。
+- `ZustandFileDownload/hooks/useDownloaderLifecycle.ts`：抽出 download/merge worker 创建、onmessage 路由与 terminate 清理 effect，返回两个 worker ref。
+
+**验证**：`npm run verify:client` 全绿（lint 0 / lib build / 130 测试 / client-contract）；公开 API 零变化。
 
 **涉及文件**
 - `src/components/ZustandFileUpload/hooks/useBatchUploaderController.ts`

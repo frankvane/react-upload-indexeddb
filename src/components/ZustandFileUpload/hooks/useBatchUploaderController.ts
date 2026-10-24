@@ -1,26 +1,21 @@
 ﻿import { UploadFile, UploadStatus } from "../types/upload";
-import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import { UploadCleanupPolicy } from "../services/cleanupPolicy";
 import { loadAllUploadFiles, runConcurrentQueue } from "../services/uploadOrchestrator";
 import { useUploadStore } from "../store/upload";
-import { useUploadEngine, type UploadEngine } from "../context/UploadEngineContext";
+import { useUploadEngine } from "../context/UploadEngineContext";
 import { useEffectiveUploadConfig } from "./useEffectiveConfig";
 import { useShallow } from "zustand/react/shallow";
 import { isUploadableStatus } from "../services/uploadStorage";
 import { resolveAuthHeaders } from "../utils/auth";
-
-const createCleanupPolicy = (engine: UploadEngine) =>
-  new UploadCleanupPolicy({
-    getFiles: () => engine.store.getState().files,
-    setFiles: (files) => engine.store.getState().setFiles(files),
-    refreshFiles: () => engine.store.getState().refreshFiles(),
-    setBatchInfo: (updater) => engine.store.getState().setBatchInfo(updater),
-    clearBatchInfo: () => engine.store.getState().setBatchInfo(null),
-    getCleanupDelay: () => engine.store.getState().cleanupDelay,
-    storage: engine.storage,
-    fileRegistry: engine.fileRegistry,
-  });
+import {
+  applyBeforeEach,
+  applyFinalized,
+  applySettled,
+  classifyUploadResult,
+  createInitialBatchInfo,
+  isUploadSuccessKind,
+} from "./uploadPolicy";
+import { useUploaderLifecycle } from "./useUploaderLifecycle";
 
 export interface RetrySummary {
   success: boolean;
@@ -79,113 +74,19 @@ export function useBatchUploader(): BatchUploaderActions {
   const messageApi = getMessageApi();
   const engine = useUploadEngine();
 
-  const cleanupPolicy = useMemo(() => createCleanupPolicy(engine), [engine]);
-  const activeUploadAbortRef = useRef<AbortController | null>(null);
-  const bootstrapAutoCleanupTimerRef = useRef<number | null>(null);
-  const refreshTimerRef = useRef<number | null>(null);
-  const isRefreshingRef = useRef(false);
-  const queuedRefreshRef = useRef(false);
-
-  const flushRefresh = useCallback(async () => {
-    if (isRefreshingRef.current) {
-      queuedRefreshRef.current = true;
-      return;
-    }
-
-    isRefreshingRef.current = true;
-    try {
-      await refreshFiles();
-    } finally {
-      isRefreshingRef.current = false;
-      if (queuedRefreshRef.current) {
-        queuedRefreshRef.current = false;
-        void flushRefresh().catch(() => undefined);
-      }
-    }
-  }, [refreshFiles]);
-
-  const scheduleRefresh = useCallback(
-    (delay = 120) => {
-      if (refreshTimerRef.current !== null) {
-        return;
-      }
-
-      refreshTimerRef.current = window.setTimeout(() => {
-        refreshTimerRef.current = null;
-        void flushRefresh().catch(() => undefined);
-      }, delay);
-    },
-    [flushRefresh]
-  );
-
-  const beginBatchSession = useCallback(() => {
-    const existingController = activeUploadAbortRef.current;
-    if (existingController && !existingController.signal.aborted) {
-      existingController.abort();
-    }
-
-    const controller = new AbortController();
-    activeUploadAbortRef.current = controller;
-    return controller;
-  }, []);
-
-  const endBatchSession = useCallback((controller: AbortController) => {
-    if (activeUploadAbortRef.current === controller) {
-      activeUploadAbortRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      const activeController = activeUploadAbortRef.current;
-      if (activeController && !activeController.signal.aborted) {
-        activeController.abort();
-      }
-      activeUploadAbortRef.current = null;
-
-      if (bootstrapAutoCleanupTimerRef.current !== null) {
-        clearTimeout(bootstrapAutoCleanupTimerRef.current);
-        bootstrapAutoCleanupTimerRef.current = null;
-      }
-
-      if (refreshTimerRef.current !== null) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-
-      queuedRefreshRef.current = false;
-      cleanupPolicy.dispose();
-    };
-  }, [cleanupPolicy]);
-
-  useEffect(() => {
-    if (!uploadConfig.autoCleanup) {
-      if (bootstrapAutoCleanupTimerRef.current !== null) {
-        clearTimeout(bootstrapAutoCleanupTimerRef.current);
-        bootstrapAutoCleanupTimerRef.current = null;
-      }
-      cleanupPolicy.dispose();
-      setBatchInfo((prev) => {
-        if (!prev) {
-          return null;
-        }
-        return {
-          ...prev,
-          countdown: undefined,
-        };
-      });
-      return;
-    }
-
-    if (bootstrapAutoCleanupTimerRef.current !== null) {
-      return;
-    }
-
-    bootstrapAutoCleanupTimerRef.current = window.setTimeout(() => {
-      bootstrapAutoCleanupTimerRef.current = null;
-      void cleanupPolicy.cleanupUploadedFiles();
-    }, 2000);
-  }, [uploadConfig.autoCleanup, cleanupPolicy, setBatchInfo]);
+  const {
+    cleanupPolicy,
+    activeUploadAbortRef,
+    beginBatchSession,
+    endBatchSession,
+    flushRefresh,
+    scheduleRefresh,
+  } = useUploaderLifecycle({
+    engine,
+    refreshFiles,
+    setBatchInfo,
+    autoCleanup: uploadConfig.autoCleanup,
+  });
 
   const processFileUpload = async (
     file: UploadFile,
@@ -254,8 +155,9 @@ export function useBatchUploader(): BatchUploaderActions {
     });
 
     const latest = (await engine.storage.getItem<UploadFile>(file.id)) ?? file;
+    const kind = classifyUploadResult(result);
 
-    if (result.cancelled || signal?.aborted) {
+    if (kind.kind === "cancelled") {
       // 取消语义：状态回 QUEUED 可重新入队（保留 fileRef 以便后续重传/续传）
       latest.status = UploadStatus.QUEUED;
       latest.errorMessage = undefined;
@@ -265,7 +167,7 @@ export function useBatchUploader(): BatchUploaderActions {
       return false;
     }
 
-    if (result.paused) {
+    if (kind.kind === "paused") {
       // T3.3：分片边界暂停，状态置 PAUSED；保留 fileRef 以便续传，
       // 记录已上传分片索引（pausedChunks）供 UI 展示。
       latest.status = UploadStatus.PAUSED;
@@ -273,9 +175,9 @@ export function useBatchUploader(): BatchUploaderActions {
         engine.store.getState().progressMap[file.id] ?? latest.progress ?? 0;
       latest.errorMessage = undefined;
       latest.awaitingReselect = false;
-      if (typeof result.pausedChunks === "number" && result.pausedChunks > 0) {
+      if (typeof kind.pausedChunks === "number" && kind.pausedChunks > 0) {
         latest.pausedChunks = Array.from(
-          { length: result.pausedChunks },
+          { length: kind.pausedChunks },
           (_, k) => k
         );
       }
@@ -284,8 +186,8 @@ export function useBatchUploader(): BatchUploaderActions {
       return false;
     }
 
-    if (result.success) {
-      latest.status = result.skipped ? UploadStatus.INSTANT : UploadStatus.DONE;
+    if (isUploadSuccessKind(kind)) {
+      latest.status = kind.skipped ? UploadStatus.INSTANT : UploadStatus.DONE;
       latest.progress = 100;
       latest.errorMessage = undefined;
       // 上传完成：释放文件引用，避免 File 句柄长期驻留
@@ -299,12 +201,13 @@ export function useBatchUploader(): BatchUploaderActions {
       return true;
     }
 
+    // 失败分支
     latest.status = UploadStatus.ERROR;
-    latest.errorMessage = result.errorMessage ?? "上传失败";
+    latest.errorMessage = kind.message;
     await engine.storage.setItem(file.id, latest);
     scheduleRefresh();
 
-    uploadConfig.onUploadError?.(latest, latest.errorMessage);
+    uploadConfig.onUploadError?.(latest, kind.message);
     return false;
   };
 
@@ -315,35 +218,12 @@ export function useBatchUploader(): BatchUploaderActions {
     setIsUploading(false);
     await flushRefresh();
 
-    const pending = cleanupPolicy.pendingCount();
-
-    setBatchInfo((prev) => {
-      if (!prev) {
-        return {
-          current: total,
-          total,
-          queued: 0,
-          active: 0,
-          completed: summary.successCount,
-          failed: summary.failedCount,
-          retried: 0,
-          countdown: uploadConfig.cleanupDelay,
-        };
-      }
-
-      return {
-        ...prev,
-        current: total,
-        total,
-        queued: 0,
-        active: 0,
-        completed: summary.successCount,
-        failed: summary.failedCount,
-        countdown: uploadConfig.autoCleanup
-          ? uploadConfig.cleanupDelay
-          : undefined,
-      };
-    });
+    setBatchInfo((prev) =>
+      applyFinalized(prev, summary, total, {
+        autoCleanup: uploadConfig.autoCleanup,
+        cleanupDelay: uploadConfig.cleanupDelay,
+      })
+    );
 
     uploadConfig.onBatchComplete?.({
       success: summary.successCount,
@@ -351,7 +231,7 @@ export function useBatchUploader(): BatchUploaderActions {
       total,
     });
 
-    if (uploadConfig.autoCleanup && pending > 0) {
+    if (uploadConfig.autoCleanup && cleanupPolicy.pendingCount() > 0) {
       cleanupPolicy.scheduleCleanup(uploadConfig.cleanupDelay);
     }
   };
@@ -376,15 +256,7 @@ export function useBatchUploader(): BatchUploaderActions {
 
     uploadConfig.onUploadStart?.(uploadableFiles);
 
-    setBatchInfo({
-      current: 0,
-      total: uploadableFiles.length,
-      queued: uploadableFiles.length,
-      active: 0,
-      completed: 0,
-      failed: 0,
-      retried: 0,
-    });
+    setBatchInfo(createInitialBatchInfo(uploadableFiles.length));
 
     try {
       const summary = await runConcurrentQueue({
@@ -401,17 +273,7 @@ export function useBatchUploader(): BatchUploaderActions {
           await engine.storage.setItem(file.id, file);
           scheduleRefresh();
 
-          setBatchInfo((prev) => {
-            if (!prev) {
-              return null;
-            }
-
-            return {
-              ...prev,
-              queued: Math.max(0, prev.queued - 1),
-              active: prev.active + 1,
-            };
-          });
+          setBatchInfo(applyBeforeEach);
         },
         task: (file) => processFileUpload(file, batchController.signal),
         onSettled: async ({ success }) => {
@@ -419,20 +281,7 @@ export function useBatchUploader(): BatchUploaderActions {
             return;
           }
 
-          setBatchInfo((prev) => {
-            if (!prev) {
-              return null;
-            }
-
-            return {
-              ...prev,
-              current: prev.current + 1,
-              active: Math.max(0, prev.active - 1),
-              completed: success ? prev.completed + 1 : prev.completed,
-              failed: success ? prev.failed : prev.failed + 1,
-            };
-          });
-
+          setBatchInfo((prev) => applySettled(prev, success));
           scheduleRefresh();
         },
       });
@@ -611,15 +460,7 @@ export function useBatchUploader(): BatchUploaderActions {
 
     const batchController = beginBatchSession();
     setIsUploading(true);
-    setBatchInfo({
-      current: 0,
-      total: failedFiles.length,
-      queued: failedFiles.length,
-      active: 0,
-      completed: 0,
-      failed: 0,
-      retried: failedFiles.length,
-    });
+    setBatchInfo(createInitialBatchInfo(failedFiles.length, failedFiles.length));
 
     try {
       const summary = await runConcurrentQueue({
@@ -636,17 +477,7 @@ export function useBatchUploader(): BatchUploaderActions {
           file.errorMessage = undefined;
           await engine.storage.setItem(file.id, file);
 
-          setBatchInfo((prev) => {
-            if (!prev) {
-              return null;
-            }
-
-            return {
-              ...prev,
-              queued: Math.max(0, prev.queued - 1),
-              active: prev.active + 1,
-            };
-          });
+          setBatchInfo(applyBeforeEach);
         },
         task: (file) => processFileUpload(file, batchController.signal),
         onSettled: ({ success }) => {
@@ -654,19 +485,7 @@ export function useBatchUploader(): BatchUploaderActions {
             return;
           }
 
-          setBatchInfo((prev) => {
-            if (!prev) {
-              return null;
-            }
-
-            return {
-              ...prev,
-              current: prev.current + 1,
-              active: Math.max(0, prev.active - 1),
-              completed: success ? prev.completed + 1 : prev.completed,
-              failed: success ? prev.failed : prev.failed + 1,
-            };
-          });
+          setBatchInfo((prev) => applySettled(prev, success));
         },
       });
 
@@ -706,4 +525,3 @@ export function useBatchUploader(): BatchUploaderActions {
     pendingCleanupCount: () => cleanupPolicy.pendingCount(),
   };
 }
-

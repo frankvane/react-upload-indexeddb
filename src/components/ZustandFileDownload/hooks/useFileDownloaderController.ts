@@ -1,9 +1,6 @@
-﻿import * as apiClient from "../api.client";
-
-import { DownloadFile, DownloadStatus } from "../types";
+﻿import { DownloadFile, DownloadStatus } from "../types";
 import { completeFileStore, exportFileToLocal, fileStore } from "../utils";
-import { createDownloadWorker, createMergeWorker } from "../worker";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { resolveAuthHeaders } from "../../../shared/authHeaders";
 
 import { ChunkPersistenceService } from "../services/chunkPersistenceService";
@@ -19,6 +16,12 @@ import { useDownloadStore } from "../store";
 import { useDownloadContext } from "../context/useDownloadContext";
 import { useStorageManager } from "./useStorageManager";
 import { useShallow } from "zustand/react/shallow";
+import {
+  buildStartDownloadMessage,
+  buildUpdateConcurrencyMessage,
+  normalizeDownloadFile,
+} from "./downloadPolicy";
+import { useDownloaderLifecycle } from "./useDownloaderLifecycle";
 
 export const useFileDownloader = () => {
   const {
@@ -47,13 +50,14 @@ export const useFileDownloader = () => {
 
   const { getStorageUsage } = useStorageManager();
 
-  const downloadWorkerRef = useRef<Worker | null>(null);
-  const mergeWorkerRef = useRef<Worker | null>(null);
-  const lastProgressUpdate = useRef<Record<string, { time: number; progress: number }>>({});
+  const lastProgressUpdate = useRef<
+    Record<string, { time: number; progress: number }>
+  >({});
 
   const [processingFiles, setProcessingFiles] = useState<Set<string>>(new Set());
 
   const chunkService = useMemo(() => new ChunkPersistenceService(), []);
+
   const mergeService = useMemo(
     () =>
       new MergeService({
@@ -110,6 +114,17 @@ export const useFileDownloader = () => {
       }),
     [chunkService, mergeService, removeProcessing, updateFile]
   );
+
+  // 生命周期：download / merge worker 的创建、消息路由与卸载销毁。
+  const { downloadWorkerRef, mergeWorkerRef } = useDownloaderLifecycle({
+    onProgress: handleDownloadProgress,
+    onChunkDownloaded: handleChunkDownloaded,
+    onComplete: downloadEventHandlers.handleDownloadComplete,
+    onError: downloadEventHandlers.handleDownloadError,
+    onPaused: downloadEventHandlers.handleDownloadPaused,
+    onMergeComplete: downloadEventHandlers.handleMergeComplete,
+    onMergeError: downloadEventHandlers.handleMergeError,
+  });
 
   const mergeFile = useCallback(
     async (file: DownloadFile) => {
@@ -171,7 +186,7 @@ export const useFileDownloader = () => {
         message.error(`合并文件失败: ${err instanceof Error ? err.message : "未知错误"}`);
       }
     },
-    [addProcessing, chunkService, mergeService, processingFiles, removeProcessing, updateFile]
+    [addProcessing, chunkService, mergeService, processingFiles, removeProcessing, updateFile, mergeWorkerRef]
   );
 
   const startDownload = useCallback(
@@ -188,21 +203,18 @@ export const useFileDownloader = () => {
 
         await Promise.all([fileStore.ready(), chunkService.ensureReady()]);
 
-        const finalChunkSize = file.chunkSize || storeChunkSize || 5 * 1024 * 1024;
-        const calculatedTotalChunks = Math.ceil(file.fileSize / finalChunkSize);
+        const { normalizedFile, finalChunkSize } = normalizeDownloadFile(
+          file,
+          storeChunkSize
+        );
 
         const filePatch: Partial<DownloadFile> = {};
-        if (!file.chunkSize || file.chunkSize !== finalChunkSize) {
-          filePatch.chunkSize = finalChunkSize;
+        if (normalizedFile.chunkSize !== file.chunkSize) {
+          filePatch.chunkSize = normalizedFile.chunkSize;
         }
-        if (file.totalChunks !== calculatedTotalChunks) {
-          filePatch.totalChunks = calculatedTotalChunks;
+        if (normalizedFile.totalChunks !== file.totalChunks) {
+          filePatch.totalChunks = normalizedFile.totalChunks;
         }
-
-        const normalizedFile: DownloadFile =
-          Object.keys(filePatch).length > 0
-            ? { ...file, ...filePatch }
-            : file;
 
         if (Object.keys(filePatch).length > 0) {
           updateFile(file.id, filePatch);
@@ -254,29 +266,23 @@ export const useFileDownloader = () => {
           authScheme,
         });
 
-        downloadWorkerRef.current.postMessage({
-          type: "START_DOWNLOAD",
-          payload: {
+        downloadWorkerRef.current.postMessage(
+          buildStartDownloadMessage({
             fileId: file.id,
-            url: apiClient.createDownloadUrl(file.id),
             fileSize: file.fileSize,
-            chunkSize: finalChunkSize,
+            finalChunkSize,
             totalChunks: normalizedFile.totalChunks,
             pendingChunks,
             fileConcurrency,
             chunkConcurrency,
             authHeaders,
             withCredentials,
-          },
-        });
+          })
+        );
 
-        downloadWorkerRef.current.postMessage({
-          type: "UPDATE_CONCURRENCY",
-          payload: {
-            fileConcurrency,
-            chunkConcurrency,
-          },
-        });
+        downloadWorkerRef.current.postMessage(
+          buildUpdateConcurrencyMessage(fileConcurrency, chunkConcurrency)
+        );
       } catch (err) {
         updateFile(file.id, {
           status: DownloadStatus.ERROR,
@@ -286,7 +292,7 @@ export const useFileDownloader = () => {
         message.error(`开始下载失败: ${err instanceof Error ? err.message : "未知错误"}`);
       }
     },
-    [addAbortController, addProcessing, authScheme, authToken, chunkService, getAuthHeaders, getAuthToken, mergeFile, removeProcessing, updateFile, withCredentials]
+    [addAbortController, addProcessing, authScheme, authToken, chunkService, getAuthHeaders, getAuthToken, mergeFile, removeProcessing, updateFile, withCredentials, downloadWorkerRef]
   );
 
   const pauseDownload = useCallback(
@@ -310,7 +316,7 @@ export const useFileDownloader = () => {
       updateFile(fileId, { status: DownloadStatus.PAUSED, error: undefined });
       message.info(`正在暂停下载 ${file.fileName}...`);
     },
-    [abortControllers, removeAbortController, updateFile]
+    [abortControllers, removeAbortController, updateFile, downloadWorkerRef]
   );
 
   const resumeDownload = useCallback(
@@ -375,7 +381,7 @@ export const useFileDownloader = () => {
         void getStorageUsage(true);
       }
     },
-    [abortControllers, chunkService, getStorageUsage, removeAbortController, removeProcessing, updateFile]
+    [abortControllers, chunkService, getStorageUsage, removeAbortController, removeProcessing, updateFile, downloadWorkerRef]
   );
 
   const deleteFile = useCallback(
@@ -409,48 +415,6 @@ export const useFileDownloader = () => {
     [processingFiles, removeProcessing]
   );
 
-  useEffect(() => {
-    const downloadWorker = createDownloadWorker();
-    const mergeWorker = createMergeWorker();
-
-    downloadWorkerRef.current = downloadWorker;
-    mergeWorkerRef.current = mergeWorker;
-
-    downloadWorker.onmessage = async (event) => {
-      const { type, payload } = event.data;
-
-      if (type === "PROGRESS") {
-        handleDownloadProgress(payload);
-      } else if (type === "CHUNK_DOWNLOADED") {
-        await handleChunkDownloaded(payload);
-      } else if (type === "COMPLETE") {
-        await downloadEventHandlers.handleDownloadComplete(payload);
-      } else if (type === "ERROR") {
-        downloadEventHandlers.handleDownloadError(payload);
-      } else if (type === "PAUSED") {
-        await downloadEventHandlers.handleDownloadPaused(payload);
-      }
-    };
-
-    mergeWorker.onmessage = async (event) => {
-      const { type, payload } = event.data;
-      if (type === "MERGE_COMPLETE") {
-        await downloadEventHandlers.handleMergeComplete(payload);
-      } else if (type === "ERROR") {
-        downloadEventHandlers.handleMergeError(payload);
-      }
-    };
-
-    return () => {
-      downloadWorker.terminate();
-      mergeWorker.terminate();
-    };
-  }, [
-    downloadEventHandlers,
-    handleChunkDownloaded,
-    handleDownloadProgress,
-  ]);
-
   return {
     startDownload,
     pauseDownload,
@@ -463,4 +427,3 @@ export const useFileDownloader = () => {
     processingFiles: Array.from(processingFiles),
   };
 };
-
