@@ -91,8 +91,8 @@
 | F3 | Worker 对任意 URL 携带鉴权头（SSRF/泄漏风险） | 下载 URL 做同源/白名单校验，非白名单目标剥离鉴权头 | token 不会发往任意域名 |
 | F6 | 无 ErrorBoundary，懒加载失败整页白屏 | 外层加 `ErrorBoundary` + "刷新/重载资源"兜底 | 旧 chunk 404/网络抖动不再整页白屏 |
 | S5 | 缺安全响应头与指纹收敛 | 引入 `helmet()`、`app.disable('x-powered-by')`、补自定义 404 | 响应带标准安全头 |
-| S10 | 缩略图 URL 无对应静态路由（功能缺陷，必然 404） | 新增受控缩略图路由（带鉴权、`Content-Disposition: inline`，仅图片） | 缩略图可正常返回 |
-| S11 | Range 解析不完整（多段被误判单段） | 只支持单段并显式拒绝多段，补标准 `Content-Range: bytes */size` 响应头 | 多段 Range 返回 416 且头正确 |
+| S10 | 缩略图 URL 无对应静态路由（功能缺陷，必然 404） | 新增受控缩略图路由（带鉴权、`Content-Disposition: inline`，仅图片）；真实生成待无 CVE thumbnailer（**不装 sharp**，因其 libvips/libheif/librsvg 高危 CVE 与 D1 门禁冲突） | 路由已就绪：实体缺失 404、非图片 403、非法 id 404 ✅ 已完成 |
+| S11 | Range 解析不完整（多段被误判单段） | 只支持单段并显式拒绝多段，补标准 `Content-Range: bytes */size` 响应头；非法 Range（越界/负数/起点>终点）同样返回标准 416 + 该头（此前走 jsonError 不带头，已对齐） | 多段 Range / 非法 Range 均返回 416 且头正确 ✅ 已完成 |
 | F7 | 调试日志无上限，生产仍 `console.log` | `useDebugLogger` 限长环形（如 500 条）；生产关闭 `console.log` | 长会话内存不再持续上涨 |
 | F8 | 分片重试 off-by-one、文件级重试不重置 | `>` 改 `>=`；批次全部成功后 `retryAttempts` 归零 | 允许次数准确；3 次偶发失败不再整文件中止 |
 | F9 | 入口 HTML 无 CSP 等安全头 | README 提示宿主设置 CSP/`nosniff`/`frame-ancestors`，给出与 Worker(`worker-src blob:`)、内联样式兼容的示例 | 文档含可复制策略 |

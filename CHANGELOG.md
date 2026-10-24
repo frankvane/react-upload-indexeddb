@@ -27,6 +27,10 @@
 - **E3 端到端冒烟**：新增 `server/e2e/smoke.mjs`，用 Node 原生 `fetch`/`FormData` 驱动真实服务端 API（无需 Playwright 浏览器），一条命令跑通"生成随机文件→分片上传→合并→列表→分片 Range 下载（镜像 F4：206 + Content-Range + 字节数校验）→重组→整文件下载交叉校验→md5 比对"，验证全链路不损坏。服务端数据目录经 `SERVER_DATA_DIR` 等 env 隔离到临时目录、`AUTH_MODE=demo`；子进程复用 `process.execPath`（建议 Node 24）。`server` 的 `e2e` 脚本 + `verify`（串联 `test && e2e`）已接 CI。
 - **D1 依赖安全升级**：`axios` 1.9.0→1.20.0（清除生产**关键**漏洞 `form-data` 不安全随机边界 + `follow-redirects` 跨域头泄漏）、`express` 4.21.2→4.22.3（清除 `proxy-addr` **关键** IP 伪造 + `qs` 中危 DoS）；`sequelize` 保持 6.x 不变（其传递的 `uuid` 中危只能经 `npm audit fix --force` 降级到 sequelize 3.x 修复，按 D1 决策禁止破坏性降级，故保留为中危残留）。`npm audit fix`（安全、非 `--force`）清除 dev 传递漏洞（ws/picomatch/minimatch/js-yaml/brace-expansion/flatted 等）。结果：根生产依赖 **0 漏洞**，server 生产仅剩 3 个中危（sequelize/uuid，CI 以 `--audit-level=high` 放行）。CI 新增生产依赖审计门禁（client `npm audit --omit=dev`；server `--omit=dev --audit-level=high`）。
 
+### Robustness
+- **S11 多段 Range 显式拒绝**：`downloadController.downloadFile` 仅支持单段 `Range`；遇到含逗号的多段请求（`bytes=0-4,6-9`）一律返回标准 `416` + `Content-Range: bytes */size` + `Accept-Ranges: bytes`，避免被误判为单段而返回错误字节区间。非法 Range（起点/终点越界、负数、起点>终点）同样返回标准 `416` + `Content-Range: bytes */size`（此前走 `jsonError` 不带该头，与多段分支行为不一致，已对齐）。新增 `server/tests/range-thumbnail.test.js`（6 用例）覆盖单段 206 + Content-Range + 字节、多段 416、无 Range 整文件 200、非法 Range 416、缩略图 404、非法 id 404；服务端单测 49→55 全绿，覆盖率门禁（行80/分支65/函数80）与 E3 e2e 仍通过。
+- **S10 缩略图路由就绪（待 CVE-free thumbnailer）**：新增 `GET /api/file/thumbnail/:file_id`（`downloadController.downloadThumbnail`），与主文件同目录按 `${baseNoExt}_thumb${ext}` 解析缩略图实体，实体缺失返回 `404`、非图片返回 `403`、非法 id 直接 `404`（不扫描目录，沿用 P1-14 口径）。**重要安全取舍**：真实缩略图生成依赖 `sharp`，但 `sharp` 自带 libvips/libheif/librsvg 的高危 CVE（与 D1 刚建立的"生产 0 高/危" + CI `--audit-level=high` 门禁冲突），故**不安装 `sharp`**，路由保持优雅 404 直到出现无 CVE 的 thumbnailer。生成端 `uploadController.buildThumbnailName` 的命名约定已在控制器内对齐，后续接入 thumbnailer 时无需改路由。
+
 ## [3.0.0] - 2026-10-24
 
 ### Removed

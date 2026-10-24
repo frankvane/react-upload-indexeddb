@@ -271,6 +271,57 @@ const findFileById = async (fileId) => {
   };
 };
 
+exports.downloadThumbnail = async (req, res) => {
+  try {
+    const { file_id } = req.params;
+    if (!file_id) {
+      return jsonError(res, 400, "missing file_id");
+    }
+    // 与 downloadFile 相同：非法 id 直接 404，不做目录扫描（P1-14）
+    if (!FILE_ID_PATTERN.test(file_id)) {
+      return jsonError(res, 404, "thumbnail not found");
+    }
+
+    const found = await findFileById(file_id);
+    if (!found || !found.filePath) {
+      return jsonError(res, 404, "thumbnail not found");
+    }
+
+    // 缩略图与主文件同目录，命名规则与 uploadController.buildThumbnailName 一致：
+    // `${baseNoExt}_thumb${ext}`。仅当实体存在且为图片时才返回。
+    const dir = path.dirname(found.filePath);
+    const base = path.basename(found.filePath);
+    const ext = path.extname(base);
+    const baseNoExt = ext ? base.slice(0, -ext.length) : base;
+    const thumbName = ext ? `${baseNoExt}_thumb${ext}` : `${baseNoExt}_thumb`;
+    const thumbPath = path.join(dir, thumbName);
+
+    const stats = await readFileStats(thumbPath);
+    if (!stats) {
+      return jsonError(res, 404, "thumbnail not found");
+    }
+
+    const thumbType = getFileType(thumbName);
+    if (!thumbType.startsWith("image/")) {
+      return jsonError(res, 403, "not an image");
+    }
+
+    // 鉴权由 /api/file 上的 auth 中间件统一保障；此处仅以 inline 方式返回图片。
+    res.setHeader("Content-Length", stats.size);
+    res.setHeader("Content-Type", thumbType);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(thumbName)}`,
+    );
+    const stream = fs.createReadStream(thumbPath);
+    req.on("close", () => stream.destroy());
+    stream.pipe(res);
+  } catch (error) {
+    return jsonError(res, 500, error.message);
+  }
+};
+
 exports.getFileList = async (req, res) => {
   try {
     const { search, page, pageSize } = req.query;
@@ -340,6 +391,15 @@ exports.downloadFile = async (req, res) => {
     const range = req.headers.range;
 
     if (range) {
+      // S11：仅支持单段 Range；多段（逗号分隔）显式拒绝，避免被误判为单段导致
+      // 返回错误字节区间。标准响应 416 + Content-Range: bytes */size。
+      if (range.includes(",")) {
+        res.status(416);
+        res.setHeader("Accept-Ranges", "bytes");
+        res.setHeader("Content-Range", `bytes */${stats.size}`);
+        return res.end();
+      }
+
       const parts = range.replace(/bytes=/, "").split("-");
       const start = Number.parseInt(parts[0], 10);
       const end = parts[1] ? Number.parseInt(parts[1], 10) : stats.size - 1;
@@ -351,7 +411,12 @@ exports.downloadFile = async (req, res) => {
         end < start ||
         end >= stats.size
       ) {
-        return jsonError(res, 416, "invalid range", { fileSize: stats.size });
+        // 非法 Range（超出文件范围 / 起点大于终点 / 负数等）一律返回标准 416，
+        // 并带 Content-Range: bytes */size 告知客户端可用范围（与 S11 多段拒绝一致）。
+        res.status(416);
+        res.setHeader("Accept-Ranges", "bytes");
+        res.setHeader("Content-Range", `bytes */${stats.size}`);
+        return res.end();
       }
 
       const chunkSize = end - start + 1;

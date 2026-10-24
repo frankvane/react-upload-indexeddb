@@ -12,5 +12,6 @@ router.post("/merge", uploadController.mergeChunks);
 
 router.get("/list", downloadController.getFileList);
 router.get("/download/:file_id", downloadController.downloadFile);
+router.get("/thumbnail/:file_id", downloadController.downloadThumbnail);
 
 module.exports = router;
