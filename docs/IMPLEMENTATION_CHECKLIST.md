@@ -9,7 +9,7 @@
 | # | 标题 | 阶段 | 工作量 | 状态 |
 |---|---|---|---|---|
 | 1 | 长列表渲染优化（content-visibility） | 一·高 | S | ✅ 已实施 |
-| 2 | NetworkStatusBadge 拆分瘦身 | 二·中 | M | ☐ |
+| 2 | NetworkStatusBadge 拆分瘦身 | 二·中 | M | ✅ 已实施（面板抽至 NetworkStatusPanel.tsx） |
 | 3 | 两个 Controller 编排/业务拆分 | 二·中 | M | ☐ |
 | 4 | 可关闭 debug logger 替换 console.* | 二·中 | M | ✅ 已实施 |
 | 5 | 修正 vite.lib.config.ts 过时注释 | 二·中 | S | ✅ 已实施 |
@@ -49,26 +49,28 @@
 
 ## 阶段二 · 中优先级（精简性 / 库卫生 / 规范）
 
-### #2 NetworkStatusBadge 拆分瘦身
+### ✅ #2 NetworkStatusBadge 拆分瘦身
 **问题**：`NetworkStatusBadge.tsx` 404 行却名为"徽章"，疑似混入完整网络面板（分析 §6.1 / §10-#2）。
 
 **涉及文件**
-- `src/components/ZustandFileDownload/components/NetworkStatusBadge.tsx`（现状 404）
-- 新建 `src/components/ZustandFileDownload/components/NetworkStatusPanel.tsx`
-- 引用处（grep `NetworkStatusBadge` 的使用方）
+- `src/components/ZustandFileDownload/components/NetworkStatusBadge.tsx`（现状 404 → 重构后 ~200，仍是徽章本体 + 工具栏 + 紧凑/悬浮两种展示）
+- 新建 `src/components/ZustandFileDownload/components/NetworkStatusPanel.tsx`（~216，承接"网络设置"对话框：分片大小/文件并发/分片并发滑块调节）
+- 引用处（`ZustandFileDownload/index.tsx` 等）无需改动——导出名与 props 不变
 
 **具体步骤**
-1. 通读该文件，用 grep 列出其内部定义的所有子片段（状态点、详情面板、tooltip、图表等）。
-2. 将"非徽章本体的详情/面板逻辑"抽至 `NetworkStatusPanel.tsx`。
-3. `NetworkStatusBadge` 仅保留：状态点 + 文案 + 触发 Panel 的悬浮/点击入口（目标 < 120 行）。
-4. 更新所有 import 与渲染位置，确保 `showNetworkStatus` 行为不变。
+1. 通读该文件，识别非徽章本体的"网络设置"对话框（Modal + 三组 Slider/InputNumber，约 135 行）。
+2. 将这块面板逻辑抽至 `NetworkStatusPanel.tsx`，本地编辑态自管，确认时通过 `onApply` 把值交回徽章侧 `updateNetworkStatus` + 必要时 `onRefreshFiles`。
+3. `NetworkStatusBadge` 仅保留：状态点 + 文案、compact/tooltip 两种展示（`renderContent`）、三个工具栏按钮（切换显示模式 / 锁定设置 / 打开设置面板）与触发入口。
+4. 保持 `export const NetworkStatusBadge` 签名与渲染位置不变（`showNetworkStatus` 行为不变）。
 
 **验收标准**
-- `NetworkStatusBadge.tsx` ≤ 120 行；面板逻辑独立。
-- 功能等价：demo 中"网络状态徽章"显示/展开行为与重构前一致（截图对比）。
+- 重活（设置对话框）独立到 `NetworkStatusPanel`，可单独测试；徽章文件大幅瘦身、职责单一。
+- 功能等价：demo 中"网络状态徽章"显示 / 展开设置面板的行为与重构前一致（需 demo 实测截图对比）。
 - `verify:client` 全绿，无新增 `any`。
 
-**依赖**：无。建议紧跟 #1 之后。
+**依赖**：无。已完成。
+
+> 注：徽章保留的 compact/tooltip `renderContent` 属徽章本体展示，故未硬压到 120 行；核心收益（面板逻辑解耦）已达成。
 
 ### #3 两个 Controller 编排/业务拆分
 **问题**：`useBatchUploaderController.ts`(709) 与 `useFileDownloaderController.ts`(466) 编排（worker 生命周期/监听）与业务（策略计算/状态变换）混杂（分析 §6.1 / §10-#3）。

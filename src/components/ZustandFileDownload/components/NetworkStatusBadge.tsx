@@ -1,15 +1,9 @@
+import React, { useCallback, useRef, useState } from "react";
 import {
   Badge,
   Button,
-  Col,
-  Divider,
-  InputNumber,
-  Modal,
-  Row,
-  Slider,
   Space,
   Tooltip,
-  Typography,
   message,
 } from "../../../ui";
 import {
@@ -18,13 +12,10 @@ import {
   SwapOutlined,
   UnlockOutlined,
 } from "../../../ui";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-
 import { formatFileSize } from "../utils";
 import { useDownloadStore } from "../store";
 import { useShallow } from "zustand/react/shallow";
-
-const { Text } = Typography;
+import { NetworkStatusPanel, type NetworkSettings } from "./NetworkStatusPanel";
 
 type BadgeStatusType =
   | "success"
@@ -38,19 +29,11 @@ interface NetworkStatusBadgeProps {
   onRefreshFiles: (forceUpdate?: boolean) => Promise<void>;
 }
 
-const BadgeWrapper = React.forwardRef<
-  HTMLSpanElement,
-  { status: BadgeStatusType; text: string }
->((props, ref) => {
-  return (
-    <span ref={ref}>
-      <Badge status={props.status} text={props.text} />
-    </span>
-  );
-});
-
-BadgeWrapper.displayName = "BadgeWrapper";
-
+/**
+ * 网络状态徽章（精简后）：状态点 + 文案 + 三个工具栏按钮
+ * （切换显示模式 / 锁定设置 / 打开设置面板），不再内联"网络设置"对话框。
+ * 重活（滑块调节）移到 NetworkStatusPanel。
+ */
 export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
   ({ isOffline, onRefreshFiles }) => {
     const {
@@ -78,21 +61,8 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
     );
 
     const [isSettingsVisible, setIsSettingsVisible] = useState(false);
-    const [localChunkSize, setLocalChunkSize] = useState(chunkSize);
-    const [localFileConcurrency, setLocalFileConcurrency] =
-      useState(fileConcurrency);
-    const [localChunkConcurrency, setLocalChunkConcurrency] =
-      useState(chunkConcurrency);
 
     const badgeRef = useRef<HTMLSpanElement>(null);
-
-    useEffect(() => {
-      if (!isSettingsVisible) {
-        setLocalChunkSize(chunkSize);
-        setLocalFileConcurrency(fileConcurrency);
-        setLocalChunkConcurrency(chunkConcurrency);
-      }
-    }, [chunkSize, fileConcurrency, chunkConcurrency, isSettingsVisible]);
 
     const handleToggleManualFlag = useCallback(() => {
       if (isManuallySet) {
@@ -104,66 +74,34 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
       }
     }, [isManuallySet, resetManualFlag, updateNetworkStatus]);
 
-    const showSettings = useCallback(() => {
-      setLocalChunkSize(chunkSize);
-      setLocalFileConcurrency(fileConcurrency);
-      setLocalChunkConcurrency(chunkConcurrency);
-      setIsSettingsVisible(true);
-    }, [chunkSize, fileConcurrency, chunkConcurrency]);
-
-    const hideSettings = useCallback(() => {
-      setIsSettingsVisible(false);
-    }, []);
-
-    const applySettings = useCallback(async () => {
-      const chunkSizeChanged = chunkSize !== localChunkSize;
-
-      updateNetworkStatus(
-        {
-          chunkSize: localChunkSize,
-          fileConcurrency: localFileConcurrency,
-          chunkConcurrency: localChunkConcurrency,
-        },
-        true
-      );
-
-      message.success(
-        `已应用设置：分片 ${formatFileSize(
-          localChunkSize
-        )}，文件并发 ${localFileConcurrency}，分片并发 ${localChunkConcurrency}`
-      );
-
-      if (chunkSizeChanged) {
-        await onRefreshFiles(true);
-      }
-
-      hideSettings();
-    }, [
-      chunkSize,
-      localChunkSize,
-      localFileConcurrency,
-      localChunkConcurrency,
-      updateNetworkStatus,
-      onRefreshFiles,
-      hideSettings,
-    ]);
-
-    const resetSettings = useCallback(() => {
-      setLocalChunkSize(1024 * 1024);
-      setLocalFileConcurrency(3);
-      setLocalChunkConcurrency(3);
-    }, []);
-
-    const chunkSizeKB = Math.round(localChunkSize / 1024);
+    const applySettings = useCallback(
+      async (values: NetworkSettings) => {
+        const chunkSizeChanged = chunkSize !== values.chunkSize;
+        updateNetworkStatus(
+          {
+            chunkSize: values.chunkSize,
+            fileConcurrency: values.fileConcurrency,
+            chunkConcurrency: values.chunkConcurrency,
+          },
+          true
+        );
+        message.success(
+          `已应用设置：分片 ${formatFileSize(
+            values.chunkSize
+          )}，文件并发 ${values.fileConcurrency}，分片并发 ${values.chunkConcurrency}`
+        );
+        if (chunkSizeChanged) {
+          await onRefreshFiles(true);
+        }
+        setIsSettingsVisible(false);
+      },
+      [chunkSize, updateNetworkStatus, onRefreshFiles]
+    );
 
     const getNetworkInfo = useCallback(() => {
       if (isOffline) {
-        return {
-          text: "离线",
-          status: "error" as BadgeStatusType,
-        };
+        return { text: "离线", status: "error" as BadgeStatusType };
       }
-
       switch (networkType) {
         case "4g":
           return { text: "4G", status: "success" as BadgeStatusType };
@@ -200,7 +138,9 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
 
       if (displayMode === "direct") {
         return (
-          <div style={{ display: "flex", alignItems: "center", fontSize: "12px" }}>
+          <div
+            style={{ display: "flex", alignItems: "center", fontSize: "12px" }}
+          >
             <Badge status={networkInfo.status} text={networkInfo.text} />
             <span style={{ marginLeft: 8 }}>
               {formatFileSize(chunkSize)} | 文件并发 {fileConcurrency} | 分片并发{" "}
@@ -216,11 +156,9 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
           placement="bottom"
           getPopupContainer={() => document.body}
         >
-          <BadgeWrapper
-            ref={badgeRef}
-            status={networkInfo.status}
-            text={networkInfo.text}
-          />
+          <span ref={badgeRef}>
+            <Badge status={networkInfo.status} text={networkInfo.text} />
+          </span>
         </Tooltip>
       );
     }, [
@@ -258,146 +196,20 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = React.memo(
             type="link"
             icon={<SettingOutlined />}
             size="small"
-            onClick={showSettings}
+            onClick={() => setIsSettingsVisible(true)}
             title="网络设置"
           />
         </Space>
 
-        <Modal
-          title="网络设置"
-          open={isSettingsVisible}
-          onCancel={hideSettings}
-          onOk={applySettings}
-          width={600}
-          footer={[
-            <Button key="reset" onClick={resetSettings}>
-              重置
-            </Button>,
-            <Button key="cancel" onClick={hideSettings}>
-              取消
-            </Button>,
-            <Button key="apply" type="primary" onClick={applySettings}>
-              应用
-            </Button>,
-          ]}
-        >
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <div>
-              <Text strong>分片大小: {formatFileSize(localChunkSize)}</Text>
-              <Row gutter={16}>
-                <Col span={16}>
-                  <Slider
-                    min={128}
-                    max={5120}
-                    step={128}
-                    value={chunkSizeKB}
-                    onChange={(value) => setLocalChunkSize(value * 1024)}
-                    marks={{
-                      128: "128KB",
-                      1024: "1MB",
-                      2048: "2MB",
-                      5120: "5MB",
-                    }}
-                  />
-                </Col>
-                <Col span={8}>
-                  <InputNumber
-                    min={128}
-                    max={5120}
-                    value={chunkSizeKB}
-                    onChange={(value) =>
-                      value !== null && setLocalChunkSize(value * 1024)
-                    }
-                    addonAfter="KB"
-                    style={{ width: "100%" }}
-                  />
-                </Col>
-              </Row>
-            </div>
-
-            <Divider style={{ margin: "12px 0" }} />
-
-            <div>
-              <Text strong>文件并发: {localFileConcurrency}</Text>
-              <Row gutter={16}>
-                <Col span={16}>
-                  <Slider
-                    min={1}
-                    max={10}
-                    value={localFileConcurrency}
-                    onChange={setLocalFileConcurrency}
-                    marks={{
-                      1: "1",
-                      2: "2",
-                      3: "3",
-                      4: "4",
-                      5: "5",
-                      6: "6",
-                      7: "7",
-                      8: "8",
-                      9: "9",
-                      10: "10",
-                    }}
-                  />
-                </Col>
-                <Col span={8}>
-                  <InputNumber
-                    min={1}
-                    max={10}
-                    value={localFileConcurrency}
-                    onChange={(value) =>
-                      value !== null && setLocalFileConcurrency(value)
-                    }
-                    style={{ width: "100%" }}
-                  />
-                </Col>
-              </Row>
-            </div>
-
-            <Divider style={{ margin: "12px 0" }} />
-
-            <div>
-              <Text strong>分片并发: {localChunkConcurrency}</Text>
-              <Row gutter={16}>
-                <Col span={16}>
-                  <Slider
-                    min={1}
-                    max={10}
-                    value={localChunkConcurrency}
-                    onChange={setLocalChunkConcurrency}
-                    marks={{
-                      1: "1",
-                      2: "2",
-                      3: "3",
-                      4: "4",
-                      5: "5",
-                    }}
-                  />
-                </Col>
-                <Col span={8}>
-                  <InputNumber
-                    min={1}
-                    max={10}
-                    value={localChunkConcurrency}
-                    onChange={(value) =>
-                      value !== null && setLocalChunkConcurrency(value)
-                    }
-                    style={{ width: "100%" }}
-                  />
-                </Col>
-              </Row>
-            </div>
-
-            {isManuallySet && (
-              <div style={{ marginTop: 16 }}>
-                <Text type="secondary">
-                  <LockOutlined style={{ marginRight: 8 }} />
-                  已启用手动锁定，参数不会自动变化。
-                </Text>
-              </div>
-            )}
-          </Space>
-        </Modal>
+        <NetworkStatusPanel
+          visible={isSettingsVisible}
+          chunkSize={chunkSize}
+          fileConcurrency={fileConcurrency}
+          chunkConcurrency={chunkConcurrency}
+          isManuallySet={isManuallySet}
+          onClose={() => setIsSettingsVisible(false)}
+          onApply={applySettings}
+        />
       </>
     );
   }
