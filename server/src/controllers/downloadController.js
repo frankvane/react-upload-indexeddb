@@ -3,7 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const mime = require("mime-types");
 const { DOWNLOAD_DIR, UPLOADS_DIR, ensureDir } = require("../config/paths");
-const { calculatePartialMd5Async } = require("../utils/hash");
+const { calculatePartialMd5Async, getPartialMd5Mode } = require("../utils/hash");
+const { redactErrorMessage } = require("../utils/errorMessage");
 const { File } = require("../models");
 
 const fileIdCache = new Map();
@@ -12,12 +13,28 @@ const fileSystem = fs.promises;
 // fileIdCache LRU 上限：Map 保持插入序，超限时淘汰最久未使用者
 const FILE_ID_CACHE_MAX = 5000;
 
+// P2-9：身份只认鉴权中间件写入的 req.user（与 uploadController 保持一致）。
+const getUserId = (req) =>
+  req && req.user && req.user.id ? String(req.user.id) : "test";
+
 // 列表缓存：5s TTL + 源目录 mtime 签名。目录内文件增删会更新目录 mtime，
 // 签名变化即失效，保证上传/删除后立即可见；内容不变时免除全目录扫描。
+// P2-9：缓存按用户隔离，不同用户可见的文件集合不同，不能共用一份。
 const LIST_CACHE_TTL_MS = Number(process.env.LIST_CACHE_TTL_MS) || 5000;
-let listCache = { at: 0, files: null, signature: "" };
+const LIST_CACHE_MAX_USERS = 200;
+const listCaches = new Map(); // userId -> { at, files, signature }
 // 单飞：TTL 过期瞬间的并发请求共享同一次刷新，避免各自全量扫描（惊群）
-let listRefresh = null;
+const listRefreshByUser = new Map();
+
+const setCachedList = (userId, value) => {
+  if (listCaches.size >= LIST_CACHE_MAX_USERS && !listCaches.has(userId)) {
+    const oldestKey = listCaches.keys().next().value;
+    if (oldestKey !== undefined) {
+      listCaches.delete(oldestKey);
+    }
+  }
+  listCaches.set(userId, value);
+};
 
 const getSourceDirsSignature = async () => {
   const parts = [];
@@ -109,6 +126,9 @@ const buildCacheEntry = async (filePath, stats, options = {}) => {
   const entry = {
     fileId: buildStableFileId(filePath),
     md5: preferredMd5 || (await calculatePartialMd5Async(filePath, stats.size)),
+    // P2-8：无 DB 元数据的大文件只能给出采样 md5，必须显式标记，
+    // 否则客户端会把它当作全量 md5 做严格比对，>10MB 文件永远"校验失败"。
+    md5Mode: preferredMd5 ? "full" : getPartialMd5Mode(stats.size),
     mtime: stats.mtimeMs,
     displayName,
   };
@@ -123,9 +143,11 @@ const buildCacheEntry = async (filePath, stats, options = {}) => {
   return entry;
 };
 
-const buildUploadedMetadataMap = async () => {
+const buildUploadedMetadataMap = async (userId) => {
   const metadataMap = new Map();
   const metadataByMd5 = new Map();
+  // 所有用户已认领的物理路径：用于把「他人文件」从当前用户的列表中剔除。
+  const claimedPaths = new Set();
   const rows = await File.findAll({
     where: { status: 1 },
     attributes: [
@@ -137,6 +159,7 @@ const buildUploadedMetadataMap = async () => {
       "md5",
       "created_at",
       "createdAt",
+      "user_id",
     ],
   });
 
@@ -146,6 +169,10 @@ const buildUploadedMetadataMap = async () => {
 
     const physicalName = path.basename(plain.file_path);
     const absolutePath = path.resolve(path.join(UPLOADS_DIR, physicalName));
+    claimedPaths.add(absolutePath);
+
+    // P2-9：只把当前用户的元数据放进展示映射，他人行仅用于标记「已认领」。
+    if (String(plain.user_id || "") !== String(userId)) continue;
 
     metadataMap.set(absolutePath, {
       fileName: plain.file_name || physicalName,
@@ -173,28 +200,32 @@ const buildUploadedMetadataMap = async () => {
     }
   }
 
-  return { metadataMap, metadataByMd5 };
+  return { metadataMap, metadataByMd5, claimedPaths };
 };
 
-const collectAllFiles = async ({ force = false } = {}) => {
+const collectAllFiles = async ({ force = false, userId = "test" } = {}) => {
+  const cacheKey = String(userId);
   const now = Date.now();
   const signature = await getSourceDirsSignature();
+  const cached = listCaches.get(cacheKey);
   if (
     !force &&
-    listCache.files &&
-    signature === listCache.signature &&
-    now - listCache.at < LIST_CACHE_TTL_MS
+    cached &&
+    cached.files &&
+    signature === cached.signature &&
+    now - cached.at < LIST_CACHE_TTL_MS
   ) {
-    return listCache.files;
+    return cached.files;
   }
 
-  if (listRefresh) {
-    return listRefresh;
+  if (listRefreshByUser.has(cacheKey)) {
+    return listRefreshByUser.get(cacheKey);
   }
 
-  listRefresh = (async () => {
+  const refresh = (async () => {
     const files = [];
-    const { metadataMap, metadataByMd5 } = await buildUploadedMetadataMap();
+    const { metadataMap, metadataByMd5, claimedPaths } =
+      await buildUploadedMetadataMap(cacheKey);
 
     for (const dirPath of getSourceDirs()) {
       const names = await fileSystem.readdir(dirPath);
@@ -204,9 +235,16 @@ const collectAllFiles = async ({ force = false } = {}) => {
         const stats = await readFileStats(filePath);
         if (!stats) continue;
         const absolutePath = path.resolve(filePath);
+        const ownedMetadata = metadataMap.get(absolutePath);
+        // P2-9：该物理文件已被其他用户认领 → 不出现在当前用户的列表里。
+        if (claimedPaths.has(absolutePath) && !ownedMetadata) {
+          continue;
+        }
         const uploadedMetadata =
-          metadataMap.get(absolutePath) ||
-          metadataByMd5.get(extractMd5FromHashedFilename(name));
+          ownedMetadata ||
+          (claimedPaths.has(absolutePath)
+            ? undefined
+            : metadataByMd5.get(extractMd5FromHashedFilename(name)));
         const displayName = uploadedMetadata?.fileName || name;
 
         const cacheEntry = await buildCacheEntry(filePath, stats, {
@@ -225,41 +263,68 @@ const collectAllFiles = async ({ force = false } = {}) => {
           thumbnailUrl: uploadedMetadata?.thumbnailUrl || null,
           createdAt: uploadedMetadata?.createdAt || stats.birthtime,
           md5: cacheEntry.md5,
+          // P2-8：full = 真实全量 md5（可做严格终检）；sample = 采样 md5（客户端须跳过严格比对）
+          md5Mode: cacheEntry.md5Mode || "full",
           filePath,
         });
       }
     }
 
     // TTL 从扫描完成时刻起算，避免大目录扫描耗时挤占有效期
-    listCache = { at: Date.now(), files, signature };
+    setCachedList(cacheKey, { at: Date.now(), files, signature });
     return files;
   })().finally(() => {
-    listRefresh = null;
+    listRefreshByUser.delete(cacheKey);
   });
 
-  return listRefresh;
+  listRefreshByUser.set(cacheKey, refresh);
+  return refresh;
 };
 
-const findFileById = async (fileId) => {
+// P2-9：判断物理文件是否属于当前用户。
+// uploads 下存在 DB 行时严格比对 user_id；无 DB 行的遗留 / 人工投放文件保持可见
+// （与升级前行为一致）；downloads 目录不参与归属判断。
+const isOwnedByUser = async (filePath, userId) => {
+  const relative = path.relative(UPLOADS_DIR, filePath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return true;
+  }
+  const relativePosix = relative.split(path.sep).join("/");
+  const row = await File.findOne({
+    where: { file_path: path.posix.join("uploads", relativePosix), status: 1 },
+    attributes: ["user_id"],
+  });
+  if (!row) {
+    return true;
+  }
+  return String(row.user_id) === String(userId);
+};
+
+const findFileById = async (fileId, userId = "test") => {
   for (const [filePath, info] of fileIdCache.entries()) {
     if (info.fileId !== fileId) continue;
-    if (await readFileStats(filePath)) {
-      // LRU：命中后移到最后（刷新使用序）
+    if (!(await readFileStats(filePath))) {
       fileIdCache.delete(filePath);
-      fileIdCache.set(filePath, info);
-      return {
-        filePath,
-        fileName: info.displayName || path.basename(filePath),
-        md5: info.md5,
-      };
+      continue;
     }
+    // 他人文件按「不存在」处理，避免通过 id 探测文件是否存在。
+    if (!(await isOwnedByUser(filePath, userId))) continue;
+    // LRU：命中后移到最后（刷新使用序）
     fileIdCache.delete(filePath);
+    fileIdCache.set(filePath, info);
+    return {
+      filePath,
+      fileName: info.displayName || path.basename(filePath),
+      md5: info.md5,
+    };
   }
 
   // 列表缓存新鲜则直接复用（不触发全量扫描）；过期才强制刷新一次。
   // 刷新后仍未命中即返回 null，不再循环全量扫描（P1-14）。
+  const cached = listCaches.get(String(userId));
   const files = await collectAllFiles({
-    force: Date.now() - listCache.at >= LIST_CACHE_TTL_MS,
+    force: !cached || Date.now() - cached.at >= LIST_CACHE_TTL_MS,
+    userId,
   });
   const found = files.find((file) => file.id === fileId);
   if (!found) return null;
@@ -282,7 +347,7 @@ exports.downloadThumbnail = async (req, res) => {
       return jsonError(res, 404, "thumbnail not found");
     }
 
-    const found = await findFileById(file_id);
+    const found = await findFileById(file_id, getUserId(req));
     if (!found || !found.filePath) {
       return jsonError(res, 404, "thumbnail not found");
     }
@@ -318,14 +383,16 @@ exports.downloadThumbnail = async (req, res) => {
     req.on("close", () => stream.destroy());
     stream.pipe(res);
   } catch (error) {
-    return jsonError(res, 500, error.message);
+    return jsonError(res, 500, redactErrorMessage(error));
   }
 };
 
 exports.getFileList = async (req, res) => {
   try {
     const { search, page, pageSize } = req.query;
-    let files = (await collectAllFiles()).map(({ filePath, ...rest }) => rest);
+    let files = (await collectAllFiles({ userId: getUserId(req) })).map(
+      ({ filePath, ...rest }) => rest
+    );
 
     if (search) {
       const keyword = String(search).toLowerCase();
@@ -361,7 +428,7 @@ exports.getFileList = async (req, res) => {
       files,
     });
   } catch (error) {
-    return jsonError(res, 500, error.message);
+    return jsonError(res, 500, redactErrorMessage(error));
   }
 };
 
@@ -377,7 +444,7 @@ exports.downloadFile = async (req, res) => {
       return jsonError(res, 404, "file not found");
     }
 
-    const found = await findFileById(file_id);
+    const found = await findFileById(file_id, getUserId(req));
     if (!found) {
       return jsonError(res, 404, "file not found");
     }
@@ -451,6 +518,6 @@ exports.downloadFile = async (req, res) => {
     req.on("close", () => fileStream.destroy());
     fileStream.pipe(res);
   } catch (error) {
-    return jsonError(res, 500, error.message);
+    return jsonError(res, 500, redactErrorMessage(error));
   }
 };

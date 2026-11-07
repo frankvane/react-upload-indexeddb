@@ -20,6 +20,7 @@ process.env.CHUNK_STATE_MAX_PENDING = "99999";
 const app = require("../src/app");
 const { syncModels, sequelize } = require("../src/models");
 const { md5Buffer } = require("../src/utils/hash");
+const { UPLOADS_DIR, TMP_UPLOAD_DIR } = require("../src/config/paths");
 
 const uploadChunk = async (fileId, index, buffer) => {
   const res = await request(app)
@@ -48,7 +49,7 @@ test("S3：声明 size 超过 MAX_UPLOAD_SIZE_MB → 413", async () => {
   const res = await merge({
     fileId: "f-limit-size",
     size: 2 * 1024 * 1024, // 2MB > 1MB 上限
-    md5: "x",
+    md5: "a".repeat(32),
     total: 1,
   });
   assert.equal(res.status, 413);
@@ -58,10 +59,35 @@ test("S3：声明 total 超过 MAX_CHUNKS → 400", async () => {
   const res = await merge({
     fileId: "f-limit-chunks",
     size: 100,
-    md5: "x",
+    md5: "a".repeat(32),
     total: 9999, // > 5
   });
   assert.equal(res.status, 400);
+});
+
+test("P0-2：md5 含路径分隔符 → 400（不得进入落盘路径拼接）", async () => {
+  const buf = Buffer.from("path traversal attempt");
+  const up = await uploadChunk("f-traversal", 0, buf);
+  assert.equal(up.status, 200);
+  const res = await merge({
+    fileId: "f-traversal",
+    size: buf.length,
+    md5: "../../../evil",
+    total: 1,
+  });
+  assert.equal(res.status, 400);
+  assert.equal(res.body.message, "invalid md5");
+});
+
+test("P0-2：md5 非 32 位十六进制 → 400", async () => {
+  const res = await merge({
+    fileId: "f-bad-md5-format",
+    size: 10,
+    md5: "not-a-valid-md5",
+    total: 1,
+  });
+  assert.equal(res.status, 400);
+  assert.equal(res.body.message, "invalid md5");
 });
 
 test("S3：上传分片 index 为负 → 400", async () => {
@@ -86,6 +112,59 @@ test("S2：合并后真实 md5 与声明 md5 不符 → 422（防污染）", asy
   });
   assert.equal(res.status, 422);
   assert.equal(res.body.code, 422);
+});
+
+test("P1-2：合并失败时目标目录不出现半成品，staging 文件被清理", async () => {
+  const buf = Buffer.from("partial merge must never be visible");
+  const up = await uploadChunk("f-staging-fail", 0, buf);
+  assert.equal(up.status, 200);
+
+  const wrongMd5 = "b".repeat(32);
+  const res = await merge({
+    fileId: "f-staging-fail",
+    size: buf.length,
+    md5: wrongMd5,
+    total: 1,
+  });
+  assert.equal(res.status, 422);
+
+  const storedName = `f-staging-fail_${wrongMd5}.bin`;
+  assert.equal(
+    fs.existsSync(path.join(UPLOADS_DIR, storedName)),
+    false,
+    "校验失败的文件不得出现在 uploads 目录"
+  );
+  const leftovers = fs
+    .readdirSync(TMP_UPLOAD_DIR)
+    .filter((name) => name.startsWith(storedName));
+  assert.deepEqual(leftovers, [], "staging 临时文件必须被清理");
+});
+
+test("P1-2：合并成功后原子移入 uploads，tmp 无 .part 残留", async () => {
+  const buf = Buffer.from("atomic publish payload");
+  const realMd5 = md5Buffer(buf);
+  const up = await uploadChunk("f-staging-ok", 0, buf);
+  assert.equal(up.status, 200);
+
+  const res = await merge({
+    fileId: "f-staging-ok",
+    size: buf.length,
+    md5: realMd5,
+    total: 1,
+  });
+  assert.equal(res.status, 200);
+
+  const storedName = `f-staging-ok_${realMd5}.bin`;
+  const storedPath = path.join(UPLOADS_DIR, storedName);
+  assert.equal(fs.existsSync(storedPath), true);
+  assert.equal(fs.readFileSync(storedPath).length, buf.length);
+
+  const leftovers = fs
+    .readdirSync(TMP_UPLOAD_DIR)
+    .filter((name) => name.startsWith(storedName));
+  assert.deepEqual(leftovers, [], ".part 不应残留在 tmp 目录");
+
+  fs.unlinkSync(storedPath);
 });
 
 test("S2：合并后文件体积与声明 size 不符 → 422", async () => {
@@ -127,4 +206,7 @@ test("S2：合法 full-md5 合并成功且可秒传（不破坏正常链路）",
   assert.equal(instant.status, 200);
   assert.equal(instant.body.code, 200);
   assert.equal(instant.body.data.uploaded, true);
+
+  // 清理落盘产物，避免测试反复跑污染仓库 uploads 目录
+  fs.rmSync(path.join(UPLOADS_DIR, `f-ok_${realMd5}.bin`), { force: true });
 });

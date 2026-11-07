@@ -483,65 +483,41 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
     };
     debug("网络参数", { chunkConcurrency, ...retryOptions });
 
-    const chunk_md5s: string[] = [];
-    // 1. 计算所有分片的md5
-    debug("开始计算所有分片MD5");
-    for (let i = 0; i < chunkCount; i++) {
-      if (taskSignal.aborted) {
-        if (taskPauseState.get(fileInfo.id)?.paused) {
-          const stats = taskStats.get(fileInfo.id);
-          self.postMessage({
-            type: "paused",
-            fileId: fileInfo.id,
-            uploadedChunks: stats?.uploadedChunks ?? 0,
-            totalChunks: stats?.totalChunks ?? 0,
-          });
-        }
-        debug("分片MD5计算被取消中断", { fileId: fileInfo.id, at: i }, true);
-        return;
-      }
-      const start = i * chunkSize;
-      const end = Math.min(fileRef.size, start + chunkSize);
-      const chunk = await fileRef.slice(start, end).arrayBuffer();
-      debug(`计算分片 ${i + 1}/${chunkCount} MD5`, {
-        start,
-        end,
-        size: end - start,
-      });
-      const chunkMd5 = calculateMD5(chunk);
-      chunk_md5s.push(chunkMd5);
-    }
-    debug("分片MD5计算完成", { count: chunk_md5s.length });
+    const baseURL = uploadConfig?.baseURL || "";
+    const checkApi = uploadConfig?.checkApi || "/api/file/instant";
+    const apiUrl = joinUrl(baseURL, checkApi);
+    // P2-1：续传信息改由 /status 获取。沿用 checkApi 的命名约定推导：
+    //   /api/file/instant → /api/file/status。
+    // 自定义 checkApi 且未提供同名 /status 时，状态查询失败会退化为「全部重传」，
+    // 只损失续传优化，不影响正确性。
+    const statusApi = /\/instant\/?$/.test(checkApi)
+      ? checkApi.replace(/\/instant\/?$/, "/status")
+      : "/api/file/status";
+    const statusUrl = joinUrl(baseURL, statusApi);
 
-    // 2. 秒传确认
+    // P2-1（a）：秒传快路径前置。
+    // 旧实现必须先串行算完全部分片 MD5（大文件数千片、数分钟）才发秒传确认，
+    // 即便文件早已存在也要白付一轮全量哈希。这里先不带 chunk_md5s 做一次轻量确认：
+    // 命中即结束，分片哈希一个都不算。
+    let fastData: {
+      data?: { uploaded?: boolean; reset?: boolean };
+    } | null = null;
     try {
-      debug("开始秒传确认");
-
-      // 构建请求体
-      const requestBody = {
-        file_id: fileInfo.chunkKey || fileInfo.hash || "",
-        md5: fileInfo.hash || "",
-        name: fileInfo.fileName,
-        size: fileInfo.fileSize,
-        total: chunkCount,
-        chunk_size: chunkSize,
-        chunk_md5s,
-        hash_mode: uploadConfig.hashMode,
-      };
-      debug("秒传请求体", requestBody);
-
-      // 使用配置的 API 地址
-      const baseURL = uploadConfig?.baseURL || "";
-      const checkApi = uploadConfig?.checkApi || "/api/file/instant";
-      const apiUrl = joinUrl(baseURL, checkApi);
-      debug(`使用API地址: ${apiUrl}`);
-
-      const instantRes = await fetchWithRetry(
+      debug("开始秒传预检（不含分片 MD5）");
+      const fastRes = await fetchWithRetry(
         apiUrl,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify({
+            file_id: fileInfo.chunkKey || fileInfo.hash || "",
+            md5: fileInfo.hash || "",
+            name: fileInfo.fileName,
+            size: fileInfo.fileSize,
+            total: chunkCount,
+            chunk_size: chunkSize,
+            hash_mode: uploadConfig.hashMode,
+          }),
         },
         {
           ...retryOptions,
@@ -550,53 +526,75 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
           allowedHosts: taskAllowedHosts.get(fileInfo.id),
           signal: taskSignal,
         },
-      );
+      ).catch((error: unknown) => {
+        // 预检失败不改变主流程：后续状态查询会退化为全量重传，
+        // 真正的鉴权 / 网络错误会在分片上传阶段照常抛出。
+        debug("秒传预检请求失败，继续常规流程", { error: String(error) }, true);
+        return null;
+      });
 
-      debug("秒传确认响应", { status: instantRes.status });
-
-      // 尝试解析响应
-      let instantData;
-      try {
-        instantData = await instantRes.json();
-        debug("秒传确认数据", instantData);
-      } catch (error) {
-        debug("解析秒传响应失败", { error: String(error) });
-        throw new Error("解析秒传响应失败: " + String(error));
-      }
-
-      if (instantData.data?.uploaded) {
-        debug("文件已秒传", { fileName: fileInfo.fileName });
+      fastData = fastRes ? await fastRes.json().catch(() => null) : null;
+      if (fastData?.data?.uploaded) {
+        debug("文件已秒传（预检命中，跳过全部分片 MD5）", {
+          fileName: fileInfo.fileName,
+        });
         self.postMessage({ type: "done", skipped: true });
         return;
       }
+    } catch (error) {
+      debug("秒传预检异常，继续常规流程", { error: String(error) }, true);
+    }
 
-      // 确定需要上传的分片
-      const needUploadChunks: number[] = [];
-      if (
-        instantData.data?.chunkCheckResult &&
-        Array.isArray(instantData.data.chunkCheckResult)
-      ) {
-        debug("使用服务器返回的分片检查结果");
-        for (let i = 0; i < chunkCount; i++) {
-          const chunkResult = instantData.data.chunkCheckResult.find(
-            (c: { index: number; exist: boolean; match?: boolean }) =>
-              c.index === i,
+    // P2-1（b）：不再在首片上传前预计算全部分片 MD5。
+    // 先向服务端查询已存在的分片索引（分片内容由 file_id + index 唯一确定），
+    // 缺失分片的 MD5 在上传该片时按需计算，首片延迟与文件总片数解耦。
+    let existingChunks = new Set<number>();
+    if (fastData) {
+      try {
+        const statusQuery = `file_id=${encodeURIComponent(
+          fileInfo.chunkKey || fileInfo.hash || "",
+        )}&md5=${encodeURIComponent(fileInfo.hash || "")}`;
+        const statusRes = await fetchWithRetry(
+          `${statusUrl}?${statusQuery}`,
+          { method: "GET" },
+          {
+            ...retryOptions,
+            authHeaders,
+            credentials: credentialsMode,
+            allowedHosts: taskAllowedHosts.get(fileInfo.id),
+            signal: taskSignal,
+          },
+        );
+        const statusData = await statusRes.json().catch(() => null);
+        const chunks = statusData?.data?.chunks;
+        if (Array.isArray(chunks)) {
+          existingChunks = new Set(
+            chunks.filter(
+              (index: unknown) =>
+                Number.isInteger(index) &&
+                (index as number) >= 0 &&
+                (index as number) < chunkCount,
+            ) as number[],
           );
-          const reusable = Boolean(chunkResult?.exist && chunkResult?.match);
-          if (!reusable) needUploadChunks.push(i);
         }
-      } else {
-        debug("服务器未返回分片检查结果，上传所有分片");
-        // 如果没有分片检查结果，则上传所有分片
-        for (let i = 0; i < chunkCount; i++) {
-          needUploadChunks.push(i);
-        }
+        debug("已存在分片", { count: existingChunks.size });
+      } catch (error) {
+        // 状态查询失败不应阻塞上传：退化为全量重传即可。
+        debug("状态查询失败，按全量重传处理", { error: String(error) }, true);
       }
-      debug("需要上传的分片", {
-        count: needUploadChunks.length,
-        chunks: needUploadChunks,
-      });
+    }
 
+    // 确定需要上传的分片
+    const needUploadChunks: number[] = [];
+    for (let i = 0; i < chunkCount; i++) {
+      if (!existingChunks.has(i)) needUploadChunks.push(i);
+    }
+    debug("需要上传的分片", {
+      count: needUploadChunks.length,
+      chunks: needUploadChunks,
+    });
+
+    try {
       // 记录已完成的分片数量，用于计算进度
       const completedChunks = chunkCount - needUploadChunks.length;
       let totalUploadedChunks = completedChunks;
@@ -618,10 +616,8 @@ self.onmessage = async (event: MessageEvent<UploadWorkerMessage>) => {
             const start = i * chunkSize;
             const end = Math.min(fileRef.size, start + chunkSize);
             const chunkBuf = await fileRef.slice(start, end).arrayBuffer();
-            const chunkMd5 = chunk_md5s[i];
-            if (!chunkMd5) {
-              throw new Error(`分片 ${i} 缺少 MD5，无法上传`);
-            }
+            // P2-1：按需计算——只算当前要上传的分片，不再预计算全部分片
+            const chunkMd5 = await calculateMD5(chunkBuf);
 
             const formData = new FormData();
             formData.append(

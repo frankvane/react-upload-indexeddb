@@ -18,7 +18,10 @@ vi.mock("localforage", () => ({
   },
 }));
 
-vi.mock("./uploadStorage", () => ({
+// P2-4：cleanupPolicy 现在按 id 读取时会走迁移层（readUploadFile），
+// 这里用部分 mock：只替换 listUploadFiles，其余走真实实现。
+vi.mock("./uploadStorage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./uploadStorage")>()),
   listUploadFiles: mockListUploadFiles,
 }));
 
@@ -213,5 +216,29 @@ describe("UploadCleanupPolicy", () => {
     );
     await policy.addCompletedFile("f-instant");
     expect(policy.pendingCount()).toBe(2);
+  });
+
+  it("P2-2：倒计时期间被重新上传的文件不会被移出 UI 或删除", async () => {
+    const { options, files } = createOptions();
+    const done = createFile("f-reupload", UploadStatus.DONE);
+    files.set(done.id, done);
+    mockGetItem.mockImplementation(async (id: string) => files.get(id));
+    mockListUploadFiles.mockResolvedValue([done]);
+
+    const policy = new UploadCleanupPolicy(options);
+    await policy.cleanupUploadedFiles();
+
+    // 用户在倒计时结束前重新发起上传：状态变回 UPLOADING（DB 与 UI 同步）
+    const reuploading = { ...done, status: UploadStatus.UPLOADING, progress: 10 };
+    files.set(done.id, reuploading);
+    mockGetItem.mockImplementation(async (id: string) => files.get(id));
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    // 既不能删存储，也不能从列表移除
+    expect(mockRemoveItem).not.toHaveBeenCalledWith("f-reupload");
+    expect(files.get("f-reupload")?.status).toBe(UploadStatus.UPLOADING);
+    // 已从待清理集合移除，下一轮倒计时不会再误删
+    expect(policy.pendingCount()).toBe(0);
   });
 });

@@ -39,6 +39,11 @@ interface RunUploadTaskOptions {
   onProgress?: (detail: UploadProgressDetail) => void;
   onRetry?: (message: string) => void;
   onDebug?: (message: string, data?: Record<string, unknown>) => void;
+  /**
+   * P1-8：任务静默超时（毫秒）。worker 在该时长内没有任何消息即判定失联并中止，
+   * 默认 120s；传 0 关闭看门狗（仅建议测试使用）。
+   */
+  idleTimeoutMs?: number;
 }
 
 interface UploadTaskResult {
@@ -72,6 +77,12 @@ const createUploadWorker = () => new UploadWorker();
 
 // CANCEL 兜底时长：worker 无 cancelled 响应即强制终止
 const CANCEL_FALLBACK_MS = 800;
+
+// P1-8：任务级「静默」看门狗。worker 内部只有单次 fetch 的 30s 请求超时，
+// 覆盖不到 MD5 串行预计算阶段，也覆盖不到线程挂起 / 被浏览器冻结的场景；
+// 一旦失去响应，runUploadTask 的 Promise 永不 settle，文件会永久停在 UPLOADING。
+// 这里按「静默时长」而非「总时长」判定：只要还在推进进度就不会被误杀，大文件安全。
+const TASK_IDLE_TIMEOUT_MS = 120_000;
 
 /**
  * 创建每实例上传 Worker 池（T3.2 单例治理）。
@@ -174,6 +185,40 @@ export const createUploadWorkerPool = (): UploadWorkerPool => {
       let settled = false;
       let shouldRecycleWorker = true;
 
+      // P1-8 看门狗：worker 长时间无任何消息 → 判定失联，终止并让上层可重试续传
+      const idleTimeoutMs = options.idleTimeoutMs ?? TASK_IDLE_TIMEOUT_MS;
+      let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const clearIdleTimer = () => {
+        if (idleTimer !== null) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
+      };
+
+      const bumpIdleTimer = () => {
+        clearIdleTimer();
+        // settled / 暂停 / 取消后不再重启；0 表示显式关闭
+        if (settled || idleTimeoutMs <= 0 || options.signal?.aborted) {
+          return;
+        }
+        idleTimer = setTimeout(() => {
+          idleTimer = null;
+          if (settled) {
+            return;
+          }
+          // 失联 worker 内部状态不可信，不回空闲池，直接销毁
+          shouldRecycleWorker = false;
+          finish({
+            success: false,
+            skipped: false,
+            errorMessage: `上传任务 ${Math.round(
+              idleTimeoutMs / 1000
+            )}s 无响应，已中止（可重试续传）`,
+          });
+        }, idleTimeoutMs);
+      };
+
       const finish = (result: UploadTaskResult) => {
         if (settled) {
           return;
@@ -208,6 +253,7 @@ export const createUploadWorkerPool = (): UploadWorkerPool => {
       };
 
       const cleanup = () => {
+        clearIdleTimer();
         if (options.signal) {
           options.signal.removeEventListener("abort", handleAbort);
         }
@@ -234,6 +280,9 @@ export const createUploadWorkerPool = (): UploadWorkerPool => {
 
       worker.onmessage = (event: MessageEvent<UploadWorkerResponse>) => {
         const payload = event.data;
+
+        // 任意消息都说明 worker 存活，重置静默看门狗
+        bumpIdleTimer();
 
         if (payload.type === "debug") {
           options.onDebug?.(payload.message, payload.data);
@@ -330,6 +379,7 @@ export const createUploadWorkerPool = (): UploadWorkerPool => {
 
       // 注意：File 通过结构化克隆传入 Worker（不转移），主线程注册表仍需持有该
       // 引用以支持刷新后的重选/重试；若用 transfer 列表转移，主线程引用会被置空。
+      bumpIdleTimer();
       worker.postMessage(message);
     });
   };

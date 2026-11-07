@@ -75,7 +75,8 @@ describe("downloader.worker 重试（F8：3 次重试 / 4 次尝试）", () => {
     Object.defineProperty(self, "postMessage", {
       configurable: true,
       writable: true,
-      value: (message: unknown) => postedMessages.push(message),
+      value: (message: unknown) =>
+        postedMessages.push(message as Record<string, any>),
     });
   });
 

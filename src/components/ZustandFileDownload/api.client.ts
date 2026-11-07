@@ -10,6 +10,8 @@ export interface FileInfo {
   fileExt?: string;
   thumbnailUrl?: string | null;
   md5?: string;
+  /** P2-8：full = 全量 md5；sample = 采样 md5（仅 >=10MB 且无 DB 元数据时出现） */
+  md5Mode?: "full" | "sample";
   createdAt?: string | number;
 }
 
@@ -28,6 +30,7 @@ export interface DownloadListItem {
     fileExt?: string;
     thumbnailUrl?: string | null;
     md5?: string;
+    md5Mode?: "full" | "sample";
     createdAt?: string | number;
   };
 }
@@ -202,6 +205,7 @@ export const createDownloadApiClient = (): DownloadApiClient => {
           fileExt: file.fileExt,
           thumbnailUrl: file.thumbnailUrl,
           md5: file.md5,
+          md5Mode: file.md5Mode,
           createdAt: file.createdAt,
         },
       }));

@@ -30,7 +30,7 @@ peer 依赖（消费方自备）：`react@^18 || ^19`、`react-dom@^18 || ^19`�
 **样式必须引入**（否则组件无样式）：
 
 ```ts
-import "react-upload-indexeddb/dist/style.css";
+import "react-upload-indexeddb/style.css";
 ```
 
 ## 快速上手
@@ -176,7 +176,7 @@ import {
 > 配套的 demo / 参考服务端（`server/`）**默认 `AUTH_MODE=secure`（fail-closed）**：未配置任何凭据时，所有 `/api/file/*` 请求一律 `401`，绝不静默全开。
 >
 > - **本地联调 / 演示**：设 `AUTH_MODE=demo` 关闭鉴权（仅限本机 / 内网，切勿暴露公网）；
-> - **生产必须配置**：`FILE_AUTH_TOKEN`（Bearer 白名单，逗号分隔）或 `FILE_AUTH_COOKIE`（同域 Cookie 名），或替换为自家鉴权（portal_token + RBAC）；若 `secure` 模式下未配任何凭据，服务端会打印 `[FATAL]` 并以 `401` 拒绝全部文件请求；
+> - **生产必须配置**：`FILE_AUTH_TOKEN`（Bearer 白名单，逗号分隔）或 `FILE_AUTH_COOKIE` + `FILE_AUTH_COOKIE_TOKENS`（同域 Cookie 名 + 值白名单），或替换为自家鉴权（portal_token + RBAC）；若 `secure` 模式下未配任何凭据，服务端会打印 `[FATAL]` 并以 `401` 拒绝全部文件请求；
 > - **CORS 默认关闭**：跨域浏览器访问需显式设置 `CORS_ORIGIN`（逗号分隔的具体域名白名单，不支持通配 `*`），否则不返回 `Access-Control-Allow-Origin`；
 > - 任何对外暴露的上传 / 下载接口都应在网关或服务端强制校验身份，否则攻击者可任意上传 / 下载 / 读取他人文件；
 > - 切勿将未鉴权的文件接口直接暴露在公网。
@@ -258,7 +258,8 @@ Content-Security-Policy:
 | ------------------- | ----------- | ---------------------------------------------------------------------------------------- |
 | `AUTH_MODE`         | `secure`    | `secure` 挂载鉴权（fail-closed，无凭据即 `401`）；`demo` 关闭鉴权（仅本机 / 内网联调）     |
 | `FILE_AUTH_TOKEN`   | 空          | Bearer 令牌白名单，逗号分隔；命中即通过                                                  |
-| `FILE_AUTH_COOKIE`  | 空          | 同域 Cookie 名；存在该 Cookie 即通过（用于 `withCredentials` 跨域 / 同域场景）            |
+| `FILE_AUTH_COOKIE`  | 空          | 同域 Cookie 名（用于 `withCredentials` 跨域 / 同域场景）；需同时配置值白名单，否则该分支一律 401 |
+| `FILE_AUTH_COOKIE_TOKENS` | 空    | Cookie 值白名单，逗号分隔；命中才放行（P0-3）                                             |
 | `CORS_ORIGIN`       | 空（关闭）  | 跨域白名单，逗号分隔的具体域名；**不设则不开启 CORS**，设 `*` 仅告警且无法带 Cookie 凭据 |
 | `MAX_UPLOAD_SIZE_MB`| `5120`      | 单文件体积上限（DoS 防护），超限合并请求在入口被拒（`413`）                              |
 | `MAX_CHUNKS`        | `100000`    | 单文件分片数上限（DoS 防护），超限请求在入口被拒（`400`）                                |
@@ -286,6 +287,9 @@ npm run dev
 | `npm run build`           | 组件库构建（ESM + CJS + d.ts + style.css） |
 | `npm run build:demo`      | demo 站点构建                              |
 | `npm run test:unit`       | 前端单元测试                               |
+| `npm run test:coverage`   | 前端单测 + 覆盖率阈值门禁                  |
+| `npm run test:browser`    | 浏览器级冒烟（真实 Chromium/Worker/IndexedDB，需 Node 24 + `npx playwright install chromium`；CI 的 `browser` job 自动执行） |
+| `npm run typecheck`       | 全量类型检查（应用 + 库声明入口）          |
 | `npm run verify`          | 前后端联合验证                             |
 | `npm run docs:screenshot` | 重新生成 README 界面截图                   |
 

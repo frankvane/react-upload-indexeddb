@@ -27,6 +27,10 @@ const fetchMock = vi.fn(async (url: string, options: RequestInit = {}) => {
       },
     });
   }
+  if (String(url).includes("/status")) {
+    // P2-1：续传查询没有已存在分片
+    return jsonResponse({ code: 200, data: { chunks: [] } });
+  }
   if (String(url).includes("/merge")) {
     return jsonResponse({ code: 200 });
   }

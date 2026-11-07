@@ -29,6 +29,8 @@ export interface UploadFile {
   lastModified: number; // Last modified timestamp
   status: UploadStatus; // Upload status
   progress: number; // Progress [0-100]
+  /** P2-4：落盘 schema 版本；读取时按它决定是否需要迁移 */
+  schemaVersion?: number;
   hash?: string; // File hash
   chunkSize?: number; // Chunk size
   chunkCount?: number; // Total chunk count

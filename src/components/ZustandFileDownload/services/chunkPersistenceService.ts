@@ -6,9 +6,44 @@ interface ChunkHealth {
   corruptChunks: number[];
 }
 
+/** 配额不足时重试没有意义：等一会儿也不会凭空多出空间（P2-5）。 */
+const isQuotaError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const candidate = error as { name?: string; code?: number; message?: string };
+  return (
+    candidate.name === "QuotaExceededError" ||
+    candidate.code === 22 ||
+    /quota/i.test(candidate.message ?? "")
+  );
+};
+
+/**
+ * P2-5：下载前的存储配额预检。
+ * 无法获取 estimate（旧浏览器 / 隐私模式）时放行，不阻断正常流程。
+ */
+export const hasStorageBudget = async (neededBytes: number): Promise<boolean> => {
+  try {
+    const estimate = await navigator.storage?.estimate?.();
+    if (!estimate || typeof estimate.quota !== "number") {
+      return true;
+    }
+    const usage = typeof estimate.usage === "number" ? estimate.usage : 0;
+    return estimate.quota - usage > neededBytes;
+  } catch {
+    return true;
+  }
+};
+
 export class ChunkPersistenceService {
   async ensureReady() {
     await chunkStore.ready();
+  }
+
+  /** P2-5：下载前配额预检（无法判断时返回 true，不阻断流程）。 */
+  async hasStorageBudget(neededBytes: number): Promise<boolean> {
+    return hasStorageBudget(neededBytes);
   }
 
   async saveChunkWithRetry(
@@ -37,7 +72,12 @@ export class ChunkPersistenceService {
         }
 
         return true;
-      } catch {
+      } catch (error) {
+        // P2-5：配额超限直接失败，不做 3 次无意义重试（每次还要白等 500ms）
+        if (isQuotaError(error)) {
+          return false;
+        }
+
         retryCount += 1;
         if (retryCount >= maxRetries) {
           return false;

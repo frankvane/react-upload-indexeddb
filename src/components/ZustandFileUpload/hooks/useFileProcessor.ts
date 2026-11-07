@@ -46,6 +46,7 @@ interface UseFileProcessorOptions {
 
 export function useFileProcessor({ uploadAll }: UseFileProcessorOptions) {
   const {
+    existingFiles,
     isNetworkOffline,
     networkType,
     fileConcurrency,
@@ -59,6 +60,7 @@ export function useFileProcessor({ uploadAll }: UseFileProcessorOptions) {
     getMessageApi,
   } = useUploadStore(
     useShallow((state) => ({
+      existingFiles: state.files,
       isNetworkOffline: state.isNetworkOffline,
       networkType: state.networkType,
       fileConcurrency: state.fileConcurrency,
@@ -101,8 +103,15 @@ export function useFileProcessor({ uploadAll }: UseFileProcessorOptions) {
     const validFiles: File[] = [];
     const errors: string[] = [];
 
-    if (files.length > uploadConfig.maxFiles) {
-      errors.push(`最多只能选择 ${uploadConfig.maxFiles} 个文件`);
+    // P2-3：maxFiles 约束的是「列表内文件总数」，不是单次选择的文件数。
+    // 只比较本次 files.length 时，多次少量选择即可无限绕过限制。
+    const existingCount = existingFiles.length;
+    if (existingCount + files.length > uploadConfig.maxFiles) {
+      errors.push(
+        existingCount > 0
+          ? `最多只能选择 ${uploadConfig.maxFiles} 个文件（当前已有 ${existingCount} 个）`
+          : `最多只能选择 ${uploadConfig.maxFiles} 个文件`
+      );
       return { validFiles: [], errors };
     }
 

@@ -27,7 +27,8 @@ jobs:
         run: npm ci
 
       - name: 生产依赖安全审计
-        # 仅查生产依赖；当前 0 漏洞。出现高危/严重即非零退出阻断 CI
+        # 仅查生产依赖；`overrides.follow-redirects ^1.16.2` 已修复 GHSA-mrwp-f3q8-3g9p。
+        # 出现高危/严重即非零退出阻断 CI
         run: npm audit --omit=dev
 
       - name: ESLint
@@ -44,6 +45,33 @@ jobs:
 
       - name: 打包 dry-run（校验 files/exports）
         run: npm pack --dry-run
+
+  react19:
+    name: React 19 兼容矩阵（类型 / 单测 / 构建）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 安装依赖（React 18 基线）
+        run: npm ci
+
+      - name: 切换到 React 19（不改 lock / package.json）
+        # peerDependencies 声明为 ^18 || ^19，这里验证 19 组合的类型与运行时兼容性
+        run: npm install --no-save --no-package-lock react@19 react-dom@19 @types/react@19 @types/react-dom@19
+
+      - name: 类型检查（React 19 类型）
+        run: npm run typecheck
+
+      - name: 单元测试（React 19 运行时）
+        run: npm run test:unit
+
+      - name: 库构建
+        run: npm run build
 
   server:
     name: 参考服务端（node --test + 覆盖率门槛）
@@ -70,3 +98,28 @@ jobs:
         # `verify` = `test`（含 node --experimental-test-coverage 门槛 行80/分支65/函数80）
         #   + `e2e`（真实服务端 round-trip：上传→合并→分片下载→重组→md5 比对）
         run: npm --prefix server run verify
+
+  browser:
+    name: 浏览器级冒烟（真实 Chromium + Worker + IndexedDB）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 安装客户端依赖
+        run: npm ci
+
+      - name: 安装参考服务端依赖
+        # 冒烟脚本会拉起 server/src/index.js，需要 better-sqlite3 等原生依赖
+        run: npm --prefix server ci
+
+      - name: 安装 Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: 浏览器全链路冒烟（P3-3）
+        # 真实浏览器里跑通「选文件 → 分片上传 → 合并 → 列表校验 md5」
+        run: npm run test:browser

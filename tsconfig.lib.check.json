@@ -1,0 +1,10 @@
+{
+  "// 说明": "P3-1：库声明入口的独立类型门禁。tsconfig.lib.json 会真正 emit .d.ts，不能挂进 tsc -b 的 references（composite 要求 emit）；这里以 noEmit 方式单独校验 src/index.ts / upload.ts / download.ts 的类型完整性，避免发布入口的类型错误只能靠构建阶段暴露。",
+  "extends": "./tsconfig.lib.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "emitDeclarationOnly": false
+  },
+  "include": ["src/index.ts", "src/upload.ts", "src/download.ts", "src/vite-env.d.ts"]
+}

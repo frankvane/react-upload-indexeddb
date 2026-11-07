@@ -133,18 +133,31 @@ export const useDownloadStore = create<DownloadState>()(
             const downloadFiles = await apiClient.getDownloadFiles(params);
 
             // 处理文件数据，添加必要的字段
+            // P1-3：已在下载 / 已落过分片的文件必须沿用原 chunkSize。
+            // 否则网络自适应改变 state.chunkSize 后（updateNetworkStatus 会触发
+            // fetchFileList(true)），这里会给同一文件重算出不同的 totalChunks，
+            // 而磁盘上的分片仍是旧方案切出来的 → getPendingChunks 按下标误判齐全。
+            const previousFiles = new Map(
+              state.files.map((item) => [item.id, item])
+            );
             const processedFiles = downloadFiles.map((file) => {
-              const chunkSize = state.chunkSize;
-              const totalChunks = Math.ceil(file.fileSize / chunkSize);
+              const previous = previousFiles.get(file.id);
+              const chunkSize = previous?.chunkSize || state.chunkSize;
+              const totalChunks = Math.max(
+                1,
+                Math.ceil(file.fileSize / chunkSize)
+              );
 
               return {
                 ...file,
                 totalChunks,
-                downloadedChunks: 0,
-                progress: 0,
-                status: DownloadStatus.IDLE,
+                // 保留既有下载进度与状态，避免刷新列表把进行中的下载重置为 IDLE
+                downloadedChunks: previous?.downloadedChunks ?? 0,
+                progress: previous?.progress ?? 0,
+                status: previous?.status ?? DownloadStatus.IDLE,
                 chunkSize,
                 md5: file.metadata?.md5,
+                md5Mode: file.metadata?.md5Mode,
               };
             });
 

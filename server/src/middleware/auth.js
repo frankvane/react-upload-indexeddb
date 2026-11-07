@@ -9,7 +9,7 @@
 //   2) 同域 Cookie（前端 axios withCredentials / Worker credentials:'include' 自动携带）
 //
 // 默认 fail-closed（拒绝优先）：
-//   - 只要拿到有效凭据（Bearer token 命中白名单 / Cookie 命中 / verify 放行）才 next()；
+//   - 只要拿到有效凭据（Bearer token 命中白名单 / Cookie 命中白名单 / verify 放行）才 next()；
 //   - 否则一律 401，绝不静默放行。
 //   - 唯一的“放开口子”是显式传入 requireAuth:false（demo / 测试场景由 app.js 决定）。
 //     app.js 默认 AUTH_MODE=secure，永远以 requireAuth:true 挂载本中间件；
@@ -44,9 +44,27 @@ function safeTokenEqual(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+// P2-9：由凭据派生出稳定的主体 ID。
+// 共享密钥模型没有账号体系，但「一把钥匙 = 一个主体」足以把数据按凭据隔离开：
+// 同一 token 无论走 Bearer 还是 Cookie 都映射到同一 ID，且无法由客户端伪造。
+function buildPrincipalId(token) {
+  const digest = crypto
+    .createHash("sha256")
+    .update(String(token))
+    .digest("hex");
+  return `u_${digest.slice(0, 32)}`;
+}
+
+function attachPrincipal(req, token, source) {
+  if (!req.user || !req.user.id) {
+    req.user = { id: buildPrincipalId(token), source };
+  }
+}
+
 function createAuthMiddleware(options = {}) {
   const {
     bearerTokens = [],
+    cookieTokens = [], // Cookie 值白名单；未提供 verify 时必须命中才放行（P0-3）
     cookieName,
     verify, // (token, req, next) => void；返回 void 即放行，否则自行 res 结束
     requireAuth = true, // 默认 fail-closed：未提供有效凭据即拒绝
@@ -62,16 +80,30 @@ function createAuthMiddleware(options = {}) {
     const authHeader = req.headers.authorization || "";
     const [scheme, token] = authHeader.split(" ");
     if (scheme === "Bearer" && token) {
-      if (verify) return verify(token, req, next);
-      if (bearerTokens.some((t) => safeTokenEqual(t, token))) return next();
+      if (verify) {
+        attachPrincipal(req, token, "bearer");
+        return verify(token, req, next);
+      }
+      if (bearerTokens.some((t) => safeTokenEqual(t, token))) {
+        attachPrincipal(req, token, "bearer");
+        return next();
+      }
     }
 
     if (cookieName) {
       const cookies = parseCookies(req.headers.cookie);
       const cookieValue = cookies[cookieName];
       if (cookieValue) {
-        if (verify) return verify(cookieValue, req, next);
-        return next();
+        if (verify) {
+          attachPrincipal(req, cookieValue, "cookie");
+          return verify(cookieValue, req, next);
+        }
+        // P0-3：没有 verify 时必须命中 Cookie 白名单。绝不能「存在即通过」，
+        // 否则任意非空 Cookie 都能绕过鉴权。
+        if (cookieTokens.some((t) => safeTokenEqual(t, cookieValue))) {
+          attachPrincipal(req, cookieValue, "cookie");
+          return next();
+        }
       }
     }
 
@@ -81,4 +113,4 @@ function createAuthMiddleware(options = {}) {
   };
 }
 
-module.exports = { createAuthMiddleware, parseCookies };
+module.exports = { createAuthMiddleware, parseCookies, buildPrincipalId };

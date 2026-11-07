@@ -128,6 +128,8 @@ const scheduleFlush = () => {
       scheduleFlush();
     });
   }, FLUSH_INTERVAL_MS);
+  // 待刷盘定时器不应成为进程存活的原因（否则 test / 短生命周期脚本要等满间隔才退出）
+  flushTimer.unref?.();
 };
 
 const runExclusive = async (operation) => {

@@ -147,6 +147,16 @@ async function handleDownload(payload: StartDownloadPayload) {
   let downloadedChunks = totalChunks - pendingChunks.length;
   let remainingChunks = [...pendingChunks];
 
+  // P2-6：单独记录"已真正拿到的分片"。失败分片达到重试上限后会从
+  // remainingChunks 中被静默剔除，此时队列同样会空 —— 不能据此判定完成。
+  const pendingSet = new Set(pendingChunks);
+  const completedChunks = new Set<number>();
+  for (let i = 0; i < totalChunks; i += 1) {
+    if (!pendingSet.has(i)) {
+      completedChunks.add(i);
+    }
+  }
+
   sendProgressUpdate(fileId, downloadedChunks, totalChunks);
 
   while (remainingChunks.length > 0 && activeDownloads[fileId]) {
@@ -168,6 +178,11 @@ async function handleDownload(payload: StartDownloadPayload) {
 
     const successfulDownloads = results.filter((r) => r.success).length;
     downloadedChunks += successfulDownloads;
+    results.forEach((r) => {
+      if (r.success) {
+        completedChunks.add(r.chunkIndex);
+      }
+    });
 
     sendProgressUpdate(fileId, downloadedChunks, totalChunks);
 
@@ -248,6 +263,35 @@ async function handleDownload(payload: StartDownloadPayload) {
     remainingChunks = [...remainingChunks, ...retriableChunks];
 
     if (remainingChunks.length === 0) {
+      // P2-6：队列空 ≠ 下载完整。重试耗尽的分片已被剔除，必须显式核对已拿到的分片集合，
+      // 否则缺片文件会被强行推到 100% 并标记 COMPLETED。
+      if (completedChunks.size < totalChunks) {
+        const missing: number[] = [];
+        for (let i = 0; i < totalChunks; i += 1) {
+          if (!completedChunks.has(i)) {
+            missing.push(i);
+          }
+        }
+        debugWarn(
+          `文件 ${fileId} 重试耗尽后仍缺 ${missing.length} 个分片，放弃完成：${missing
+            .slice(0, 5)
+            .join(",")}`
+        );
+        activeDownloads[fileId] = false;
+        delete downloadAuthSettings[fileId];
+        ctx.postMessage({
+          type: "ERROR",
+          payload: {
+            fileId,
+            chunkIndex: missing[0],
+            error: `有 ${missing.length} 个分片下载失败（索引 ${missing
+              .slice(0, 5)
+              .join("、")}${missing.length > 5 ? " 等" : ""}），请重试`,
+          },
+        });
+        return;
+      }
+
       sendProgressUpdate(fileId, totalChunks, totalChunks, true);
       // 下载完成，清理该文件的鉴权设置
       delete downloadAuthSettings[fileId];

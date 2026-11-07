@@ -23,6 +23,13 @@ export interface DownloadFile {
   fileType?: string;
   /** 服务端返回的权威全量 md5（合并终检用，见 F5） */
   md5?: string;
+  /**
+   * P2-8：`md5` 的语义。
+   * - `full`（默认）：真实全量 md5，可作为合并终检的 expectedMd5；
+   * - `sample`：无 DB 元数据的 >=10MB 文件只能给出采样哈希，必须跳过严格比对，
+   *   否则合并永远"校验失败"。
+   */
+  md5Mode?: "full" | "sample";
   totalChunks: number;
   chunkSize?: number;
   downloadedChunks?: number;

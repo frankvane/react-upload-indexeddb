@@ -61,7 +61,8 @@ describe("downloader.worker（F3 + P1）", () => {
     Object.defineProperty(self, "postMessage", {
       configurable: true,
       writable: true,
-      value: (message: unknown) => postedMessages.push(message),
+      value: (message: unknown) =>
+        postedMessages.push(message as Record<string, any>),
     });
 
     realSetTimeout = setTimeout;

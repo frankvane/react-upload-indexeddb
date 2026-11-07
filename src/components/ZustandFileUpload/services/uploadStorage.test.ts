@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UploadStatus, type UploadFile } from "../types/upload";
+import { UPLOAD_SCHEMA_VERSION } from "./uploadSchema";
 
 type IterateCallback = (value: unknown, key: string) => void;
 
@@ -58,6 +59,9 @@ const createFile = (
     pausedChunks: [],
     createdAt: 1700000000000,
     order: 0,
+    // P2-4：带上当前 schema 版本，避免读取时触发迁移写回、
+    // 干扰"恢复流程写入次数"的断言。
+    schemaVersion: UPLOAD_SCHEMA_VERSION,
     ...overrides,
   }) as UploadFile;
 

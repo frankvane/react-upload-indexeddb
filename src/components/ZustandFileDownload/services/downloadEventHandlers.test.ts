@@ -52,15 +52,24 @@ const createHandlers = () => {
   };
   const removeProcessing = vi.fn();
   const updateFile = vi.fn();
+  const mergeFile = vi.fn(async () => undefined);
 
   const handlers = createDownloadEventHandlers({
     chunkService: chunkService as never,
     mergeService: mergeService as never,
     removeProcessing,
     updateFile,
+    mergeFile,
   });
 
-  return { handlers, chunkService, mergeService, removeProcessing, updateFile };
+  return {
+    handlers,
+    chunkService,
+    mergeService,
+    removeProcessing,
+    updateFile,
+    mergeFile,
+  };
 };
 
 describe("downloadEventHandlers（T2.5/T2.8）", () => {
@@ -71,8 +80,9 @@ describe("downloadEventHandlers（T2.5/T2.8）", () => {
     fileStoreMock.setItem.mockClear();
   });
 
-  it("handleMergeComplete：写入完整文件、标记完成并移除处理态（P1-12）", async () => {
-    const { handlers, mergeService, removeProcessing } = createHandlers();
+  it("handleMergeComplete：写入完整文件、标记完成并清理分片（P2-15）", async () => {
+    const { handlers, mergeService, removeProcessing, chunkService } =
+      createHandlers();
     const file = createFile();
     fileStoreMock.getItem.mockResolvedValue(file);
     const blob = new Blob([new Uint8Array(8)]);
@@ -82,7 +92,7 @@ describe("downloadEventHandlers（T2.5/T2.8）", () => {
     expect(completeFileStoreMock.ready).toHaveBeenCalled();
     expect(completeFileStoreMock.setItem).toHaveBeenCalledWith("dl-1", blob);
     expect(mergeService.markCompleted).toHaveBeenCalledWith(file);
-    // 分片清理由 useFileDownloaderController 的合并完成路径负责（T2.5）
+    expect(chunkService.removeAllChunks).toHaveBeenCalledWith("dl-1", 4);
     expect(removeProcessing).toHaveBeenCalledWith("dl-1");
   });
 
@@ -109,8 +119,8 @@ describe("downloadEventHandlers（T2.5/T2.8）", () => {
     expect(removeProcessing).toHaveBeenCalledWith("dl-1");
   });
 
-  it("handleDownloadComplete：分片齐全时直接标记完成并异步清理分片", async () => {
-    const { handlers, chunkService, mergeService } = createHandlers();
+  it("handleDownloadComplete：分片齐全时触发合并（不再直接标记完成/删分片）", async () => {
+    const { handlers, chunkService, mergeService, mergeFile } = createHandlers();
     const file = createFile();
     fileStoreMock.getItem.mockResolvedValue(file);
     chunkService.getChunkHealth.mockResolvedValue({
@@ -121,8 +131,10 @@ describe("downloadEventHandlers（T2.5/T2.8）", () => {
 
     await handlers.handleDownloadComplete({ fileId: "dl-1" });
 
-    expect(mergeService.markCompleted).toHaveBeenCalledWith(file);
-    expect(chunkService.removeAllChunks).toHaveBeenCalledWith("dl-1", 4);
+    // P0-1：必须走合并（写 completeFileStore），分片由合并成功后的回调统一清理。
+    expect(mergeFile).toHaveBeenCalledWith(file);
+    expect(mergeService.markCompleted).not.toHaveBeenCalled();
+    expect(chunkService.removeAllChunks).not.toHaveBeenCalled();
   });
 
   it("handleDownloadPaused：按已下载分片重算进度并持久化", async () => {

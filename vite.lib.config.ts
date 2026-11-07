@@ -30,31 +30,25 @@ export default defineConfig({
       // 内置 UI 套件样式输出为统一 dist/style.css（各入口共享，消费方按需引入）
       cssFileName: "style",
     },
-    // 不产出 sourcemap：dist 会整包发布到 npm，.map 占比超过 70%。
-    // 需要在本地调试构建产物时，可临时改为 true（不要提交）。
-    sourcemap: false,
+    // P3-1：产出 sourcemap。此前为控制包体积关闭，导致消费方线上报错只能看到
+    // 压缩后的代码，无法定位到源码行。.map 会随 dist 一起发布（体积换可诊断性）。
+    sourcemap: true,
     rollupOptions: {
       // 框架级 / 单例依赖交给消费方提供，避免重复实例与体积膨胀。
       // antd 已于 T4.3 移除（内置 rui-ui 替代），不再 external。
-      external: [
-        "react",
-        "react-dom",
-        "react/jsx-runtime",
-        "zustand",
-        "zustand/react/shallow",
-        "localforage",
-        // 注意：spark-md5 不能 external —— 它被 filePrepareWorker / uploadWorker 引用，
-        // 而 Worker 运行时无法解析裸模块导入；改用 Vite `?worker&inline` 把 worker
-        // （连同 spark-md5）整体内联为 Blob，消费方 dev/构建都无需再解析外部 worker 资产。
-        "axios",
-      ],
-      output: {
-        globals: {
-          react: "React",
-          "react-dom": "ReactDOM",
-          zustand: "zustand",
-        },
-      },
+      //
+      // P2-11：此前是精确字符串数组，只列了 "react-dom"，漏掉 "react-dom/client"，
+      // 导致 react-dom/client 的 CJS 包装被打进产物，dist 里残留
+      // `process.env.NODE_ENV`，浏览器 / 非 Node 环境直接报 process is not defined。
+      // 改为前缀匹配，覆盖 react-dom/client、react/jsx-runtime、zustand/* 等子路径。
+      external: (id) =>
+        /^(react|react-dom|zustand|localforage|axios)(\/.*)?$/.test(id),
+      // 注意：spark-md5 不能 external —— 它被 filePrepareWorker / uploadWorker 引用，
+      // 而 Worker 运行时无法解析裸模块导入；改用 Vite `?worker&inline` 把 worker
+      // （连同 spark-md5）整体内联为 Blob，消费方 dev/构建都无需再解析外部 worker 资产。
+      //
+      // P3-1：ESM / CJS 产物没有全局变量概念，`output.globals` 只对 UMD/IIFE 生效，
+      // 此前配置属无效项，已移除（如需 UMD 产物再单独加）。
     },
   },
 });

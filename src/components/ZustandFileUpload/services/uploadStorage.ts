@@ -1,32 +1,37 @@
 import { UploadStatus, type UploadFile } from "../types/upload";
 import type { FileRegistry } from "./fileRegistry";
+import { migrateUploadFile } from "./uploadSchema";
 
-const isUploadFile = (value: unknown): value is UploadFile => {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const maybeFile = value as Partial<UploadFile>;
-  return (
-    typeof maybeFile.id === "string" &&
-    typeof maybeFile.fileName === "string" &&
-    typeof maybeFile.createdAt === "number"
-  );
-};
-
+/**
+ * P2-4：读取即迁移（纯内存，不回写）。
+ * 旧记录缺字段 / 状态是历史字符串时补齐并映射，结构性损坏（缺 id、fileName、
+ * createdAt）直接丢弃。回写交给后续真实业务写入（写入时统一盖 schemaVersion），
+ * 避免"读操作产生写放大"。
+ */
 export const listUploadFiles = async (
   storage: LocalForage
 ): Promise<UploadFile[]> => {
   const files: UploadFile[] = [];
 
   await storage.iterate<unknown, void>((value) => {
-    if (isUploadFile(value)) {
-      files.push(value);
+    const result = migrateUploadFile(value);
+    if (result) {
+      files.push(result.file);
     }
   });
 
   files.sort((a, b) => a.createdAt - b.createdAt);
   return files;
+};
+
+/** 单条读取（同样过迁移层），供清理策略等按 id 读取的场景使用。 */
+export const readUploadFile = async (
+  storage: LocalForage,
+  id: string
+): Promise<UploadFile | null> => {
+  const raw = await storage.getItem<unknown>(id);
+  const result = migrateUploadFile(raw);
+  return result ? result.file : null;
 };
 
 export const removeUploadFilesByIds = async (

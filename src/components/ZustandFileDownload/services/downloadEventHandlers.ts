@@ -32,6 +32,11 @@ interface DownloadEventHandlerDeps {
   mergeService: MergeService;
   removeProcessing: (fileId: string) => void;
   updateFile: (fileId: string, updates: Partial<DownloadFile>) => void;
+  /**
+   * 触发合并（P0-1）：下载完成后必须真正合并并写入 completeFileStore，
+   * 否则「导出」会因分片已被清理而必然失败。
+   */
+  mergeFile: (file: DownloadFile) => Promise<void>;
 }
 
 export const createDownloadEventHandlers = ({
@@ -39,6 +44,7 @@ export const createDownloadEventHandlers = ({
   mergeService,
   removeProcessing,
   updateFile,
+  mergeFile,
 }: DownloadEventHandlerDeps) => ({
   handleDownloadComplete: async (payload: DownloadCompletePayload) => {
     const file = await fileStore.getItem<DownloadFile>(payload.fileId);
@@ -62,13 +68,18 @@ export const createDownloadEventHandlers = ({
       return;
     }
 
-    await mergeService.markCompleted(file);
-    // 合并完成后分片不再需要：异步清理，避免 chunks + completeFiles
-    // 双份占用磁盘配额（P1-12）
-    void chunkService
-      .removeAllChunks(file.id, file.totalChunks)
-      .catch(() => undefined);
-    removeProcessing(file.id);
+    // 分片齐全后必须真正合并：合并成功会写入 completeFileStore，
+    // 随后由 handleMergeComplete / 主线程兜底路径清理分片。
+    try {
+      await mergeFile(file);
+    } catch (err) {
+      updateFile(file.id, {
+        status: DownloadStatus.ERROR,
+        error: `合并文件失败: ${err instanceof Error ? err.message : "未知错误"}`,
+      });
+      removeProcessing(file.id);
+      message.error(`文件 ${file.fileName} 合并失败`);
+    }
   },
 
   handleDownloadError: (payload: DownloadErrorPayload) => {
@@ -91,6 +102,11 @@ export const createDownloadEventHandlers = ({
     }
 
     await mergeService.markCompleted(file);
+    // merge worker 路径同样要清理分片（P2-15）：与主线程兜底路径保持一致，
+    // 避免 chunks + completeFiles 双份占用配额。
+    void chunkService
+      .removeAllChunks(file.id, file.totalChunks)
+      .catch(() => undefined);
     removeProcessing(payload.fileId);
   },
 

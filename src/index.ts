@@ -1,6 +1,6 @@
 // 公共入口：供 npm 消费方导入。
 // ui.css 经此处引入，Vite lib 构建会产出 dist/style.css（消费方按需引入）：
-//   import "react-upload-indexeddb/dist/style.css";
+//   import "react-upload-indexeddb/style.css";
 import "./ui/ui.css";
 
 export { default } from "./components/ZustandFileUpload";
@@ -25,10 +25,15 @@ export {
 } from "./components/ZustandFileUpload/types/upload";
 
 export {
+  // P3-2：DownloadStatus 是运行时常量对象（`as const`），必须以值导出，
+  // 否则消费方 `DownloadStatus.COMPLETED` 在运行时是 undefined。
+  DownloadStatus,
+  type DownloadStatusType,
+  type DownloadConfig,
+  type StorageStats,
   type ZustandFileDownloadProps,
   type DownloadColumnKey,
   type DownloadFile,
-  type DownloadStatus,
 } from "./components/ZustandFileDownload/types/download";
 
 export { resolveAuthHeaders } from "./components/ZustandFileUpload/utils/auth";

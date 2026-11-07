@@ -43,10 +43,12 @@ export default defineConfig(({ mode }) => {
           // 长期目标见 docs/implementation-checklist.md T2.8：lines/statements 60、branches 50）。
           // 2026-10-23 随 vitest 5 升级重校：coverage provider 由 v8 切 istanbul
           // （v8+SWC 重映射数字失真，见上方注释），以 istanbul 实测值重设。
-          lines: 35,
-          functions: 30,
-          statements: 35,
-          branches: 25,
+          // 2026-11-07（P1-7）：补下载编排层用例后 ratchet 到 40/33/40/30，
+          // 实测 43.84/35.18/43.41/33.24（lines/functions/statements/branches），留少量余量。
+          lines: 40,
+          functions: 33,
+          statements: 40,
+          branches: 30,
           // src/shared 与 services 是纯逻辑层，门槛更高
           // 长期目标 80/80/80/75；shared 已大幅达标（96/95/100/97），services 按当前聚合值设防
           "src/shared/**": {

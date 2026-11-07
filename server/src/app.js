@@ -83,6 +83,11 @@ if (authMode !== "demo") {
     .map((t) => t.trim())
     .filter(Boolean);
   const cookieName = process.env.FILE_AUTH_COOKIE || undefined;
+  // P0-3：Cookie 分支必须有可校验的凭据（白名单或 verify），不能「有值即通过」。
+  const cookieTokens = (process.env.FILE_AUTH_COOKIE_TOKENS || "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
   const hasAnyConfig = bearerTokens.length > 0 || Boolean(cookieName);
   if (!hasAnyConfig) {
     // fail-closed：要求保护却未配置凭据 → 不允许 silent open，告警并一律拒绝。
@@ -90,11 +95,29 @@ if (authMode !== "demo") {
       "[FATAL] AUTH_MODE=secure 但未配置 FILE_AUTH_TOKEN / FILE_AUTH_COOKIE，" +
         "所有 /api/file 请求将被拒绝（fail-closed）。本地调试可设 AUTH_MODE=demo；生产应配置凭据。"
     );
+  } else if (cookieName && cookieTokens.length === 0) {
+    console.error(
+      "[FATAL] 已配置 FILE_AUTH_COOKIE 但未设置 FILE_AUTH_COOKIE_TOKENS，" +
+        "Cookie 分支将一律返回 401（不再接受任意非空 Cookie）。" +
+        "请配置白名单，或改用 FILE_AUTH_TOKEN / 自定义 verify。"
+    );
   }
   app.use(
     "/api/file",
-    createAuthMiddleware({ bearerTokens, cookieName, requireAuth: true })
+    createAuthMiddleware({
+      bearerTokens,
+      cookieTokens,
+      cookieName,
+      requireAuth: true,
+    })
   );
+} else {
+  // P2-9：demo 模式没有凭据可派生身份，固定映射为历史默认用户 "test"，
+  // 以兼容升级前写入的 file 行；生产环境永远走上面的凭据派生分支。
+  app.use("/api/file", (req, _res, next) => {
+    req.user = { id: process.env.DEMO_USER_ID || "test", source: "demo" };
+    next();
+  });
 }
 
 app.use("/api/file", fileRoutes);

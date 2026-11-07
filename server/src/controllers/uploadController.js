@@ -8,8 +8,11 @@ const {
   parseChunkKey,
   sanitizeFilename,
   buildChunkPath,
+  isValidMd5,
+  resolveInsideBase,
 } = require("../utils/fileSecurity");
 const { generateThumbnail } = require("../utils/thumbnail");
+const { redactErrorMessage } = require("../utils/errorMessage");
 const {
   enqueueChunkState,
   flushFileChunkStates,
@@ -20,6 +23,11 @@ const {
   isSqliteBusyError,
   withSqliteBusyRetry,
 } = require("../utils/sqliteRetry");
+
+// P2-9：身份只认鉴权中间件写入的 req.user，绝不读取请求体 user_id。
+// 未经过鉴权的调用（仅 demo / 单测直调控制器）回退到历史默认用户 "test"。
+const getUserId = (req) =>
+  req && req.user && req.user.id ? String(req.user.id) : "test";
 
 const jsonError = (res, statusCode, message, data = {}) =>
   res.status(statusCode).json({ code: statusCode, message, data });
@@ -33,6 +41,28 @@ const httpError = (statusCode, message, details = undefined) => {
   return error;
 };
 
+/**
+ * P2-9：秒传 / 已合并只回传调用方真正需要的字段。
+ * 此前直接序列化 Sequelize 实例，把 file_path、user_id、thumbnail_path 等
+ * 内部信息一并透出；且查询不带 user 维度，形成跨租户信息泄漏面。
+ */
+const toPublicFile = (file) => {
+  if (!file) {
+    return null;
+  }
+  const plain = typeof file.toJSON === "function" ? file.toJSON() : { ...file };
+  return {
+    file_id: plain.file_id,
+    file_name: plain.file_name,
+    size: plain.size,
+    md5: plain.md5,
+    file_ext: plain.file_ext,
+    file_type: plain.file_type,
+    category_id: plain.category_id,
+    created_at: plain.created_at,
+  };
+};
+
 // S3 容量 / 分片数上限（DoS 防护）：请求时读取，支持运行时配置且不受模块缓存影响。
 // 默认 5GB 单文件上限、10 万片上限；可通过环境变量收紧。
 const getMaxUploadSizeBytes = () => {
@@ -43,6 +73,151 @@ const getMaxUploadSizeBytes = () => {
 const getMaxChunks = () => {
   const n = Number.parseInt(process.env.MAX_CHUNKS || "", 10);
   return Number.isFinite(n) && n > 0 ? n : 100000;
+};
+
+// P1-4（残留）：上面两个上限都是「单 file_id」维度，换一个 file_id 就能继续写盘。
+// 再加一层进程级全局上限（TMP 目录内所有分片之和），默认 20GB / 20 万片，
+// 可用 MAX_TOTAL_UPLOAD_SIZE_MB / MAX_TOTAL_CHUNKS 收紧。全局额度不是租户隔离，
+// 但能把「无限占盘」收敛成有界写入。
+const getMaxTotalUploadSizeBytes = () => {
+  const mb = Number.parseFloat(process.env.MAX_TOTAL_UPLOAD_SIZE_MB || "");
+  return Number.isFinite(mb) && mb > 0 ? mb * 1024 * 1024 : 20480 * 1024 * 1024;
+};
+
+const getMaxTotalChunks = () => {
+  const n = Number.parseInt(process.env.MAX_TOTAL_CHUNKS || "", 10);
+  return Number.isFinite(n) && n > 0 ? n : 200000;
+};
+
+// P1-4（user 维度）：按调用方身份累计的配额。
+// 单 file_id 上限防单文件超限，全局上限防止进程被写满；用户维度阻止
+// 同一凭据通过不断更换 file_id 无限占用存储。
+const getMaxUserUploadSizeBytes = () => {
+  const mb = Number.parseFloat(process.env.MAX_USER_UPLOAD_SIZE_MB || "");
+  return Number.isFinite(mb) && mb > 0 ? mb * 1024 * 1024 : 10240 * 1024 * 1024;
+};
+
+const getMaxUserChunks = () => {
+  const n = Number.parseInt(process.env.MAX_USER_CHUNKS || "", 10);
+  return Number.isFinite(n) && n > 0 ? n : 100000;
+};
+
+// P1-4：分片写入阶段的累计配额。
+// 此前 MAX_UPLOAD_SIZE_MB / MAX_CHUNKS 只在 merge 校验，只要不调 merge，
+// 就能对同一 file_id（甚至任意 file_id）无限写分片把磁盘占满。
+// 这里按 file_id 维护累计占用：首次访问从磁盘播种，之后按增量维护；
+// 合并 / 重置分片后显式失效，避免重启或清理后残留陈旧计数。
+const chunkUsage = new Map(); // fileId -> { bytes, count }
+const CHUNK_USAGE_MAX_TRACKED = 10000;
+
+// P1-4（残留）：全局用量。首次访问（或分片被删除后失效）从磁盘播种，
+// 之后按写入增量维护；进程内单线程，无并发写竞争。
+const globalChunkUsage = { bytes: 0, count: 0, seeded: false };
+
+const seedGlobalChunkUsage = async () => {
+  ensureDir(TMP_UPLOAD_DIR);
+  const entries = await fs.promises.readdir(TMP_UPLOAD_DIR);
+  let bytes = 0;
+  let count = 0;
+  for (const name of entries) {
+    // 分片文件名固定为 `<fileId>_<index>`；合并 staging（`*.part`）不计入。
+    if (!/_\d+$/.test(name)) continue;
+    const stat = await fs.promises
+      .stat(path.join(TMP_UPLOAD_DIR, name))
+      .catch(() => null);
+    if (!stat || !stat.isFile()) continue;
+    bytes += stat.size;
+    count += 1;
+  }
+  globalChunkUsage.bytes = bytes;
+  globalChunkUsage.count = count;
+  globalChunkUsage.seeded = true;
+  return globalChunkUsage;
+};
+
+const getGlobalChunkUsage = async () =>
+  globalChunkUsage.seeded ? globalChunkUsage : seedGlobalChunkUsage();
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const seedChunkUsage = async (fileId) => {
+  ensureDir(TMP_UPLOAD_DIR);
+  const pattern = new RegExp(`^${escapeRegExp(fileId)}_\\d+$`);
+  const entries = await fs.promises.readdir(TMP_UPLOAD_DIR);
+  let bytes = 0;
+  let count = 0;
+  for (const name of entries) {
+    if (!pattern.test(name)) continue;
+    const stat = await fs.promises
+      .stat(path.join(TMP_UPLOAD_DIR, name))
+      .catch(() => null);
+    if (!stat || !stat.isFile()) continue;
+    bytes += stat.size;
+    count += 1;
+  }
+  return { bytes, count };
+};
+
+const getChunkUsage = async (fileId) => {
+  const cached = chunkUsage.get(fileId);
+  if (cached) {
+    return cached;
+  }
+  const usage = await seedChunkUsage(fileId);
+  if (chunkUsage.size >= CHUNK_USAGE_MAX_TRACKED) {
+    chunkUsage.clear();
+  }
+  chunkUsage.set(fileId, usage);
+  return usage;
+};
+
+/** 分片被删除 / 合并 / 重置后调用，下次访问重新从磁盘播种。 */
+const forgetChunkUsage = (fileId) => {
+  chunkUsage.delete(fileId);
+  // 分片已从磁盘消失，全局用量同样失效，下次重新播种（P1-4 残留）
+  globalChunkUsage.seeded = false;
+};
+
+// P1-4（user 维度）：按用户累计。首次访问从 FileChunk + 磁盘播种，
+// 合并 / 重置后失效，下次重新播种。
+const userChunkUsage = new Map(); // userId -> { bytes, count }
+const USER_CHUNK_USAGE_MAX_TRACKED = 10000;
+
+const seedUserChunkUsage = async (userId) => {
+  const rows = await withSqliteBusyRetry(() =>
+    FileChunk.findAll({
+      where: { user_id: userId, status: 1 },
+      attributes: ["file_id", "chunk_index"],
+    })
+  );
+  let bytes = 0;
+  let count = 0;
+  for (const row of rows) {
+    const stat = await fs.promises
+      .stat(buildChunkPath(row.file_id, row.chunk_index))
+      .catch(() => null);
+    if (!stat || !stat.isFile()) continue;
+    bytes += stat.size;
+    count += 1;
+  }
+  return { bytes, count };
+};
+
+const getUserChunkUsage = async (userId) => {
+  const cached = userChunkUsage.get(userId);
+  if (cached) {
+    return cached;
+  }
+  const usage = await seedUserChunkUsage(userId);
+  if (userChunkUsage.size >= USER_CHUNK_USAGE_MAX_TRACKED) {
+    userChunkUsage.clear();
+  }
+  userChunkUsage.set(userId, usage);
+  return usage;
+};
+
+const forgetUserChunkUsage = (userId) => {
+  userChunkUsage.delete(userId);
 };
 
 const mergeLocks = new Map();
@@ -143,7 +318,7 @@ const buildChunkMap = (fileId, dbChunks) => {
  * 清空某个分片键下的旧分片结果（FileChunk 置无效 + 删除 tmp 分片文件）。
  * 用于 chunkSize/size 变更后旧分片不再可用的场景（P1-6）。
  */
-const resetChunkResults = async (fileId) => {
+const resetChunkResults = async (fileId, userId) => {
   // 分片状态经异步队列落库，先把队列刷进 DB 再清理，避免漏删已入队分片
   await flushFileChunkStates(fileId);
 
@@ -178,6 +353,12 @@ const resetChunkResults = async (fileId) => {
     dropPendingChunkIndexes(fileId, staleChunkIndexes);
   }
 
+  // 分片文件已从磁盘删除，累计用量缓存立即失效（P1-4）
+  forgetChunkUsage(fileId);
+  if (userId) {
+    forgetUserChunkUsage(userId);
+  }
+
   return staleChunkIndexes.length;
 };
 
@@ -199,7 +380,7 @@ exports.instantCheck = async (req, res) => {
       (parsedKey.size !== Number(size) ||
         (chunk_size !== undefined && parsedKey.chunkSize !== Number(chunk_size)))
     ) {
-      const cleared = await resetChunkResults(safeFileId);
+      const cleared = await resetChunkResults(safeFileId, getUserId(req));
       return jsonOk(res, {
         uploaded: false,
         chunkCheckResult: [],
@@ -210,12 +391,13 @@ exports.instantCheck = async (req, res) => {
 
     // 秒传判定按 md5+size：file_id 含 chunkSize 会随网络自适应变化，
     // 不能作为秒传键（P1-6/P1-7）。
+    // P2-9：必须叠加 user_id，否则任意用户都能探测/复用他人已上传的文件。
     const file = await File.findOne({
-      where: { md5, size, status: 1 },
+      where: { md5, size, status: 1, user_id: getUserId(req) },
     });
 
     if (file) {
-      return jsonOk(res, { uploaded: true, file });
+      return jsonOk(res, { uploaded: true, file: toPublicFile(file) });
     }
 
     let chunkCheckResult = [];
@@ -242,7 +424,7 @@ exports.instantCheck = async (req, res) => {
     if (isSqliteBusyError(error)) {
       return jsonError(res, 503, "database is busy, please retry later");
     }
-    return jsonError(res, 500, error.message);
+    return jsonError(res, 500, redactErrorMessage(error));
   }
 };
 
@@ -272,13 +454,13 @@ exports.statusQuery = async (req, res) => {
     if (isSqliteBusyError(error)) {
       return jsonError(res, 503, "database is busy, please retry later");
     }
-    return jsonError(res, 500, error.message);
+    return jsonError(res, 500, redactErrorMessage(error));
   }
 };
 
 exports.uploadChunk = async (req, res) => {
   try {
-    let { file_id, index, user_id, chunk_md5 } = req.body;
+    let { file_id, index, chunk_md5 } = req.body;
     const safeFileId = sanitizeFileId(file_id);
 
     if (!safeFileId || index === undefined) {
@@ -307,13 +489,75 @@ exports.uploadChunk = async (req, res) => {
       });
     }
 
+    // P1-4：写入前做累计配额校验（单文件累计字节 + 分片数）。
+    // 覆盖重传同一 index（按差额计算），避免覆盖写被重复计费。
+    const usage = await getChunkUsage(safeFileId);
+    const existingChunk = await fs.promises.stat(chunkPath).catch(() => null);
+    const replacedBytes =
+      existingChunk && existingChunk.isFile() ? existingChunk.size : 0;
+    const nextBytes = usage.bytes - replacedBytes + req.file.buffer.length;
+    const nextCount = usage.count + (existingChunk ? 0 : 1);
+    if (nextBytes > getMaxUploadSizeBytes()) {
+      return jsonError(res, 413, "file size exceeds maximum allowed", {
+        maxMb: Math.round(getMaxUploadSizeBytes() / 1024 / 1024),
+      });
+    }
+    if (nextCount > getMaxChunks()) {
+      return jsonError(res, 400, "total exceeds maximum allowed chunks", {
+        max: getMaxChunks(),
+      });
+    }
+
+    // P1-4（残留）：全局维度校验——换 file_id 也不能突破进程级总容量。
+    const globalUsage = await getGlobalChunkUsage();
+    const nextGlobalBytes = globalUsage.bytes - replacedBytes + req.file.buffer.length;
+    const nextGlobalCount = globalUsage.count + (existingChunk ? 0 : 1);
+    if (nextGlobalBytes > getMaxTotalUploadSizeBytes()) {
+      return jsonError(res, 413, "storage quota exceeded", {
+        maxMb: Math.round(getMaxTotalUploadSizeBytes() / 1024 / 1024),
+      });
+    }
+    if (nextGlobalCount > getMaxTotalChunks()) {
+      return jsonError(res, 400, "storage chunks quota exceeded", {
+        max: getMaxTotalChunks(),
+      });
+    }
+
+    // P1-4（user 维度）：同一凭据不断更换 file_id 也不能无限占用存储。
+    // 覆盖写只按差额计费；若该分片此前不计入本用户，则按新增计。
+    const userId = getUserId(req);
+    const userUsage = await getUserChunkUsage(userId);
+    const replacedCounted =
+      Boolean(existingChunk) && userUsage.bytes >= replacedBytes;
+    const nextUserBytes =
+      userUsage.bytes -
+      (replacedCounted ? replacedBytes : 0) +
+      req.file.buffer.length;
+    const nextUserCount = userUsage.count + (replacedCounted ? 0 : 1);
+    if (nextUserBytes > getMaxUserUploadSizeBytes()) {
+      return jsonError(res, 413, "user storage quota exceeded", {
+        maxMb: Math.round(getMaxUserUploadSizeBytes() / 1024 / 1024),
+      });
+    }
+    if (nextUserCount > getMaxUserChunks()) {
+      return jsonError(res, 400, "user chunks quota exceeded", {
+        max: getMaxUserChunks(),
+      });
+    }
+
     await fs.promises.writeFile(chunkPath, req.file.buffer);
+    usage.bytes = nextBytes;
+    usage.count = nextCount;
+    globalUsage.bytes = nextGlobalBytes;
+    globalUsage.count = nextGlobalCount;
+    userUsage.bytes = nextUserBytes;
+    userUsage.count = nextUserCount;
 
     enqueueChunkState({
       file_id: safeFileId,
       chunk_index: index,
       status: 1,
-      user_id: user_id || "test",
+      user_id: getUserId(req),
       upload_time: new Date(),
       chunk_md5: chunk_md5 || chunkMd5,
     });
@@ -323,26 +567,52 @@ exports.uploadChunk = async (req, res) => {
     if (isSqliteBusyError(error)) {
       return jsonError(res, 503, "database is busy, please retry later");
     }
-    return jsonError(res, 500, error.message);
+    return jsonError(res, 500, redactErrorMessage(error));
+  }
+};
+
+// P1-2：合并产物先落在 staging 文件，校验通过后再原子移入 UPLOADS_DIR。
+// 同卷时 rename 为原子操作；跨卷（SERVER_TMP_UPLOAD_DIR / SERVER_UPLOADS_DIR 分处不同设备）
+// 时退化为 copy + unlink，仍然是「先完整再出现」。
+const moveIntoPlace = async (from, to) => {
+  try {
+    await fs.promises.rename(from, to);
+  } catch (error) {
+    if (error.code !== "EXDEV") {
+      throw error;
+    }
+    await fs.promises.copyFile(from, to);
+    await fs.promises.unlink(from).catch(() => undefined);
   }
 };
 
 exports.mergeChunks = async (req, res) => {
   let transaction = null;
   let targetPath = "";
+  let stagingPath = "";
+  let mergeFileId = "";
+  let userId = "";
   let releaseMergeLock = () => undefined;
 
   try {
     ensureDir(TMP_UPLOAD_DIR);
     ensureDir(UPLOADS_DIR);
 
-    const { file_id, md5, name, size, total, user_id, category_id, hash_mode } =
+    const { file_id, md5, name, size, total, category_id, hash_mode } =
       req.body;
+    // P2-9：归属由服务端鉴权决定，忽略请求体里的 user_id（防越权写入）。
+    userId = getUserId(req);
     const safeFileId = sanitizeFileId(file_id);
+    mergeFileId = safeFileId;
     const safeName = sanitizeFilename(name);
 
-    if (!safeFileId || !md5 || !safeName || !size || !total) {
+    if (!safeFileId || !safeName || !size || !total) {
       return jsonError(res, 400, "missing required parameters");
+    }
+    // P0-2：md5 会参与落盘文件名拼接，必须强制为 32 位十六进制，
+    // 否则 "../" 等字符可让 path.join 逃出 UPLOADS_DIR。
+    if (!isValidMd5(md5)) {
+      return jsonError(res, 400, "invalid md5");
     }
 
     const totalChunks = Number.parseInt(total, 10);
@@ -372,11 +642,11 @@ exports.mergeChunks = async (req, res) => {
       await inFlight.promise;
       const mergedFile = await withSqliteBusyRetry(() =>
         File.findOne({
-          where: { md5, size, status: 1 },
+          where: { md5, size, status: 1, user_id: userId },
         })
       );
       if (mergedFile) {
-        return jsonOk(res, { alreadyMerged: true, file: mergedFile });
+        return jsonOk(res, { alreadyMerged: true, file: toPublicFile(mergedFile) });
       }
       return jsonError(res, 503, "file is being merged, please retry later");
     }
@@ -389,11 +659,11 @@ exports.mergeChunks = async (req, res) => {
     // 导致并发合并触发 SQLITE_BUSY（P1-13a）。
     const existingFile = await withSqliteBusyRetry(() =>
       File.findOne({
-        where: { md5, size, status: 1 },
+        where: { md5, size, status: 1, user_id: userId },
       })
     );
     if (existingFile) {
-      return jsonOk(res, { alreadyMerged: true, file: existingFile });
+      return jsonOk(res, { alreadyMerged: true, file: toPublicFile(existingFile) });
     }
 
     const dbChunks = await withSqliteBusyRetry(() =>
@@ -404,8 +674,16 @@ exports.mergeChunks = async (req, res) => {
     const chunkMap = new Map(dbChunks.map((chunk) => [chunk.chunk_index, chunk]));
 
     const storedFileName = buildStoredFileName(safeFileId, md5, safeName);
-    targetPath = path.join(UPLOADS_DIR, storedFileName);
-    await fs.promises.writeFile(targetPath, Buffer.alloc(0));
+    // 落盘前再做一次目录约束断言：即使上游校验被绕过，也不允许写/删 UPLOADS_DIR 之外的文件。
+    targetPath = resolveInsideBase(UPLOADS_DIR, storedFileName);
+    // P1-2：合并写 staging（tmp 目录）而非直接写 UPLOADS_DIR。
+    // /api/file/list 会 readdir(UPLOADS_DIR)、下载接口按路径 createReadStream，
+    // 直接写目标路径会让并发列表/下载读到 0 字节或半成品文件。
+    stagingPath = resolveInsideBase(
+      TMP_UPLOAD_DIR,
+      `${storedFileName}.${safeFileId}.part`
+    );
+    await fs.promises.writeFile(stagingPath, Buffer.alloc(0));
 
     for (let i = 0; i < totalChunks; i += 1) {
       const chunkPath = buildChunkPath(safeFileId, i);
@@ -428,7 +706,7 @@ exports.mergeChunks = async (req, res) => {
         });
       }
 
-      await fs.promises.appendFile(targetPath, chunkBuffer);
+      await fs.promises.appendFile(stagingPath, chunkBuffer);
       await fs.promises.unlink(chunkPath);
     }
 
@@ -437,14 +715,14 @@ exports.mergeChunks = async (req, res) => {
     // 2) full 模式：客户端声明的 md5 应为真实全量哈希，必须一致；
     // 3) sample 模式：跳过"声明 md5"比对（客户端传入的是采样哈希，必然不匹配），
     //    但仍以真实全量 md5 落库，使秒传 / 去重键始终基于强哈希。
-    const mergedStat = await fs.promises.stat(targetPath);
+    const mergedStat = await fs.promises.stat(stagingPath);
     if (mergedStat.size !== fileSize) {
       throw httpError(422, "file size verification failed", {
         expected: fileSize,
         actual: mergedStat.size,
       });
     }
-    const authoritativeMd5 = await md5File(targetPath);
+    const authoritativeMd5 = await md5File(stagingPath);
     if (hash_mode !== "sample") {
       if (authoritativeMd5 !== md5) {
         throw httpError(422, "file md5 verification failed", {
@@ -453,6 +731,10 @@ exports.mergeChunks = async (req, res) => {
         });
       }
     }
+
+    // 校验全部通过后才让文件出现在 UPLOADS_DIR，杜绝列表/下载读到中间态。
+    await moveIntoPlace(stagingPath, targetPath);
+    stagingPath = "";
 
     const fileTypeResult = await detectFileType(targetPath);
     const fileExt = fileTypeResult?.ext || path.extname(safeName).replace(".", "");
@@ -477,24 +759,32 @@ exports.mergeChunks = async (req, res) => {
     // 重 IO 全部完成后再开短事务写库：File upsert + 分片状态归档一次提交
     transaction = await sequelize.transaction();
     try {
-      await withSqliteBusyRetry(() =>
-        File.upsert(
-          {
-            file_id: safeFileId,
-            file_name: safeName,
-            size,
-            user_id: user_id || "test",
-            status: 1,
-            md5: authoritativeMd5,
-            category_id: category_id || 1,
-            file_ext: fileExt,
-            file_type: fileType,
-            file_path: filePath,
-            thumbnail_path: thumbnailPath,
-          },
-          { transaction }
-        )
-      );
+      // P2-9：唯一键改为 (file_id, user_id)，不能再用 upsert 的全局 file_id 冲突目标，
+      // 改为「按用户查后更新 / 新建」。
+      const fileValues = {
+        file_id: safeFileId,
+        file_name: safeName,
+        size,
+        user_id: userId,
+        status: 1,
+        md5: authoritativeMd5,
+        category_id: category_id || 1,
+        file_ext: fileExt,
+        file_type: fileType,
+        file_path: filePath,
+        thumbnail_path: thumbnailPath,
+      };
+      await withSqliteBusyRetry(async () => {
+        const owned = await File.findOne({
+          where: { file_id: safeFileId, user_id: userId },
+          transaction,
+        });
+        if (owned) {
+          await owned.update(fileValues, { transaction });
+        } else {
+          await File.create(fileValues, { transaction });
+        }
+      });
 
       await withSqliteBusyRetry(() =>
         FileChunk.update(
@@ -522,17 +812,31 @@ exports.mergeChunks = async (req, res) => {
     if (targetPath && fs.existsSync(targetPath)) {
       await fs.promises.unlink(targetPath).catch(() => undefined);
     }
+    if (stagingPath && fs.existsSync(stagingPath)) {
+      await fs.promises.unlink(stagingPath).catch(() => undefined);
+    }
 
     const statusCode = isSqliteBusyError(error)
       ? 503
       : Number.isInteger(error.statusCode)
       ? error.statusCode
       : 500;
+    // P2-10：业务错误（4xx，由 httpError 显式抛出）保留原文便于客户端定位；
+    // 5xx / 未预期错误一律走脱敏，避免 SQL、绝对路径等内部细节外泄。
     const message = isSqliteBusyError(error)
       ? "database is busy, please retry later"
-      : error.message;
+      : statusCode < 500
+      ? error.message
+      : redactErrorMessage(error);
     return jsonError(res, statusCode, message, error.details || {});
   } finally {
+    // 合并会逐片删除源分片，累计用量缓存必须失效（P1-4）
+    if (mergeFileId) {
+      forgetChunkUsage(mergeFileId);
+    }
+    if (userId) {
+      forgetUserChunkUsage(userId);
+    }
     releaseMergeLock();
   }
 };

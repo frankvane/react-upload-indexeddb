@@ -8,9 +8,24 @@
 ## [Unreleased]
 
 ### Bug Fixes
-- **UI 组件 forwardRef（3.0.1）**：`Button` / `Switch`（primitives）与 `PercentDisplay` 改为 `React.forwardRef`，消除 `Tooltip` / `Popconfirm` 通过 `cloneElement` 注入 `ref` 时触发的 `"Function components cannot be given refs"` 警告；ref 现已正确落到原生 DOM。
+- **P2-5 落盘失败不再被误报为「分片缺失」**：`saveChunkWithRetry` 失败只返回 `false`（不抛错），而调用方 `handleChunkDownloaded` 忽略了返回值——`writeErrorsRef` 永远记不到失败，最终由健康检查报成「分片缺失/下载不完整」。现在调用方显式抛错（携带分片序号与「可能是存储空间不足」提示），`COMPLETE` 时按真实原因上报「分片落盘失败」。此前「下载前配额预检」只能挡住开始时就空间不足的情况，运行中耗尽仍会误报。
+- **P0-1 下载完成后不再「假完成」**：`handleDownloadComplete` 原先只把状态改为 `COMPLETED` 并立即删除全部分片，从不写 `completeFileStore`，导致随后「导出」必然报「文件分片不完整」。现改为分片齐全后触发真正合并（merge worker，缺失时回退主线程），合并成功写入 `completeFileStore` 后才清理分片；`handleMergeComplete` 同步补上分片清理（P2-15）。同时主线程按 `fileId` 串行化分片落盘，`COMPLETE` 前先等待全部落盘完成（P1-1），并给 `startDownload` 增加重入保护（P2-7）。
+- **P1-5 样式子路径可解析**：`exports` 增加 `"./dist/style.css"`，README / 源码注释统一为 `import "react-upload-indexeddb/style.css"`，修复按文档接入时 `ERR_PACKAGE_PATH_NOT_EXPORTED`。
+- **P1-2 合并原子化，列表/下载不再读到半成品**：`mergeChunks` 改为先写 `TMP_UPLOAD_DIR` 下的 staging 文件（`<storedName>.<fileId>.part`），体积与 md5 全部校验通过后才 `rename` 原子移入 `UPLOADS_DIR`（跨卷退化为 `copyFile + unlink`）；失败路径同时清理 staging 与目标，`/api/file/list` 与下载接口不会再读到 0 字节或写了一半的文件。
+- **P1-8 上传任务不再永久卡在「上传中」**：`runUploadTask` 增加任务级「静默看门狗」（`idleTimeoutMs`，默认 120s，传 0 关闭）。worker 期间任意消息都会刷新计时，超时即判定失联 → 销毁 worker、以错误结束任务并允许重试续传。按静默时长而非总时长判定，长耗时但仍在推进的大文件不会被误杀。
+- **P2-1 秒传快路径前置 + 分片 MD5 并发计算**：先不带 `chunk_md5s` 发一次轻量 instant 校验，命中即结束（一个分片哈希都不用算，此前必须先串行算完全部分片 MD5）；未命中时把分片 MD5 计算从单条串行改为有界并发（`min(chunkConcurrency, 4)`）并输出批次进度，显著缩短大文件首字节等待。
+- **P2-6 修复「重试耗尽仍报 COMPLETE」**：`downloader.worker.ts` 新增 `completedChunks` 集合，队列为空时显式核对是否真的拿齐全部分片；缺片改为发送 `ERROR`（含缺失索引），不再强制 100% 进度并 `COMPLETE`，避免把残缺文件标记为已完成。
+- **P2-2 清理倒计时不再误删重新上传的文件**：`cleanupPolicy` 新增 `isUploadInFlight` 判定（QUEUED / QUEUED_FOR_UPLOAD / PREPARING_UPLOAD / UPLOADING / PAUSED）。倒计时期间被重新上传或恢复上传的文件既不会被从 UI 移除、也不会被删出 IndexedDB，并从待清理集合移除，避免下一轮倒计时再误删。
+- **P2-3 `maxFiles` 改为按列表总文件数校验**：`validateFiles` 此前只比较本次选择的文件数，多次少量选择即可绕过限制；现改为「已有文件数 + 本次数量」与 `maxFiles` 比较，并在提示里给出已有数量。
+- **P2-4 上传元数据增加 schema 版本与迁移层**：新增 `uploadSchema.ts`（`UPLOAD_SCHEMA_VERSION = 2`），存储写入时由 `createUploadStorage` 统一盖章版本号，读取时经 `migrateUploadFile` 补齐缺失字段、裁剪越界进度，并把历史状态字符串（`success` / `failed` / `uploading` …）映射到当前 `UploadStatus` 枚举（未知状态保守降级为 `PAUSED`，不自动续传）；结构性损坏（缺 id / fileName / createdAt）直接丢弃。
+- **P2-8 采样 md5 不再导致大文件永远无法完成**：列表新增 `md5Mode` 字段（`full` / `sample`）。无 DB 元数据的 ≥10MB 文件只能给采样哈希，客户端识别 `sample` 后跳过合并终检的严格比对，不再「每次都校验失败」；`<10MB` 仍为真实全量 md5，保留严格校验。
+- **P2-9 / P2-10 服务端响应收敛**：秒传 / 已合并响应改为白名单 DTO（只回 `file_id` / `file_name` / `size` / `md5` / `file_ext` / `file_type` / `category_id` / `created_at`），不再整行序列化 `user_id`、`file_path`、`thumbnail_path`；控制器 6 处 `jsonError(res, 500, error.message)` 统一走 `redactErrorMessage`，非 test/development 环境只返回 `internal server error`（业务 4xx 文案保持不变）。
+- **P1-4 分片写入阶段补累计配额**：`uploadChunk` 按 `file_id` 维护累计字节与片数（首次从磁盘播种，覆盖写按差额计算），超 `MAX_UPLOAD_SIZE_MB` → 413、超 `MAX_CHUNKS` → 400。此前这两个上限只在 merge 生效，不调 merge 即可无限写分片占满磁盘。**全局维度补齐**：再加一层进程级总配额（`MAX_TOTAL_UPLOAD_SIZE_MB` 默认 20GB / `MAX_TOTAL_CHUNKS` 默认 20 万），用量从 `TMP_UPLOAD_DIR` 播种并按写入增量维护，合并 / 清理后失效重播——换 `file_id` 也无法把磁盘写到无限大（全局配额是有界写入，不等同租户隔离）。
+- **P1-3 分片方案固化，杜绝 chunkSize 漂移导致的错位合并**：`fetchDownloadFiles` 对已有文件沿用原 `chunkSize`（并保留 `progress`/`status`，不再把进行中的下载重置为 IDLE）；`startDownload` 以 IndexedDB 中持久化的 `chunkSize` 为基准。此前网络自适应改变 `chunkSize` 会重算 `totalChunks`，而 `getPendingChunks` 只按下标判断存在性，会把残缺分片误判齐全并合并出损坏文件。
 
 ### Security
+- **P0-2 封堵 md5 路径穿越**：`POST /api/file/merge` 现强制 `md5` 为 32 位十六进制（非法直接 400），落盘路径改用 `resolveInsideBase` 断言必须位于 `UPLOADS_DIR` 内；越界时不再写文件，合并失败清理也不会误删目录外文件。
+- **P0-3 封堵 Cookie 鉴权绕过**：`auth` 中间件 Cookie 分支不再「存在即通过」，必须命中 `FILE_AUTH_COOKIE_TOKENS` 白名单或由 `verify` 校验；仅配置 `FILE_AUTH_COOKIE` 而未配白名单时启动打印 `FATAL` 且该分支一律 401。新增 `auth-cookie-app` / `auth-cookie-allow` 回归测试，README 与 `.env.example` 同步更新。
 - **服务端鉴权默认 secure（fail-closed）**：`server/src/app.js` 新增 `AUTH_MODE`（`secure` 默认 / `demo` 关闭）。`secure` 下始终挂载鉴权中间件且 `requireAuth:true`，即便未配置任何凭据也一律 `401`，彻底消除"开了开关却 silently 全开"；仅 `AUTH_MODE=demo` 用于本机 / 内网联调。
 - **CORS 默认关闭 + 显式白名单**：不再默认反射任意 Origin；仅当显式设置 `CORS_ORIGIN`（逗号分隔具体域名，不支持通配 `*`）时才启用，且可携带 Cookie 凭据。
 - **错误响应脱敏**：全局错误处理器在生产环境仅返通用文案，真实堆栈 / 路径落服务端日志，不回传客户端（防信息泄漏）。
@@ -26,6 +41,17 @@
 - 数据流贯通：文件列表 `md5` → `api.client.ts metadata.md5` → `store/index.ts DownloadFile.md5` → `useFileDownloaderController` 透传 `expectedMd5` 进 `MERGE_FILE`。
 
 ### Engineering
+- **P2-11 库产物不再残留 `process.env`**：`vite.lib.config.ts` 的 `external` 从精确字符串数组改为前缀匹配 `/^(react|react-dom|zustand|localforage|axios)(\/.*)?$/`，覆盖 `react-dom/client`、`react/jsx-runtime`、`zustand/react/shallow` 等子路径。此前漏掉 `react-dom/client`，其 CJS 包装被打进 `dist/*.js`，在浏览器里引用 `process.env.NODE_ENV` 直接抛 `process is not defined`。
+- **P2-12 发布的 `.d.ts` 不再引用不存在的 CSS**：新增 `scripts/strip-dts-css-imports.mjs` 并在 `build` 末尾执行，剔除 `dist/**/*.d.ts` 里的 `import "./x.css"` 副作用导入（源码为出样式而保留）。此前 4 个 `.d.ts` 引用 `dist/ui/ui.css`，而发布包只有 `dist/style.css`，关闭 `skipLibCheck` 的消费方会报 TS2307。
+- **P2-14 `engines` 与工具链对齐 + 开发依赖显式化**：`engines.node` 由 `>=20.0.0` 改为 `^22.12.0 || >=24.0.0`（vite 7 要求 `^20.19.0 || >=22.12.0`、vitest 5 要求 `^22.12.0 || ^24 || >=26`）；`react` / `react-dom` / `zustand` 从「仅 peerDependencies、靠 npm 自动安装」改为同时写入 `devDependencies`，避免本地与 CI 拉到不确定版本。
+- **P3-1 构建配置纳入类型门禁 + 清理无效配置**：`tsconfig.node.json` 的 `include` 增加 `vite.lib.config.ts`（此前库构建配置完全不在类型检查范围）；新增 `tsconfig.lib.check.json` 与 `npm run typecheck`，以 noEmit 方式校验库声明入口（`tsconfig.lib.json` 因 `composite` 要求 emit 无法挂进 `tsc -b` 的 references，理由写入配置注释）；移除对 ESM/CJS 无效的 `output.globals`。
+- **P3-2 包元数据与公共导出面修正**：补 `repository` / `homepage` / `bugs` / `author`，移除误导性 `keywords.antd`；`exports` 增加 `"./package.json"`；根入口改为**值导出** `DownloadStatus`（此前用 `export type`，消费方运行时拿到 `undefined`），并补 `DownloadStatusType` / `DownloadConfig` / `StorageStats`；CHANGELOG 补 `## [3.0.1]` 段。
+- **P3-3 浏览器级冒烟接入 CI**：`npm run test:browser` 用真实 Chromium 打开 demo 页，通过 file input 选 2.5MB 文件（自动切 3 片），轮询服务端列表校验 `fileName` / `size` / `md5`，覆盖「真实 Worker + 真实 IndexedDB + 真实 fetch」链路（jsdom + fake-indexeddb 覆盖不到）。`ci.yml` 新增独立 `browser` job（安装客户端 + 服务端依赖、`npx playwright install --with-deps chromium` 后执行），不再只靠手动执行；需 Node 24（`better-sqlite3` ABI）。
+- **`npm test` 与 CI 同阈值**：根 `test` 改为 `test:coverage` + 契约校验，本地跑测试即受覆盖率门禁约束（此前只有 `verify:client` 带阈值）。
+- **服务端 `npm test` 不再挂起**：`chunkStateQueue` 的刷盘 `setTimeout` 加 `unref()`，待刷盘定时器不再阻止进程退出。此前带覆盖率的标准脚本用例已跑完却要等满 `CHUNK_STATE_FLUSH_INTERVAL_MS`（甚至不退出），CI 有挂起风险；现 73 条用例 16s 内正常退出，无需 `--test-force-exit` 掩盖句柄泄漏。新增用例：全局配额（换 `file_id` 仍被拒）、下载 store 分片方案固化（`fetchDownloadFiles` 保留 `chunkSize`/进度/状态）、`downloadPolicy` 归一化与 worker 消息构造。
+- **P1-7 覆盖率纳入本地门禁**：新增 `test:coverage`（`vitest run --coverage`），并把 `verify:client` 从 `npm run test` 改为 `npm run test:coverage`，使本地与 CI 使用同一套阈值（lines/statements 35、functions 30、branches 25 + `src/shared/**`、`src/components/**/services/**` 分组阈值）。此前阈值只在 CI 生效，本地门禁不跑覆盖率。
+- **P2-13 移除 `--no-isolate`**：`test:unit` 不再全局关闭测试隔离，避免 `vi.stubGlobal` / 模块 mock 跨文件泄漏导致「单文件过、全量挂」的随机失败（实测同一提交下 173/173 与 170/173 交替出现）；`pool: "forks"` 已提供足够隔离，本地与 CI 命令对齐。
+- **P1-6 生产依赖漏洞清零**：`overrides` 将 `follow-redirects` 抬升到 `^1.16.2`（修复 GHSA-mrwp-f3q8-3g9p 跨域重定向凭据泄漏），`package-lock.json` 已同步；CI 审计注释与本文档的「0 漏洞」结论更新为可复现状态。
 - **E2 服务端覆盖率门禁**：弃用 `c8`（`node --test` 子进程模型下 V8 覆盖率采集跨运行抖动 43%↔88%，不可靠）；改用 Node 24 原生 `--experimental-test-coverage`，`--test-coverage-include='src/**'`、`--test-coverage-exclude='src/index.js'`（bootstrap 不计入），门槛 **行80 / 分支65 / 函数80**（实测基线 行82.48% / 函数83.94%）。`server` 的 `test` 脚本内嵌该门槛，未达即非零退出；CI `.github/workflows/ci.yml` server job 升 Node 22→24 与 `.nvmrc` 对齐。
 - **E3 端到端冒烟**：新增 `server/e2e/smoke.mjs`，用 Node 原生 `fetch`/`FormData` 驱动真实服务端 API（无需 Playwright 浏览器），一条命令跑通"生成随机文件→分片上传→合并→列表→分片 Range 下载（镜像 F4：206 + Content-Range + 字节数校验）→重组→整文件下载交叉校验→md5 比对"，验证全链路不损坏。服务端数据目录经 `SERVER_DATA_DIR` 等 env 隔离到临时目录、`AUTH_MODE=demo`；子进程复用 `process.execPath`（建议 Node 24）。`server` 的 `e2e` 脚本 + `verify`（串联 `test && e2e`）已接 CI。
 - **D1 依赖安全升级**：`axios` 1.9.0→1.20.0（清除生产**关键**漏洞 `form-data` 不安全随机边界 + `follow-redirects` 跨域头泄漏）、`express` 4.21.2→4.22.3（清除 `proxy-addr` **关键** IP 伪造 + `qs` 中危 DoS）；`sequelize` 保持 6.x 不变（其传递的 `uuid` 中危只能经 `npm audit fix --force` 降级到 sequelize 3.x 修复，按 D1 决策禁止破坏性降级，故保留为中危残留）。`npm audit fix`（安全、非 `--force`）清除 dev 传递漏洞（ws/picomatch/minimatch/js-yaml/brace-expansion/flatted 等）。结果：根生产依赖 **0 漏洞**，server 生产仅剩 3 个中危（sequelize/uuid，CI 以 `--audit-level=high` 放行）。CI 新增生产依赖审计门禁（client `npm audit --omit=dev`；server `--omit=dev --audit-level=high`）。
@@ -42,6 +68,11 @@
 - **F9 CSP 文档**：README 新增「内容安全策略（CSP）」章节，给出与 `worker-src blob:` / `child-src blob:` / `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:` / `style-src 'unsafe-inline'` 兼容、且收紧 `connect-src` 的示例策略，呼应 F3 白名单。
 - **P1 限速信号驱动的退避**：下载 `downloader.worker.ts` 移除批次间固定等待（`isFirstDownload?100:10`），退避仅在有失败 / 限速信号时触发；优先采用服务端 `Retry-After`（秒数或 HTTP-date，`parseRetryAfter`）指示时长，无信号时退化为固定 `RETRY_DELAY`。`downloader.worker.f3p1.test.ts` 覆盖「429 + Retry-After 采用 2s 而非默认 1000ms」「无限速信号退化为 1000ms」。
 - 客户端 154 → **173** 单测全绿（`verify:client` 全绿，含 client API contract），lint/build 通过；测试环境 `src/test/setup.ts` 增补 jsdom 安全的 `postMessage` 垫片（兼容 Worker 单参数语义、保留跨 frame 双参数原语义），消除 Worker 模块在 jsdom 下回传消息触发 `postMessage requires 2 arguments` 的未捕获异常。
+
+## [3.0.1] - 2026-11-06
+
+### Bug Fixes
+- **UI 组件 forwardRef（3.0.1）**：`Button` / `Switch`（primitives）与 `PercentDisplay` 改为 `React.forwardRef`，消除 `Tooltip` / `Popconfirm` 通过 `cloneElement` 注入 `ref` 时触发的 `"Function components cannot be given refs"` 警告；ref 现已正确落到原生 DOM。
 
 ## [3.0.0] - 2026-10-24
 

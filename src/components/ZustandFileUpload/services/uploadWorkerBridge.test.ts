@@ -441,3 +441,69 @@ describe("pauseUploadTask / resumeUploadTask（T3.3）", () => {
     expect(pool.resumeUploadTask("file-1")).toBe(false);
   });
 });
+
+describe("P1-8 任务静默看门狗（worker 挂起不再永久停在 UPLOADING）", () => {
+  beforeEach(() => {
+    pool = createUploadWorkerPool();
+    FakeUploadWorker.instances = [];
+    FakeUploadWorker.autoRespond = false;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    FakeUploadWorker.autoRespond = true;
+    vi.useRealTimers();
+  });
+
+  it("长时间无任何消息 → 以错误结束、销毁 Worker 且不回池", async () => {
+    const taskPromise = pool.runUploadTask({
+      ...baseOptions(),
+      uploadConfig: apiConfig,
+      idleTimeoutMs: 1000,
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    const result = await taskPromise;
+
+    expect(result.success).toBe(false);
+    expect(result.errorMessage).toContain("无响应");
+    const worker = FakeUploadWorker.instances[0]!;
+    expect(worker.terminated).toBe(true);
+    // 失联 Worker 不可复用
+    expect(pool.resumeUploadTask("file-1")).toBe(false);
+  });
+
+  it("持续有进度消息时不被误杀", async () => {
+    let settled = false;
+    const taskPromise = pool.runUploadTask({
+      ...baseOptions(),
+      uploadConfig: apiConfig,
+      idleTimeoutMs: 1000,
+    });
+    taskPromise.then(() => {
+      settled = true;
+    });
+
+    const worker = FakeUploadWorker.instances[0]!;
+    // 每 800ms 一条进度，累计 2400ms 仍存活（按静默时长判定，不按总时长）
+    for (let i = 0; i < 3; i += 1) {
+      await vi.advanceTimersByTimeAsync(800);
+      worker.onmessage?.({
+        data: {
+          type: "progress",
+          progress: (i + 1) * 10,
+          uploadedBytes: (i + 1) * 10,
+          totalBytes: 100,
+        },
+      } as MessageEvent);
+    }
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    worker.onmessage?.({
+      data: { type: "done", skipped: false },
+    } as MessageEvent);
+    const result = await taskPromise;
+    expect(result.success).toBe(true);
+  });
+});

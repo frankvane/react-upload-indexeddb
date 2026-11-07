@@ -47,14 +47,34 @@ test("Bearer 未命中白名单 → 401", () => {
   assert.equal(res.statusCode, 401);
 });
 
-test("Cookie 命中 → 放行", () => {
-  const mw = createAuthMiddleware({ cookieName: "sid" });
+test("Cookie 命中白名单 → 放行", () => {
+  const mw = createAuthMiddleware({
+    cookieName: "sid",
+    cookieTokens: ["abc123"],
+  });
   const { nextCalled } = run(mw, { cookie: "sid=abc123" });
   assert.equal(nextCalled, true);
 });
 
-test("Cookie 未命中 → 401", () => {
+test("Cookie 值为任意非空但未命中白名单 → 401（P0-3）", () => {
+  const mw = createAuthMiddleware({
+    cookieName: "sid",
+    cookieTokens: ["abc123"],
+  });
+  const { nextCalled, res } = run(mw, { cookie: "sid=whatever" });
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 401);
+});
+
+test("仅配置 cookieName、无 verify/白名单 → 401（不得存在即通过）", () => {
   const mw = createAuthMiddleware({ cookieName: "sid" });
+  const { nextCalled, res } = run(mw, { cookie: "sid=abc123" });
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 401);
+});
+
+test("Cookie 未命中 → 401", () => {
+  const mw = createAuthMiddleware({ cookieName: "sid", cookieTokens: ["abc123"] });
   const { nextCalled, res } = run(mw, { cookie: "other=x" });
   assert.equal(nextCalled, false);
   assert.equal(res.statusCode, 401);

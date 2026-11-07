@@ -1,6 +1,6 @@
 ﻿import { UploadFile, UploadStatus } from "../types/upload";
 import type { FileRegistry } from "./fileRegistry";
-import { listUploadFiles } from "./uploadStorage";
+import { listUploadFiles, readUploadFile } from "./uploadStorage";
 
 interface BatchInfo {
   current: number;
@@ -33,6 +33,18 @@ interface CleanupPolicyOptions {
 
 const canCleanup = (status: UploadStatus) =>
   status === UploadStatus.DONE || status === UploadStatus.INSTANT;
+
+/**
+ * P2-2：倒计时期间文件可能被重新上传 / 恢复上传。
+ * 这些状态说明文件「又活过来了」，绝不能在清理时从 UI 或 DB 移除，
+ * 同时必须移出待清理集合，避免下一轮倒计时再误删。
+ */
+const isUploadInFlight = (status: UploadStatus) =>
+  status === UploadStatus.QUEUED ||
+  status === UploadStatus.QUEUED_FOR_UPLOAD ||
+  status === UploadStatus.PREPARING_UPLOAD ||
+  status === UploadStatus.UPLOADING ||
+  status === UploadStatus.PAUSED;
 
 export class UploadCleanupPolicy {
   private readonly completedFileIds = new Set<string>();
@@ -108,29 +120,26 @@ export class UploadCleanupPolicy {
 
   async cleanupCompletedFilesFromIndexedDB() {
     const ids = Array.from(this.completedFileIds);
-    const keepIds: string[] = [];
 
     for (const id of ids) {
-      const file = await this.options.storage.getItem<UploadFile>(id);
+      const file = await readUploadFile(this.options.storage, id);
       if (!file) {
         this.completedFileIds.delete(id);
         continue;
       }
 
-      if (file.status === UploadStatus.ERROR) {
-        keepIds.push(id);
+      // P2-2：失败保留、重新上传中的文件也保留（但都从待清理集合移除）
+      if (file.status === UploadStatus.ERROR || isUploadInFlight(file.status)) {
+        this.completedFileIds.delete(id);
         continue;
       }
 
       if (canCleanup(file.status)) {
         await this.options.storage.removeItem(id);
         this.options.fileRegistry.releaseFileRef(id);
-        this.completedFileIds.delete(id);
       }
-    }
-
-    for (const keepId of keepIds) {
-      this.completedFileIds.delete(keepId);
+      // 不可识别的历史状态保守保留在 DB 与 UI，避免"文件凭空消失"
+      this.completedFileIds.delete(id);
     }
 
     await this.options.refreshFiles();
@@ -149,12 +158,14 @@ export class UploadCleanupPolicy {
         return true;
       }
 
-      if (file.status === UploadStatus.ERROR) {
+      // P2-2：重新上传中的文件必须留下，并从待清理集合移除
+      if (file.status === UploadStatus.ERROR || isUploadInFlight(file.status)) {
         this.completedFileIds.delete(file.id);
         return true;
       }
 
-      return false;
+      this.completedFileIds.delete(file.id);
+      return !canCleanup(file.status);
     });
 
     this.options.setFiles(nextFiles);
@@ -213,7 +224,7 @@ export class UploadCleanupPolicy {
 
     const ids = Array.from(this.completedFileIds);
     for (const id of ids) {
-      const file = await this.options.storage.getItem<UploadFile>(id);
+      const file = await readUploadFile(this.options.storage, id);
       if (file?.status === UploadStatus.ERROR) {
         this.completedFileIds.delete(id);
       }

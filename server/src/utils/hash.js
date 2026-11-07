@@ -49,6 +49,13 @@ const readSlice = async (fileHandle, length, position) => {
   return buffer.subarray(0, bytesRead);
 };
 
+// P2-8：<10MB 时 calculatePartialMd5* 读的是全量字节，此时哈希即全量 md5；
+// >=10MB 才是"头 10MB（+尾 1MB）"的采样哈希，客户端不得拿它做全量严格比对。
+const PARTIAL_MD5_FULL_LIMIT = 10 * 1024 * 1024;
+
+const getPartialMd5Mode = (fileSize) =>
+  fileSize < PARTIAL_MD5_FULL_LIMIT ? "full" : "sample";
+
 const calculatePartialMd5Async = async (filePath, knownFileSize) => {
   const hash = crypto.createHash("md5");
   const fileSize =
@@ -85,4 +92,6 @@ module.exports = {
   md5File,
   calculatePartialMd5,
   calculatePartialMd5Async,
+  PARTIAL_MD5_FULL_LIMIT,
+  getPartialMd5Mode,
 };
