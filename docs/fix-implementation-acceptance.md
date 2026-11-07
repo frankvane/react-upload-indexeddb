@@ -32,8 +32,8 @@
   3. **未给 `test` / `coverage` 加 `--test-force-exit`**：实测该参数会让 Node 在覆盖率数据刷出前强制退出，覆盖率报告变成「0 个文件 / 100%」，阈值门禁形同虚设。二者只能取其一，保留覆盖率门禁。
   4. 修正 `ci.yml` server job 中 `name` 与 `runs-on` 被合并到同一行导致的 YAML 结构错误（该错误会让 server job 缺少 `runs-on`，CI workflow 整体无效）。
   5. 顺带修复：覆盖率参数原用单引号 `--test-coverage-include='src/**'`，Windows 的 cmd 不剥离单引号，导致 include 模式带引号、匹配不到文件，本地覆盖率门禁长期空转（CI 的 Linux sh 会剥离，所以 CI 未暴露）。改为 JSON 转义双引号后本地也能产出真实报告。
-- **验收方式**：`npm --prefix server test` 正常退出且覆盖率列出真实文件；`js-yaml` 解析 `ci.yml` 得到 `client,server,browser` 三个 job。
-- **结论**：已通过。`npm --prefix server test` → **76/76 通过**，约 11s 退出；覆盖率 all files **83.84% / 72.26% / 83.83%**（阈值 80/65/80），本地与 CI 均生效；`ci.yml` 解析正常，`server.runs-on = ubuntu-latest`。
+- **验收方式**：`npm --prefix server test` 正常退出且覆盖率列出真实文件；`js-yaml` 解析 `ci.yml` 得到 `client,server,browser` 三个 job（P2-14 后又新增 `react19`，共 4 个）。
+- **结论**：已通过。首轮 `npm --prefix server test` → **76/76 通过**，约 11s 退出；覆盖率 all files **83.84% / 72.26% / 83.83%**（阈值 80/65/80），本地与 CI 均生效；`ci.yml` 解析正常，`server.runs-on = ubuntu-latest`。P1-4 / P2-9 用例加入后全量提升至 **78/78**、覆盖率 **84.31 / 74.95 / 84.48**（见第九节）。
 
 ---
 
