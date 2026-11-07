@@ -161,8 +161,11 @@ test("P2-10：生产环境不回传原始 error.message，测试环境保留以�
 });
 
 test("P2-9：DB 中确实存有 user_id / file_path，验证上一条断言不是真空", async () => {
-  const row = await File.findOne({ where: { file_id: "f-dto" } });
+  const md5 = md5Buffer(Buffer.from("instant dto payload"));
+  const row = await File.findOne({ where: { md5 } });
   assert.ok(row, "合并后应有 DB 记录");
+  // 落库 file_id 带用户命名空间（P2-9），对外 DTO 仍回传 chunkKey
+  assert.match(row.file_id, /^[^:]+:f-dto$/);
   assert.ok(row.user_id);
   assert.ok(row.file_path);
 });

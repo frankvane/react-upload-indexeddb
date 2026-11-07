@@ -55,10 +55,13 @@ test.before(async () => {
 });
 
 test.after(async () => {
-  const row = await File.findOne({ where: { file_id: fileId } });
+  const rows = await File.findAll({ where: { md5: fileMd5 } });
   await sequelize.close();
-  if (row && row.file_path) {
-    const absolute = path.resolve(path.join(UPLOADS_DIR, path.basename(row.file_path)));
+  for (const row of rows) {
+    if (!row.file_path) continue;
+    const absolute = path.resolve(
+      path.join(UPLOADS_DIR, path.basename(row.file_path))
+    );
     if (fs.existsSync(absolute)) fs.unlinkSync(absolute);
   }
 });
@@ -80,7 +83,9 @@ test("P2-9：user_id 由鉴权身份派生，请求体 user_id 被忽略", async
     });
 
   assert.equal(merged.status, 200);
-  const row = await File.findOne({ where: { file_id: fileId, user_id: USER_A } });
+  const row = await File.findOne({
+    where: { file_id: `${USER_A}:${fileId}`, user_id: USER_A },
+  });
   assert.ok(row, "应按凭据派生身份写入 user_id");
   assert.equal(row.user_id, USER_A);
   assert.notEqual(row.user_id, USER_B);
@@ -142,7 +147,13 @@ test("P2-9：同一内容不同用户各自持有独立 File 记录", async () =
     });
   assert.equal(mergedB.status, 200);
 
-  const rows = await File.findAll({ where: { file_id: fileId } });
+  const rows = await File.findAll({ where: { md5: fileMd5 } });
   const owners = rows.map((row) => row.user_id).sort();
   assert.deepEqual(owners, [USER_A, USER_B].sort(), "两个用户各自保留一条归属记录");
+  const rowIds = rows.map((row) => row.file_id).sort();
+  assert.deepEqual(
+    rowIds,
+    [`${USER_A}:${fileId}`, `${USER_B}:${fileId}`].sort(),
+    "file_id 按用户命名空间隔离"
+  );
 });

@@ -11,7 +11,7 @@
 | 顺序 | 编号 | 计划动作 | 是否改动对外接口 / 数据结构 |
 | --- | --- | --- | --- |
 | 1 | 服务端测试挂起 | `server/package.json` 的 `test` / `coverage` / `test:plain` 补 `--test-force-exit`；同时修正 `ci.yml` 中 server job 的 YAML 合并行错误 | 否（仅脚本 / CI） |
-| 2 | P2-9 | 鉴权中间件产出 `req.user`；上传/合并/秒传/列表/下载全部改用服务端身份 | **是**：新增 `req.user = { id, source }`；`File` 唯一约束由 `file_id` 改为 `(file_id, user_id)` |
+| 2 | P2-9 | 鉴权中间件产出 `req.user`；上传/合并/秒传/列表/下载全部改用服务端身份 | **是**：新增 `req.user = { id, source }`；落库 `File.file_id` 采用用户命名空间 `<userId>:<chunkKey>`（保持全局唯一约束，避免改表） |
 | 3 | P1-4 | 在 `file_id` / 全局维度之外补 `user_id` 维度配额 | **是**：新增环境变量 `MAX_USER_UPLOAD_SIZE_MB` / `MAX_USER_CHUNKS` |
 | 4 | P2-1 | 非秒传链路不再预计算全部分片 MD5：先查 `/status` 取已存在分片，上传时按片计算 | **是**：`UploadConfig` 新增可选 `statusApi`（默认 `/api/file/status`） |
 | 5 | P1-7 | 补下载 hooks / UI 最小用例并 ratchet 覆盖率阈值 | 否 |
@@ -43,22 +43,23 @@
 - **对外 / 数据结构改动点**（先记录后实施）：
   1. 鉴权中间件在放行时写入 `req.user = { id, source }`；`id` 由凭据经 SHA-256 派生（`u_<32hex>`），不信任请求体 `user_id`。
   2. `AUTH_MODE=demo` 时 `req.user.id = DEMO_USER_ID || "test"`（兼容历史 `user_id="test"` 数据）。
-  3. `File.file_id` 取消全局唯一，改为 `(file_id, user_id)` 复合唯一，允许不同用户各自持有一条同内容记录。
+  3. 落库的 `File.file_id` 采用用户命名空间 `<userId>:<chunkKey>`：既保留 `file_id` 全局唯一约束（无需迁移已有 SQLite 表），又能让不同用户各自持有一条同内容记录。对外 DTO（秒传 / 列表 / 下载）仍回传原始 chunkKey，接口形态不变。
+  4. **为什么不用 `(file_id, user_id)` 复合唯一**：曾按此实施并提交，但 `sequelize.sync()` 不会修改已存在表的约束（旧库 `file_id` 仍是 `UNIQUE`），升级后第二用户写入同内容会直接触发唯一约束错误。故回退为命名空间方案，避免要求用户重建数据库。
 - **具体改动**：
   - `auth.js`：Bearer / Cookie 白名单或 `verify` 放行时附加身份；导出派生函数便于测试。
   - `app.js`：demo 模式挂载身份中间件。
   - `uploadController.js`：`instantCheck` / `uploadChunk` / `mergeChunks` 使用 `req.user.id`；秒传与「已合并」查询加 `user_id`。
   - `downloadController.js`：列表只展示当前用户拥有的文件（目录中无 DB 归属的遗留文件保持可见），下载 / 缩略图校验归属，非归属返回 404。
-  - `file.js`：复合唯一索引。
+  - `file.js`：保持 `file_id` 全局 `unique: true` 与原索引不变；用户隔离改由写入时的命名空间实现。
 - **实施记录**：
   - `auth.js` 新增 `buildPrincipalId` / `attachPrincipal`：Bearer、Cookie 白名单及 `verify` 放行时写入 `req.user = { id, source }`。
   - `app.js` demo 分支注入 `req.user.id = DEMO_USER_ID || "test"`。
-  - `uploadController` 新增 `getUserId(req)`，秒传 / 合并 / 分片写入均不再读取请求体 `user_id`；合并写库由 `File.upsert` 改为按 `(file_id, user_id)` 查后更新 / 新建。
+  - `uploadController` 新增 `getUserId(req)`，秒传 / 合并 / 分片写入均不再读取请求体 `user_id`；合并写库由 `File.upsert` 改为按 `file_id: <userId>:<chunkKey>, user_id` 查后更新 / 新建；`toPublicFile` 剥离前缀，对外仍回传 chunkKey。
   - `downloadController` 列表缓存改为按用户维度（最多 200 个用户），元数据只取当前用户；`findFileById` + `isOwnedByUser` 对下载 / 缩略图做归属校验，他人文件按 404 处理；目录中无 DB 归属的遗留文件保持可见。
-  - `file.js` 的 `file_id` 改为 `(file_id, user_id)` 复合唯一。
+  - `file.js` 回退复合唯一索引，恢复原 `file_id` 唯一约束与索引（见上条原因）。
 - **验收方式**：新增 `server/tests/tenant-isolation.test.js`（3 例：身份派生且忽略请求体、跨用户秒传/列表/下载隔离、同内容双用户各自持有记录）；回归 `npm --prefix server test`。
-- **结论**：已通过。新用例 3/3；服务端全量 **76/76**；覆盖率 83.84/72.26/83.83 达标。
-- **遗留说明**：物理文件仍按内容寻址共享（同名同内容只存一份），分片暂存表 `file_chunks` 仍按 `(file_id, chunk_index)` 全局唯一，因此同内容跨用户会复用同一物理文件、且后合并者覆盖写同路径；这不造成跨用户读取（列表/下载已按归属过滤），但若要求物理隔离，需要再拆存储目录。已在本文档记录为后续项。
+- **结论**：已通过。新用例 3/3；服务端全量 **78/78**；覆盖率 **84.31 / 74.95 / 84.48**（阈值 80/65/80）达标。同时修正 `hardening.test.js` 中按旧 `file_id` 查询的断言（改为按 `md5` 定位并校验命名空间前缀）。
+- **遗留说明**：物理文件仍按内容寻址共享（同内容只存一份），分片暂存表 `file_chunks` 仍按 `(file_id, chunk_index)` 唯一，因此同内容跨用户会复用同一物理文件、后合并者覆盖写同路径；这不造成跨用户读取（列表/下载已按归属过滤），但若要求物理隔离，需要再拆存储目录。已记录为后续项。
 
 ---
 
@@ -140,7 +141,7 @@
 | 类型检查 | `npm run typecheck` | 通过（`tsc -b` + `tsconfig.lib.check.json`）0 错误 |
 | 前端单测 + 覆盖率 | `npm run test:coverage` | 通过，204/204（37 文件）；lines 43.84 / statements 43.41 / functions 35.18 / branches 33.24（阈值 40/40/33/30） |
 | 库构建 | `npm run build` | 通过，977ms；dist 生成 12 个 `.map`；`process.env` 命中 0、`.d.ts` CSS 导入命中 0 |
-| 服务端测试 | `npm --prefix server test` | 通过，78/78，约 11s 退出；覆盖率 84.06 / 72.92 / 84.48（阈值 80/65/80） |
+| 服务端测试 | `npm --prefix server test` | 通过，78/78，约 11s 退出；覆盖率 84.31 / 74.95 / 84.48（阈值 80/65/80） |
 | CI 配置 | `js-yaml` 解析 `ci.yml` | 通过，jobs = `client, react19, server, browser` |
 
 ### 最终状态汇总
@@ -148,7 +149,7 @@
 | 编号 | 状态 | 一句话结论 |
 | --- | --- | --- |
 | 服务端测试挂起 | 已闭环 | 根因 unref + `test:plain` 兜底 force-exit；修正 Windows 覆盖率参数引号与 CI YAML 错误 |
-| P2-9 | 已闭环 | `req.user` 派生身份，秒传/写入/列表/下载全部按用户隔离，复合唯一索引 |
+| P2-9 | 已闭环 | `req.user` 派生身份，秒传/写入/列表/下载全部按用户隔离；落库 `file_id` 用用户命名空间，免改表升级 |
 | P1-4 | 已闭环 | 新增 user 维度字节/片数配额 |
 | P2-5 | 已复核闭环 | 落盘失败显式抛错并在 COMPLETE 上报 |
 | P1-7 | 已闭环 | 下载编排层用例 + 阈值 ratchet 到 40/40/33/30 |

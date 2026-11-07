@@ -12,6 +12,7 @@ module.exports = (sequelize) =>
       file_id: {
         type: DataTypes.STRING(128),
         allowNull: false,
+        unique: true,
       },
       file_name: {
         type: DataTypes.STRING(255),
@@ -61,9 +62,6 @@ module.exports = (sequelize) =>
       tableName: "files",
       underscored: true,
       indexes: [
-        // P2-9：file_id（内容分片键）按用户隔离。
-        // 同一内容被不同用户上传时各自持有一条记录，避免后上传者 upsert 覆盖前者的归属。
-        { unique: true, fields: ["file_id", "user_id"] },
         { fields: ["file_id"] },
         { fields: ["md5"] },
         { fields: ["status"] },

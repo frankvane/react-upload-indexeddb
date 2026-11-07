@@ -16,8 +16,8 @@ const jsonResponse = (data: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const fetchMock = vi.fn(async (url: string) => {
-  const target = String(url);
+const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+  const target = String(input);
   if (target.includes("/instant")) {
     return jsonResponse({ code: 200, data: { uploaded: false } });
   }
@@ -81,9 +81,9 @@ describe("uploadWorker P2-1 分片 MD5 按需计算", () => {
       },
     });
 
-    const calls = fetchMock.mock.calls.map(([url, options]) => ({
+    const calls = fetchMock.mock.calls.map(([url, init]) => ({
       url: String(url),
-      body: options?.body,
+      body: init?.body,
     }));
 
     // 1. 预检（instant）不再携带 chunk_md5s

@@ -51,8 +51,11 @@ const toPublicFile = (file) => {
     return null;
   }
   const plain = typeof file.toJSON === "function" ? file.toJSON() : { ...file };
+  // 落库值是 `<userId>:<chunkKey>`（保证 file_id 全局唯一），对外仍回传客户端使用的 chunkKey。
+  const rawFileId = String(plain.file_id || "");
+  const separator = rawFileId.indexOf(":");
   return {
-    file_id: plain.file_id,
+    file_id: separator >= 0 ? rawFileId.slice(separator + 1) : rawFileId,
     file_name: plain.file_name,
     size: plain.size,
     md5: plain.md5,
@@ -602,6 +605,10 @@ exports.mergeChunks = async (req, res) => {
       req.body;
     // P2-9：归属由服务端鉴权决定，忽略请求体里的 user_id（防越权写入）。
     userId = getUserId(req);
+    // P2-9：file 行的 file_id 加用户命名空间。
+    // 表结构仍保持 file_id 全局唯一（不重建已有 SQLite 表），
+    // 同一内容被不同用户上传时得到两条互不覆盖的归属记录。
+    const fileRowId = `${userId}:${sanitizeFileId(file_id)}`;
     const safeFileId = sanitizeFileId(file_id);
     mergeFileId = safeFileId;
     const safeName = sanitizeFilename(name);
@@ -759,10 +766,10 @@ exports.mergeChunks = async (req, res) => {
     // 重 IO 全部完成后再开短事务写库：File upsert + 分片状态归档一次提交
     transaction = await sequelize.transaction();
     try {
-      // P2-9：唯一键改为 (file_id, user_id)，不能再用 upsert 的全局 file_id 冲突目标，
-      // 改为「按用户查后更新 / 新建」。
+      // P2-9：file_id 已按用户命名空间隔离，不能再直接 upsert 客户端传入的 chunkKey；
+      // 改为「按用户命名空间查后更新 / 新建」。
       const fileValues = {
-        file_id: safeFileId,
+        file_id: fileRowId,
         file_name: safeName,
         size,
         user_id: userId,
@@ -776,7 +783,7 @@ exports.mergeChunks = async (req, res) => {
       };
       await withSqliteBusyRetry(async () => {
         const owned = await File.findOne({
-          where: { file_id: safeFileId, user_id: userId },
+          where: { file_id: fileRowId, user_id: userId },
           transaction,
         });
         if (owned) {
